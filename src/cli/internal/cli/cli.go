@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/sonquer/tui4db/src/cli/internal/config"
@@ -36,7 +37,7 @@ type Workspace interface {
 	Profiles() (config.Profiles, error)
 	Open(ctx context.Context, name string) (Session, func(), error)
 	OpenDatabase(ctx context.Context, name, database string) (Session, func(), error)
-	Remember(name, database, schema string) error
+	Remember(name, database, schema string, schemas []string) error
 	Remove(ctx context.Context, name string) error
 	Setup() Setup
 }
@@ -196,9 +197,9 @@ func (a App) OpenDatabase(ctx context.Context, name, database string) (Session, 
 	return a.open(ctx, options{connection: name, database: database})
 }
 
-// Remember writes the database and schema a session moved to back to the
+// Remember writes the database and schemas a session moved to back to the
 // profile, so the next run opens where the last one left off.
-func (a App) Remember(name, database, schema string) error {
+func (a App) Remember(name, database, schema string, schemas []string) error {
 	profiles, err := a.Store.LoadProfiles()
 	if err != nil {
 		return err
@@ -207,15 +208,25 @@ func (a App) Remember(name, database, schema string) error {
 	if !ok {
 		return fmt.Errorf("no connection named %q", name)
 	}
-	if connection.Database == database && connection.DefaultSchema == schema {
+	if connection.Database == database && connection.DefaultSchema == schema &&
+		slices.Equal(connection.Schemas, schemas) {
 		return nil
 	}
 	connection.Database = database
 	connection.DefaultSchema = schema
+	connection.Schemas = schemas
 	if err := profiles.Upsert(connection); err != nil {
 		return err
 	}
 	return a.Store.SaveProfiles(profiles)
+}
+
+// appearance builds the theme a session is drawn with, which is the palette
+// plus the shape of a bar, the one part of it a font can ruin.
+func appearance(settings config.Settings) *ui.Theme {
+	theme := ui.Default()
+	theme.Bars(settings.Appearance.Bar)
+	return theme
 }
 
 func (a App) Remove(ctx context.Context, name string) error {
@@ -290,7 +301,7 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		Conn:         conn,
 		Info:         info,
 		Guard:        sqlguard.New(dialect),
-		Theme:        ui.Default(),
+		Theme:        appearance(settings),
 	}
 	return session, func() { _ = conn.Close() }, nil
 }

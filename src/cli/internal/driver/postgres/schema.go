@@ -34,16 +34,27 @@ GROUP BY n.nspname
 ORDER BY n.nspname`
 
 const userSchemas = `n.nspname NOT IN ('pg_catalog','information_schema')
-	AND n.nspname NOT LIKE 'pg\\_toast%'`
+	AND n.nspname NOT LIKE 'pg\_toast%'`
 
 const tablesQuery = `SELECT n.nspname, c.relname,
 	CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'partitioned table'
 		WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' ELSE 'foreign table' END,
 	coalesce(c.reltuples, 0)::bigint,
 	pg_total_relation_size(c.oid),
-	coalesce(obj_description(c.oid, 'pg_class'), '')
+	coalesce(obj_description(c.oid, 'pg_class'), ''),
+	s.relid IS NOT NULL,
+	coalesce(s.idx_scan, 0), coalesce(s.seq_scan, 0),
+	coalesce(s.n_live_tup, 0), coalesce(s.n_dead_tup, 0),
+	CASE WHEN coalesce(io.heap_blks_hit, 0) + coalesce(io.heap_blks_read, 0) > 0
+		THEN coalesce(io.heap_blks_hit, 0)::float8
+			/ (coalesce(io.heap_blks_hit, 0) + coalesce(io.heap_blks_read, 0))
+		ELSE -1 END,
+	coalesce(pg_indexes_size(c.oid), 0),
+	coalesce(greatest(s.last_vacuum, s.last_autovacuum), to_timestamp(0))
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
+LEFT JOIN pg_statio_all_tables io ON io.relid = c.oid
 WHERE ($1 = '' OR n.nspname = $1) AND ` + userSchemas + `
 	AND c.relkind IN ('r','p','v','m','f')
 ORDER BY n.nspname, c.relname`
@@ -92,13 +103,16 @@ const indexesQuery = `SELECT n.nspname, t.relname, i.relname,
 	pg_get_indexdef(x.indexrelid),
 	pg_relation_size(x.indexrelid),
 	coalesce(s.idx_scan, 0),
-	x.indisunique, x.indisprimary
+	coalesce(s.idx_tup_read, 0),
+	x.indisunique, x.indisprimary,
+	s.indexrelid IS NOT NULL
 FROM pg_index x
 JOIN pg_class i ON i.oid = x.indexrelid
 JOIN pg_class t ON t.oid = x.indrelid
 JOIN pg_namespace n ON n.oid = t.relnamespace
-LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = x.indexrelid
+LEFT JOIN pg_stat_all_indexes s ON s.indexrelid = x.indexrelid
 WHERE ($1 = '' OR n.nspname = $1) AND ` + userSchemas + `
+	AND t.relkind IN ('r','p','m')
 ORDER BY pg_relation_size(x.indexrelid) DESC, i.relname`
 
 func (c *connection) Info(ctx context.Context) (driver.ServerInfo, error) {
@@ -163,9 +177,22 @@ func (c *connection) Tables(ctx context.Context, schema string) ([]driver.Table,
 	var tables []driver.Table
 	err := c.each(ctx, tablesQuery, func(rows pgx.Rows) error {
 		var table driver.Table
+		var hit float64
+		var vacuumed time.Time
 		if err := rows.Scan(&table.Schema, &table.Name, &table.Kind,
-			&table.Rows, &table.Size, &table.Comment); err != nil {
+			&table.Rows, &table.Size, &table.Comment,
+			&table.Stats, &table.IndexScans, &table.SeqScans,
+			&table.LiveRows, &table.DeadRows, &hit, &table.IndexSize, &vacuumed); err != nil {
 			return err
+		}
+		if hit >= 0 {
+			table.CacheHit = hit
+		}
+		if table.Rows < 0 {
+			table.Rows = table.LiveRows
+		}
+		if vacuumed.Unix() > 0 {
+			table.LastVacuum = vacuumed
 		}
 		tables = append(tables, table)
 		return nil
@@ -259,7 +286,8 @@ func (c *connection) Indexes(ctx context.Context, schema string) ([]driver.Index
 	err := c.each(ctx, indexesQuery, func(rows pgx.Rows) error {
 		var index driver.Index
 		if err := rows.Scan(&index.Schema, &index.Table, &index.Name, &index.Definition,
-			&index.Size, &index.Scans, &index.Unique, &index.Primary); err != nil {
+			&index.Size, &index.Scans, &index.Rows,
+			&index.Unique, &index.Primary, &index.Stats); err != nil {
 			return err
 		}
 		indexes = append(indexes, index)

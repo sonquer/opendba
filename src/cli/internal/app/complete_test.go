@@ -176,3 +176,128 @@ func TestColumnsThatCannotBeReadAreNotOffered(t *testing.T) {
 		t.Error("a failed read is not retried on every keystroke")
 	}
 }
+
+func catalogue(t *testing.T) Model {
+	t.Helper()
+	conn := healthy()
+	conn.tables = []driver.Table{
+		{Schema: "catalog", Name: "products", Kind: "table"},
+		{Schema: "catalog", Name: "product_images", Kind: "table"},
+		{Schema: "iam", Name: "permissions", Kind: "table"},
+	}
+	conn.fields = map[string][]driver.Column{
+		"products": {{Name: "sku", Type: "text"}, {Name: "price", Type: "numeric"}},
+	}
+	m := loadedWith(t, conn, workspaceWith(t))
+	m.width, m.height = 110, 32
+	editing, _ := press(t, m, "e")
+	return editing
+}
+
+func TestASchemaCompletesToItsTables(t *testing.T) {
+	schemas := typeInto(t, catalogue(t), "SELECT * FROM cat")
+	if item, _ := schemas.suggest.selected(); item.text != "catalog" || item.kind != "schema" {
+		t.Fatalf("a prefix must offer the schemas: %+v", schemas.suggest.items)
+	}
+
+	tables := typeInto(t, catalogue(t), "SELECT * FROM catalog.")
+	if len(tables.suggest.items) != 2 {
+		t.Fatalf("a schema and a dot offers its tables: %+v", tables.suggest.items)
+	}
+	if tables.suggest.items[0].text != "catalog.products" {
+		t.Errorf("suggestion = %+v", tables.suggest.items[0])
+	}
+
+	narrowed := typeInto(t, catalogue(t), "SELECT * FROM catalog.product_")
+	if len(narrowed.suggest.items) != 1 || narrowed.suggest.items[0].text != "catalog.product_images" {
+		t.Errorf("the stem after the dot must narrow it: %+v", narrowed.suggest.items)
+	}
+
+	accepted, _ := press(t, tables, "tab")
+	if accepted.statement() != "SELECT * FROM catalog.products" {
+		t.Errorf("statement = %q", accepted.statement())
+	}
+}
+
+func TestAQualifiedTableCompletesItsColumns(t *testing.T) {
+	m := catalogue(t)
+	typed := typeInto(t, m, "SELECT * FROM catalog.products WHERE ")
+	answered, _ := typed.Update(runFirst(t, typed.readColumns()))
+	ready := answered.(Model)
+
+	deep := typeInto(t, ready, "catalog.products.sk")
+	if item, ok := deep.suggest.selected(); !ok || item.text != "catalog.products.sku" {
+		t.Errorf("suggestion = %+v", deep.suggest.items)
+	}
+}
+
+// A dozen tables start with the same word. The one being typed is the one with
+// the least left to type, and a list cut in the server's order loses it.
+func TestTheClosestTableIsOffered(t *testing.T) {
+	conn := healthy()
+	conn.tables = nil
+	for _, name := range []string{
+		"product_attributes", "product_changes", "product_components",
+		"product_descriptions", "product_images", "product_import_records",
+		"product_list_prices", "products",
+	} {
+		conn.tables = append(conn.tables,
+			driver.Table{Schema: "catalog", Name: name, Kind: "table"})
+	}
+	m := loadedWith(t, conn, workspaceWith(t))
+	m.width, m.height = 120, 40
+	editing, _ := press(t, m, "e")
+	editing.editor.SetValue("SELECT id FROM catalog.product")
+	typed, _ := editing.resuggest()
+	if !typed.suggest.active() {
+		t.Fatal("a prefix that names eight tables must offer some")
+	}
+	if got := typed.suggest.items[0].text; got != "catalog.products" {
+		t.Errorf("the closest match must come first, got %q from %v",
+			got, texts(typed.suggest.items))
+	}
+}
+
+func texts(items []suggestion) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		out = append(out, item.text)
+	}
+	return out
+}
+
+// Every other binding in this program answers to a letter as well. A letter
+// typed into an editor is a letter, whatever list happens to be open.
+//
+// A textarea shares one buffer between every copy of itself, so each case gets
+// a model of its own rather than the last one's leftovers.
+func TestALetterTypedAtASuggestionListIsALetter(t *testing.T) {
+	suggesting := func() Model {
+		t.Helper()
+		m := loadedWith(t, healthy(), workspaceWith(t))
+		m.width, m.height = 120, 40
+		editing, _ := press(t, m, "e")
+		typed := editing
+		for _, key := range []string{"s"} {
+			typed, _ = press(t, typed, key)
+		}
+		if !typed.suggest.active() {
+			t.Fatal("the list must be open for this to be worth testing")
+		}
+		return typed
+	}
+	for _, key := range []string{"k", "j", "h", "l"} {
+		typed := suggesting()
+		after, _ := press(t, typed, key)
+		if after.suggest.cursor != typed.suggest.cursor {
+			t.Errorf("%q walked the list instead of being typed", key)
+		}
+		if !strings.HasSuffix(after.editor.Value(), key) {
+			t.Errorf("%q must reach the editor, got %q", key, after.editor.Value())
+		}
+	}
+	typed := suggesting()
+	if walked, _ := press(t, typed, "down"); walked.suggest.cursor == typed.suggest.cursor {
+		t.Error("the arrows still walk the list")
+	}
+}

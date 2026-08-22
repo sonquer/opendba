@@ -52,11 +52,15 @@ func (w *fakeWorkspace) OpenDatabase(ctx context.Context, name, database string)
 	return session, cleanup, nil
 }
 
-func (w *fakeWorkspace) Remember(name, database, schema string) error {
+func (w *fakeWorkspace) Remember(name, database, schema string, schemas []string) error {
 	if w.remember != nil {
 		return w.remember
 	}
-	w.remembered = append(w.remembered, name+"/"+database+"/"+schema)
+	line := name + "/" + database + "/" + schema
+	if len(schemas) > 0 {
+		line += "/" + strings.Join(schemas, "+")
+	}
+	w.remembered = append(w.remembered, line)
 	return nil
 }
 

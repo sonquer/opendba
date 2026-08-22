@@ -8,22 +8,25 @@ import (
 )
 
 func TestChromePinsTheFooterToTheLastRow(t *testing.T) {
-	screen := plain(Default().Chrome(Frame{Width: 60, Height: 12, Env: EnvRed, Header: "header", Body: "body", Footer: "footer"}))
+	screen := plain(Default().Chrome(Frame{Width: 60, Height: 16, Env: EnvRed, Header: "header", Body: "body", Footer: "footer"}))
 	lines := strings.Split(screen, "\n")
-	if len(lines) != 12 {
+	if len(lines) != 16 {
 		t.Fatalf("the screen must fill the window, got %d rows", len(lines))
 	}
 	if strings.TrimSpace(lines[0]) != "" {
 		t.Errorf("the frame breathes at the top: %q", lines[0])
 	}
-	if !strings.Contains(lines[1], "▔") {
+	if !strings.Contains(lines[1], "▀") {
 		t.Errorf("the environment is a line across the top: %q", lines[1])
 	}
 	if !strings.Contains(lines[2], "header") {
-		t.Errorf("row 3 = %q", lines[2])
+		t.Errorf("the header sits straight under the environment line: %q", lines[2])
 	}
 	if !strings.HasPrefix(lines[2], strings.Repeat(" ", 2)) {
 		t.Errorf("the frame breathes on the left: %q", lines[2])
+	}
+	if strings.TrimSpace(lines[3]) == "" {
+		t.Errorf("the rule follows the header without a gap: %q", lines[3])
 	}
 	if !strings.Contains(lines[len(lines)-2], "footer") {
 		t.Errorf("the footer sits on the last written row = %q", lines[len(lines)-2])
@@ -49,8 +52,11 @@ func TestBodyHeightMatchesChrome(t *testing.T) {
 		body := strings.Repeat("row\n", 100)
 		screen := plain(Default().Chrome(Frame{Width: 40, Height: height, Header: "h", Body: body, Footer: "f"}))
 		rows := len(strings.Split(screen, "\n"))
-		if strings.Count(plain(Fit(body, BodyHeight(height))), "row") != BodyHeight(height) {
+		if lipgloss.Height(Fit(body, BodyHeight(height))) != BodyHeight(height) {
 			t.Errorf("BodyHeight(%d) does not match what Chrome renders", height)
+		}
+		if rows != max(height, minChromeHeight) {
+			t.Errorf("a %d row window renders %d rows", height, rows)
 		}
 		if rows < minChromeHeight {
 			t.Errorf("rows = %d", rows)

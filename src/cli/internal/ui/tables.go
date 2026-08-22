@@ -58,26 +58,100 @@ func (t *Theme) Counts(healthy, warnings, failing int) string {
 	return strings.Join(parts, t.Muted.Render(" · "))
 }
 
-func (t *Theme) TableList(tables []driver.Table) string {
+// TableList is what the server holds and how it is being read: the size on
+// disk, and a bar for the share of reads the server answered from memory.
+func (t *Theme) TableList(tables []driver.Table, cursor, width int) string {
 	if len(tables) == 0 {
 		return t.Muted.Render("no tables here")
 	}
-	rendered := t.plainTable("table", "kind", "rows", "size")
-	for _, entry := range tables {
-		rendered.Row(entry.Qualified(), entry.Kind, Count(entry.Rows), ByteSize(entry.Size))
+	list := make([]Listing, 0, len(tables))
+	for i, entry := range tables {
+		list = append(list, Listing{
+			Name:     entry.Qualified(),
+			Facts:    []string{Count(entry.Rows), ByteSize(entry.Size), ByteSize(entry.IndexSize)},
+			Note:     cached(entry),
+			Ratio:    entry.CacheHit,
+			Measured: entry.Stats && entry.CacheHit > 0,
+			Severity: t.Severity4Driver(entry.Health()),
+			Cursor:   i == cursor,
+		})
 	}
-	return rendered.String()
+	return t.Rows(list, Head{
+		Name:  "table",
+		Facts: []string{"rows", "size", "indexes"},
+		Gauge: "read from memory",
+	}, width)
 }
 
-func (t *Theme) IndexList(indexes []driver.Index) string {
+// cached says what the bar on a table row is measuring, in the words of what
+// the number means rather than of the counter it came from.
+func cached(table driver.Table) string {
+	if !table.Stats || table.CacheHit <= 0 {
+		return "never read"
+	}
+	return fmt.Sprintf("%.0f%%", table.CacheHit*100)
+}
+
+// IndexList is what each index costs and what it is worth: its size, how often
+// the server read it, and a bar for its share of the reads on its table.
+func (t *Theme) IndexList(indexes []driver.Index, cursor, width int) string {
 	if len(indexes) == 0 {
 		return t.Muted.Render("no indexes here")
 	}
-	rendered := t.plainTable("index", "table", "size", "scans")
+	busiest := map[string]int64{}
 	for _, index := range indexes {
-		rendered.Row(index.Name, index.Table, ByteSize(index.Size), Count(index.Scans))
+		busiest[index.Table] = max(busiest[index.Table], index.Scans)
 	}
-	return rendered.String()
+	list := make([]Listing, 0, len(indexes))
+	for i, index := range indexes {
+		share, measured := float64(0), false
+		if top := busiest[index.Table]; top > 0 {
+			share, measured = float64(index.Scans)/float64(top), true
+		}
+		list = append(list, Listing{
+			Name:     index.Name,
+			Facts:    []string{index.Table, ByteSize(index.Size), reads(index)},
+			Note:     worth(index),
+			Ratio:    share,
+			Measured: measured,
+			Severity: t.Severity4Driver(index.Health()),
+			Cursor:   i == cursor,
+		})
+	}
+	return t.Rows(list, Head{
+		Name:  "index",
+		Facts: []string{"on table", "size", "reads"},
+		Gauge: "share of its table",
+		Note:  "why",
+	}, width)
+}
+
+// reads is how often the server went to this index, or a word for a driver that
+// does not count.
+func reads(index driver.Index) string {
+	if !index.Stats {
+		return "n/a"
+	}
+	return Count(index.Scans)
+}
+
+// worth says in one word why an index is on the list. The sentence behind the
+// word is on the page, which is what enter is for.
+func worth(index driver.Index) string {
+	switch {
+	case !index.Stats:
+		return "unknown"
+	case index.Primary:
+		return "primary"
+	case index.Idle():
+		return "idle"
+	case index.Unique:
+		return "unique"
+	case index.Scans == 0:
+		return "unread"
+	default:
+		return "used"
+	}
 }
 
 func (t *Theme) ResultTable(columns []string, rows [][]string) string {
@@ -128,16 +202,6 @@ func Reason(reason string) string {
 		return reason[:cut]
 	}
 	return reason
-}
-
-func (t *Theme) plainTable(headers ...string) *table.Table {
-	return t.table(headers...).
-		Border(lipgloss.NormalBorder()).
-		BorderTop(false).
-		BorderBottom(false).
-		BorderLeft(false).
-		BorderRight(false).
-		BorderHeader(true)
 }
 
 func (t *Theme) table(headers ...string) *table.Table {

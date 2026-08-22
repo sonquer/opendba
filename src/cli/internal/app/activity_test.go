@@ -1,0 +1,302 @@
+package app
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/sonquer/tui4db/src/cli/internal/cli"
+	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/tui4db/src/cli/internal/ui"
+)
+
+func busy() *fakeConn {
+	conn := healthy()
+	conn.sessions = []driver.Session{
+		{ID: "40218", User: "api", State: "active", Wait: "Lock",
+			Duration: 72 * time.Second, Statement: "UPDATE orders SET total = 1"},
+		{ID: "40219", User: "api", State: "idle in transaction", Duration: 44 * time.Second},
+		{ID: "40220", User: "postgres", State: "active", Duration: time.Second,
+			Statement: "SELECT 1", Mine: true},
+	}
+	return conn
+}
+
+func watching(t *testing.T, conn *fakeConn, open func(driver.Conn) cli.Session) Model {
+	t.Helper()
+	m := NewModel(open(conn), workspaceWith(t))
+	m.width, m.height = 110, 32
+	loaded, _ := m.Update(m.load()())
+	shown, _ := loaded.(Model).Update(runFirst(t, loaded.(Model).readSessions()))
+	return shown.(Model)
+}
+
+// The list reached the screen at all is the test that was missing when it
+// shipped empty.
+func TestWhatIsRunningReachesTheScreen(t *testing.T) {
+	m := watching(t, busy(), session)
+	if len(m.running.sessions) != 3 {
+		t.Fatalf("sessions = %+v", m.running.sessions)
+	}
+	view := plain(m.content())
+	for _, want := range []string{"RUNNING", "40218", "api", "UPDATE orders", "1m12s", "Lock"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the list must show %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "nothing is running") {
+		t.Error("three sessions are not nothing")
+	}
+	if strings.Contains(view, "updated") {
+		t.Error("a list that refreshes itself has nothing to say about when it last did")
+	}
+	if !strings.Contains(view, "3 sessions") {
+		t.Errorf("the heading says how much of the server this is:\n%s", view)
+	}
+}
+
+func TestAQuietServerSaysSo(t *testing.T) {
+	m := watching(t, healthy(), session)
+	if !strings.Contains(plain(m.content()), "nothing is running") {
+		t.Errorf("content = %s", plain(m.content()))
+	}
+}
+
+func TestADriverWithoutSessionsShowsNoList(t *testing.T) {
+	conn := busy()
+	quiet := session(conn)
+	quiet.Capabilities.Sessions = false
+	m := NewModel(quiet, workspaceWith(t))
+	if m.readSessions() != nil {
+		t.Fatal("a driver without sessions is not asked for them")
+	}
+	if strings.Contains(plain(m.content()), "RUNNING") {
+		t.Error("a driver without sessions has no list")
+	}
+}
+
+func TestSessionsThatCannotBeReadAreReported(t *testing.T) {
+	conn := busy()
+	conn.failOn = "sessions"
+	m := watching(t, conn, session)
+	if !strings.Contains(plain(m.content()), "sessions failed") {
+		t.Errorf("content = %s", plain(m.content()))
+	}
+}
+
+func TestALongStatementIsCalledOut(t *testing.T) {
+	m := watching(t, busy(), session)
+	slow := m.running
+	slow.sessions[0].State = "active"
+	if legend := plain(slow.legend()); !strings.Contains(legend, "past 30.00s") {
+		t.Errorf("a statement past the slow mark must be counted: %q", legend)
+	}
+	quiet := m.running
+	quiet.sessions = quiet.sessions[2:]
+	if legend := quiet.legend(); legend != "" {
+		t.Errorf("a server with nothing slow says nothing: %q", legend)
+	}
+	if got := m.running.severity(m.running.sessions[0]); got != ui.SevWarn {
+		t.Errorf("severity = %v", got)
+	}
+	stuck := m.running.sessions[0]
+	stuck.Duration = 10 * time.Minute
+	if got := m.running.severity(stuck); got != ui.SevCritical {
+		t.Errorf("severity = %v", got)
+	}
+	idle := m.running.sessions[1]
+	if got := m.running.severity(idle); got != ui.SevInactive {
+		t.Errorf("a session that is not running is not slow: %v", got)
+	}
+}
+
+func TestWalkingTheSessions(t *testing.T) {
+	m := watching(t, busy(), session)
+	on, _ := press(t, m, "tab")
+	if !on.onSessions {
+		t.Fatal("tab must reach the list")
+	}
+	down, _ := press(t, on, "down")
+	if chosen, _ := down.running.selected(); chosen.ID != "40219" {
+		t.Errorf("selected = %+v", chosen)
+	}
+	up, _ := press(t, down, "up")
+	if chosen, _ := up.running.selected(); chosen.ID != "40218" {
+		t.Errorf("selected = %+v", chosen)
+	}
+	off, _ := press(t, on, "tab")
+	if off.onSessions {
+		t.Error("tab must leave the list again")
+	}
+}
+
+// A read only profile is warned rather than refused: the danger is spelled out
+// and the way through is a box that has to be ticked on purpose.
+func TestAReadOnlyConnectionIsWarnedNotRefused(t *testing.T) {
+	conn := busy()
+	m := watching(t, conn, session)
+	on, _ := press(t, m, "tab")
+	asked, _ := press(t, on, "c")
+	if asked.modal == nil {
+		t.Fatal("read only must ask, not refuse")
+	}
+	view := plain(asked.content())
+	for _, want := range []string{"read only", "do it anyway", "space"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the dialog must say %q:\n%s", want, view)
+		}
+	}
+	if refused, cmd := press(t, asked, "enter"); cmd != nil || refused.modal == nil {
+		t.Fatal("enter does nothing until the box is ticked")
+	}
+
+	ticked, _ := press(t, asked, "space")
+	if !ticked.modal.ticked {
+		t.Fatal("space must tick the box")
+	}
+	answered, cmd := press(t, ticked, "enter")
+	if cmd == nil || answered.modal != nil {
+		t.Fatal("a ticked box lets it through")
+	}
+	stopping, cmd := answered.Update(cmd())
+	stopping.(Model).Update(runFirst(t, cmd))
+	if len(conn.stopped) != 1 {
+		t.Fatalf("stopped = %v", conn.stopped)
+	}
+}
+
+func TestAWritableConnectionIsNotWarned(t *testing.T) {
+	m := watching(t, busy(), writable)
+	on, _ := press(t, m, "tab")
+	asked, _ := press(t, on, "c")
+	if asked.modal == nil {
+		t.Fatal("stopping still asks")
+	}
+	if asked.modal.needs != "" {
+		t.Error("a profile that may write has nothing to tick")
+	}
+	if strings.Contains(plain(asked.content()), "do it anyway") {
+		t.Error("the warning belongs to read only profiles")
+	}
+}
+
+func TestCancellingAStatement(t *testing.T) {
+	conn := busy()
+	m := watching(t, conn, writable)
+	on, _ := press(t, m, "tab")
+	asked, _ := press(t, on, "c")
+	if asked.modal == nil {
+		t.Fatal("cancelling must ask first")
+	}
+	if !strings.Contains(plain(asked.content()), "cancel what 40218 is running?") {
+		t.Errorf("content = %s", plain(asked.content()))
+	}
+	answered, cmd := press(t, asked, "enter")
+	if cmd == nil || answered.modal != nil {
+		t.Fatal("enter must answer")
+	}
+	stopping, cmd := answered.Update(cmd())
+	done, _ := stopping.(Model).Update(runFirst(t, cmd))
+	if len(conn.stopped) != 1 || conn.stopped[0] != "cancelled 40218" {
+		t.Fatalf("stopped = %v", conn.stopped)
+	}
+	if !strings.Contains(plain(done.(Model).content()), "cancelled session 40218") {
+		t.Errorf("content = %s", plain(done.(Model).content()))
+	}
+}
+
+// Closing a session is one deliberate answer, not two. The dialog says what it
+// costs, in the colour of something that costs, and takes yes or no.
+func TestClosingASessionIsAskedOnce(t *testing.T) {
+	conn := busy()
+	m := watching(t, conn, writable)
+	on, _ := press(t, m, "tab")
+	asked, _ := press(t, on, "x")
+	if asked.modal == nil {
+		t.Fatal("closing must ask first")
+	}
+	if !asked.modal.danger || asked.modal.typing() {
+		t.Errorf("the dialog warns rather than asking for a word back: %+v", asked.modal)
+	}
+	view := plain(asked.modal.view(100))
+	if !strings.Contains(view, "40218") || !strings.Contains(view, "loses its connection") {
+		t.Errorf("the dialog must say what it does:\n%s", view)
+	}
+	answered, cmd := press(t, asked, "enter")
+	stopping, cmd := answered.Update(cmd())
+	stopping.(Model).Update(runFirst(t, cmd))
+	if len(conn.stopped) != 1 || conn.stopped[0] != "terminated 40218" {
+		t.Fatalf("stopped = %v", conn.stopped)
+	}
+}
+
+func TestThisProgramCannotStopItself(t *testing.T) {
+	m := watching(t, busy(), writable)
+	on, _ := press(t, m, "tab")
+	mine := on
+	for {
+		chosen, ok := mine.running.selected()
+		if !ok {
+			t.Fatal("our own session must be in the list")
+		}
+		if chosen.Mine {
+			break
+		}
+		mine, _ = press(t, mine, "down")
+	}
+	refused, cmd := press(t, mine, "x")
+	if refused.modal != nil {
+		t.Fatal("nobody gets to pull the rug from under themselves")
+	}
+	if cmd == nil {
+		t.Fatal("it must say why")
+	}
+	if !strings.Contains(plain(refused.content()), "this program") {
+		t.Errorf("content = %s", plain(refused.content()))
+	}
+}
+
+func TestAFailedStopIsReported(t *testing.T) {
+	conn := busy()
+	conn.failOn = "stop"
+	m := watching(t, conn, writable)
+	on, _ := press(t, m, "tab")
+	asked, _ := press(t, on, "c")
+	answered, cmd := press(t, asked, "enter")
+	stopping, cmd := answered.Update(cmd())
+	failed, _ := stopping.(Model).Update(runFirst(t, cmd))
+	if !strings.Contains(plain(failed.(Model).content()), "stop failed") {
+		t.Errorf("content = %s", plain(failed.(Model).content()))
+	}
+}
+
+func TestTheDashboardRefreshesItself(t *testing.T) {
+	m := watching(t, busy(), session)
+	ticked, cmd := m.Update(tickMsg{generation: m.generation})
+	if cmd == nil {
+		t.Fatal("a tick on the dashboard must read the server again")
+	}
+	if _, ok := ticked.(Model); !ok {
+		t.Fatal("the model must survive a tick")
+	}
+
+	elsewhere, _ := press(t, m, "e")
+	if _, cmd := elsewhere.Update(tickMsg{generation: elsewhere.generation}); cmd != nil {
+		t.Error("nothing polls while another screen is in front")
+	}
+	if _, cmd := m.Update(tickMsg{generation: m.generation - 1}); cmd != nil {
+		t.Error("a tick from a previous visit is ignored")
+	}
+}
+
+func TestUnknownStopFailures(t *testing.T) {
+	m := watching(t, healthy(), writable)
+	on, _ := press(t, m, "tab")
+	if same, cmd := press(t, on, "c"); cmd != nil || same.modal != nil {
+		t.Error("an empty list has nothing to cancel")
+	}
+	if _, err := errors.New("x"), error(nil); err != nil {
+		t.Fatal(err)
+	}
+}

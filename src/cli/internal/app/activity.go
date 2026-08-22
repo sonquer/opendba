@@ -47,6 +47,8 @@ type activity struct {
 	table    table.Model
 	cursor   int
 	updated  time.Time
+	focused  bool
+	width    int
 	failure  string
 	slow     time.Duration
 	stuck    time.Duration
@@ -68,8 +70,37 @@ func duration(value string, fallback time.Duration) time.Duration {
 	return parsed
 }
 
+// focus rebuilds the table, because the cursor row is painted at build time and
+// a table nobody is driving should not claim to have a selection.
+func (a activity) focus(on bool) activity {
+	a.focused = on
+	return a.rebuild()
+}
+
+func (a activity) resize(width int) activity {
+	a.width = width
+	return a.rebuild()
+}
+
+func (a activity) rebuild() activity {
+	if len(a.sessions) == 0 {
+		return a
+	}
+	at := a.cursor
+	a.table = table.New(
+		table.WithColumns(columnsFor(activityHeaders, a.rows(), a.width)),
+		table.WithRows(rowsFor(a.rows())),
+		table.WithHeight(min(activityRows, max(len(a.sessions), 1))),
+		table.WithWidth(a.width),
+		table.WithStyles(tableStyles(a.theme, a.focused)),
+	)
+	a.table.SetCursor(at)
+	return a
+}
+
 func (a activity) withSessions(msg sessionsMsg, width int) activity {
 	a.failure = ""
+	a.width = width
 	if msg.err != nil {
 		a.failure = msg.err.Error()
 		return a
@@ -78,15 +109,7 @@ func (a activity) withSessions(msg sessionsMsg, width int) activity {
 	if a.cursor >= len(a.sessions) {
 		a.cursor = max(0, len(a.sessions)-1)
 	}
-	a.table = table.New(
-		table.WithColumns(columnsFor(activityHeaders, a.rows(), width)),
-		table.WithRows(rowsFor(a.rows())),
-		table.WithHeight(min(activityRows, max(len(a.sessions), 1))),
-		table.WithWidth(width),
-		table.WithStyles(tableStyles(a.theme)),
-	)
-	a.table.SetCursor(a.cursor)
-	return a
+	return a.rebuild()
 }
 
 var activityHeaders = []string{"pid", "user", "state", "waiting", "time", "statement"}
@@ -152,11 +175,8 @@ func (a activity) move(step int) activity {
 }
 
 func (a activity) view(width int, focused bool) string {
-	tag := ""
-	if !a.updated.IsZero() {
-		tag = "updated " + driver.Duration(time.Since(a.updated).Round(time.Second)) + " ago"
-	}
-	head := a.theme.Section("running", a.theme.Muted.Render(tag), width)
+	_ = focused
+	head := a.theme.Section("running", a.count(), width)
 	switch {
 	case a.failure != "":
 		return head + "\n\n" + a.theme.Error.Render("  ✗ "+a.failure)
@@ -168,6 +188,17 @@ func (a activity) view(width int, focused bool) string {
 		rendered = plainCursor(rendered)
 	}
 	return head + "\n\n" + lipgloss.NewStyle().MaxWidth(width).Render(rendered) + "\n" + a.legend()
+}
+
+// count says how much of the server this list is, which is worth knowing and is
+// the only thing worth putting beside the heading. How long ago the list was
+// read is not: it refreshes on its own every few seconds, so the answer is
+// always the same and always nothing.
+func (a activity) count() string {
+	if len(a.sessions) == 0 {
+		return ""
+	}
+	return a.theme.Muted.Render(ui.Plural(len(a.sessions), "session", "sessions"))
 }
 
 // plainCursor takes the highlight off the row under the cursor while the table
@@ -187,7 +218,7 @@ func (a activity) legend() string {
 		}
 	}
 	if slow+stuck == 0 {
-		return a.theme.Muted.Render("  nothing has been running for long")
+		return ""
 	}
 	parts := []string{}
 	if stuck > 0 {
@@ -241,6 +272,8 @@ func (m Model) activityKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.confirmStop(false)
 	case key.Matches(msg, m.keys.Terminate):
 		return m.confirmStop(true)
+	case key.Matches(msg, m.keys.Choose):
+		return m.sessionPage()
 	}
 	return m, nil
 }
@@ -252,28 +285,34 @@ func (m Model) confirmStop(terminate bool) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	if !m.mayStop() {
-		return m, m.notify("this connection is read only, so nothing here can be stopped")
+	if !m.session.Capabilities.Sessions {
+		return m, m.notify("this driver has no sessions to stop")
 	}
 	if chosen.Mine {
 		return m, m.notify("that session is this program")
 	}
-	if !terminate {
-		m.modal = ask(m.theme, "cancel what "+chosen.ID+" is running?",
-			ui.Truncate(chosen.Statement, statementLength), stopMsg{id: chosen.ID})
-		return m, nil
+	dialog := ask(m.theme, "cancel what "+chosen.ID+" is running?",
+		ui.Truncate(chosen.Statement, statementLength), stopMsg{id: chosen.ID})
+	if terminate {
+		dialog = ask(m.theme, "close session "+chosen.ID+"?",
+			"the client on the other end loses its connection mid statement",
+			stopMsg{id: chosen.ID, terminate: true})
+		dialog.danger = true
 	}
-	dialog, cmd := askTyped(m.theme, "close session "+chosen.ID+"?",
-		"the client loses its connection; type the pid to confirm",
-		chosen.ID, stopMsg{id: chosen.ID, terminate: true})
+	dialog.tag = chosen.User
+	if !m.mayChange() {
+		dialog.warning("this profile is read only. Stopping a session changes the server, "+
+			"which is the one thing read only says will not happen.", "do it anyway")
+	}
 	m.modal = dialog
-	return m, cmd
+	return m, nil
 }
 
-// mayStop is the one place that decides whether this program is allowed to
-// change anything on the server.
-func (m Model) mayStop() bool {
-	return m.session.Capabilities.Sessions && m.session.Connection.Mode == config.ReadWrite
+// mayChange says whether the profile expects this program to change the server.
+// It is a warning rather than a wall: the person in front of it decides, once,
+// per action.
+func (m Model) mayChange() bool {
+	return m.session.Connection.Mode == config.ReadWrite
 }
 
 func (m Model) stop(msg stopMsg) tea.Cmd {

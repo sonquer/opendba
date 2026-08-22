@@ -127,6 +127,7 @@ type Session struct {
 	User        string
 	Application string
 	Client      string
+	Database    string
 	State       string
 	Wait        string
 	Duration    time.Duration
@@ -151,12 +152,92 @@ type Schema struct {
 }
 
 type Table struct {
-	Schema  string
-	Name    string
-	Kind    string
-	Rows    int64
-	Size    int64
-	Comment string
+	Schema     string
+	Name       string
+	Kind       string
+	Rows       int64
+	Size       int64
+	Comment    string
+	Stats      bool
+	IndexScans int64
+	SeqScans   int64
+	LiveRows   int64
+	DeadRows   int64
+	CacheHit   float64
+	IndexSize  int64
+	LastVacuum time.Time
+}
+
+// Indexed is the share of reads that went through an index rather than walking
+// the whole table. A table nothing has read yet has no share to report.
+func (t Table) Indexed() (float64, bool) {
+	total := t.IndexScans + t.SeqScans
+	if !t.Stats || total == 0 {
+		return 0, false
+	}
+	return float64(t.IndexScans) / float64(total), true
+}
+
+// The lines a table is judged against. They are the points where the advice
+// changes rather than thresholds a server enforces.
+const (
+	warmEnough   = 0.90
+	mostlyIndex  = 0.50
+	deadWatch    = 0.10
+	deadCritical = 0.20
+	smallTable   = 4096 * 128
+)
+
+// Health is what a table looks like from the outside: how it is reached, how
+// much of it is dead weight, and whether the server finds it in memory.
+func (t Table) Health() Severity {
+	if !t.Stats {
+		return SeverityUnknown
+	}
+	dead, counted := t.Dead()
+	switch {
+	case counted && dead >= deadCritical:
+		return SeverityCritical
+	case t.walked():
+		return SeverityCritical
+	case counted && dead >= deadWatch:
+		return SeverityWarn
+	case t.CacheHit > 0 && t.CacheHit < warmEnough:
+		return SeverityWarn
+	default:
+		return SeverityOK
+	}
+}
+
+// walked reports a table big enough to matter that most reads go through end to
+// end. A small table is walked because walking it is the cheapest way to read
+// it, which is the planner being right rather than a problem.
+func (t Table) walked() bool {
+	share, ok := t.Indexed()
+	return ok && share < mostlyIndex && t.Size > smallTable
+}
+
+// Health is what an index is worth: an index nothing reads costs disk and slows
+// every write for nothing.
+func (i Index) Health() Severity {
+	switch {
+	case !i.Stats:
+		return SeverityUnknown
+	case i.Idle():
+		return SeverityCritical
+	default:
+		return SeverityOK
+	}
+}
+
+// Dead is the share of rows that are dead: updated or deleted, still on disk,
+// and read past by everything until a vacuum removes them.
+func (t Table) Dead() (float64, bool) {
+	total := t.LiveRows + t.DeadRows
+	if !t.Stats || total == 0 {
+		return 0, false
+	}
+	return float64(t.DeadRows) / float64(total), true
 }
 
 func (t Table) Qualified() string {
@@ -198,8 +279,24 @@ type Index struct {
 	Definition string
 	Size       int64
 	Scans      int64
+	Rows       int64
 	Unique     bool
 	Primary    bool
+	Stats      bool
+}
+
+// Idle reports an index the server has never read: disk and write time spent on
+// a lookup nothing asks for. A unique index is never idle, because it is there
+// to refuse duplicates rather than to be read.
+func (i Index) Idle() bool {
+	return i.Stats && i.Scans == 0 && !i.Unique && !i.Primary
+}
+
+func (i Index) Qualified() string {
+	if i.Schema == "" {
+		return i.Name
+	}
+	return i.Schema + "." + i.Name
 }
 
 type ResultSet interface {

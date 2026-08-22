@@ -68,9 +68,12 @@ func TestTheKeymapIsTheOnlySourceOfHelp(t *testing.T) {
 		if screen == viewDashboard {
 			continue
 		}
-		if !offers(footer, "dashboard") {
+		if !bound(footer, "esc") {
 			t.Errorf("%s must offer the way back: %+v", screen, footer)
 		}
+	}
+	if !offers(keys.footer(viewCatalog, false, false, false), "save") {
+		t.Error("a form says what enter does to it")
 	}
 	if completing := keys.footer(viewQuery, true, false, false); completing[0].Help().Desc != "accept" {
 		t.Errorf("a list of suggestions owns the keys: %+v", completing[0].Help())
@@ -81,6 +84,19 @@ func TestTheKeymapIsTheOnlySourceOfHelp(t *testing.T) {
 	if running := keys.footer(viewDashboard, false, false, true); !offers(running, "cancel") {
 		t.Errorf("the list of sessions offers what can be done to them: %+v", running)
 	}
+}
+
+// bound answers the only thing every screen must be able to do, whatever the
+// footer calls it: leave.
+func bound(footer screenKeys, want string) bool {
+	for _, binding := range footer {
+		for _, key := range binding.Keys() {
+			if key == want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func offers(footer screenKeys, desc string) bool {

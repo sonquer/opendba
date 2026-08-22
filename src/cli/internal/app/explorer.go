@@ -216,14 +216,7 @@ func (e explorer) branch() *tree.Tree {
 }
 
 func (e explorer) label(item row, width int, active, focused bool) string {
-	mark := ""
-	if name, ok := strings.CutPrefix(item.key, "table:"); ok {
-		mark = "▸ "
-		if e.open[name] {
-			mark = "▾ "
-		}
-	}
-	text := ui.Truncate(mark+item.label, width-8)
+	text := ui.Truncate(item.label, width-8)
 	switch {
 	case active && focused:
 		return e.theme.Accent.Render("▌" + text)
@@ -245,10 +238,78 @@ func (m Model) explorerKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Expand):
 		m.sidebar = m.sidebar.toggle()
 		return m.refreshSidebar()
-	case key.Matches(msg, m.keys.Choose):
+	case key.Matches(msg, m.keys.Insert):
 		return m.insertTable()
+	case key.Matches(msg, m.keys.Choose):
+		return m.openTable()
 	}
 	return m, nil
+}
+
+// openTable shows the page of whatever the tree has the cursor on, which is the
+// same page the list of tables opens.
+func (m Model) openTable() (tea.Model, tea.Cmd) {
+	name, ok := m.sidebar.table()
+	if !ok {
+		return m, nil
+	}
+	page, cmd := m.definition(name)
+	m.page = &page
+	return m, cmd
+}
+
+func (m Model) definition(qualified string) (details, tea.Cmd) {
+	bare := qualified
+	if cut := strings.LastIndex(bare, "."); cut >= 0 {
+		bare = bare[cut+1:]
+	}
+	for _, table := range m.tables {
+		if table.Qualified() == qualified {
+			return m.tablePage(table), m.readOneColumn(bare)
+		}
+	}
+	page := details{theme: m.theme, title: qualified}
+	for _, column := range m.fields[bare] {
+		page.pairs = append(page.pairs, pair{key: column.Name, value: describe(column)})
+	}
+	page.prose = m.indexesOf(bare)
+	return page, m.readOneColumn(bare)
+}
+
+func describe(column driver.Column) string {
+	parts := []string{column.Type}
+	if column.PrimaryKey {
+		parts = append(parts, "primary key")
+	}
+	if !column.Nullable {
+		parts = append(parts, "not null")
+	}
+	if column.Default != "" {
+		parts = append(parts, "default "+column.Default)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// indexesOf writes what reads this table quickly, in the words of someone who
+// has to decide whether an index is worth its cost.
+func (m Model) indexesOf(table string) string {
+	lines := []string{"## Indexes", ""}
+	found := 0
+	for _, index := range m.indexes {
+		if index.Table != table {
+			continue
+		}
+		found++
+		note := driver.ByteSize(index.Size)
+		if index.Scans == 0 {
+			note += ", never used on this node"
+		}
+		lines = append(lines, "- **"+index.Name+"** "+note)
+	}
+	if found == 0 {
+		lines = append(lines, "Nothing indexes this table, so every read walks all of it.")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // insertTable writes what the cursor points at into the statement, which is the

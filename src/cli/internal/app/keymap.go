@@ -32,14 +32,23 @@ type keymap struct {
 	Sidebar     key.Binding
 	Zoom        key.Binding
 	Cancel      key.Binding
+	Insert      key.Binding
+	Grow        key.Binding
+	Shrink      key.Binding
+	Left        key.Binding
+	Right       key.Binding
 	Terminate   key.Binding
+	Pick        key.Binding
+	Commands    key.Binding
+	Above       key.Binding
+	Below       key.Binding
 	enhanced    bool
 }
 
 func newKeymap() keymap {
 	return keymap{
 		Run:         runBinding(false),
-		Palette:     binding("commands", "ctrl+k"),
+		Palette:     binding("commands", "/"),
 		Connections: binding("connections", "ctrl+p"),
 		Catalog:     binding("databases", "ctrl+d"),
 		Query:       binding("query", "e"),
@@ -62,8 +71,37 @@ func newKeymap() keymap {
 		Sidebar:     binding("tables", "ctrl+b"),
 		Zoom:        binding("zoom", "z"),
 		Cancel:      binding("cancel", "c"),
+		Insert:      binding("insert", "i"),
+		Grow:        binding("taller", "ctrl+up"),
+		Shrink:      binding("shorter", "ctrl+down"),
+		Left:        binding("left", "left", "h"),
+		Right:       binding("right", "right", "l"),
 		Terminate:   binding("close session", "x"),
+		Pick:        binding("pick", "space"),
+		Commands:    key.NewBinding(key.WithKeys("ctrl+k")),
+		Above:       binding("up", "up"),
+		Below:       binding("down", "down"),
 	}
+}
+
+// opensPalette answers the key that reaches the command list. A screen where
+// text is typed takes the alias only, because a slash there is a slash.
+func (k keymap) opensPalette(msg tea.KeyPressMsg, typing bool) bool {
+	if typing {
+		return key.Matches(msg, k.Commands)
+	}
+	return key.Matches(msg, k.Palette) || key.Matches(msg, k.Commands)
+}
+
+// Save and Discard are the two answers a form takes. They are the keys that
+// already mean open and back, said in the words of a form.
+func (k keymap) Save() key.Binding { return relabel(k.Choose, "save") }
+
+func (k keymap) Discard() key.Binding { return relabel(k.Back, "cancel") }
+
+func relabel(from key.Binding, help string) key.Binding {
+	return key.NewBinding(key.WithKeys(from.Keys()...),
+		key.WithHelp(from.Help().Key, help))
 }
 
 func binding(help string, keys ...string) key.Binding {
@@ -118,7 +156,7 @@ func (s screenKeys) FullHelp() [][]key.Binding { return [][]key.Binding{s} }
 // ctrl+k away.
 func (k keymap) footer(current view, completing, zoomed, running bool) screenKeys {
 	if completing {
-		return screenKeys{k.Accept, k.Up, k.Down, k.Back}
+		return screenKeys{k.Accept, k.Above, k.Below, k.Back}
 	}
 	if zoomed {
 		return screenKeys{k.Zoom, k.Up, k.Down, k.Home, k.Leave}
@@ -129,7 +167,9 @@ func (k keymap) footer(current view, completing, zoomed, running bool) screenKey
 	case viewSwitch:
 		return screenKeys{k.Up, k.Down, k.Choose, k.New, k.Remove, k.Home}
 	case viewCatalog:
-		return screenKeys{k.Up, k.Down, k.Choose, k.Home}
+		return screenKeys{k.Up, k.Down, k.Pick, k.Save(), k.Discard()}
+	case viewSchema, viewIndexes:
+		return screenKeys{k.Up, k.Down, k.Choose, k.Schema, k.Indexes, k.Reload, k.Home}
 	case viewDashboard:
 		if running {
 			return screenKeys{k.Up, k.Down, k.Cancel, k.Terminate, k.Focus, k.Quit}

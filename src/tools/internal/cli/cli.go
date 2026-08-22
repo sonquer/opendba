@@ -50,6 +50,9 @@ type options struct {
 	coverageDir string
 	module      string
 	summary     string
+	out         string
+	against     string
+	connection  string
 	policy      policy.Policy
 }
 
@@ -64,6 +67,17 @@ func (a App) Run(ctx context.Context, args []string) int {
 	}
 	if command == "run" {
 		return a.runProduct(rest)
+	}
+	if command == "screens" {
+		opts, err := a.parse(command, rest)
+		if err != nil {
+			if err == flag.ErrHelp {
+				return ExitOK
+			}
+			fmt.Fprintln(a.Stderr, err)
+			return ExitUsage
+		}
+		return a.screens(ctx, opts)
 	}
 	if !known(command) {
 		fmt.Fprintf(a.Stderr, "unknown command %q\n\n", command)
@@ -310,6 +324,9 @@ func (a App) parse(command string, args []string) (options, error) {
 	set.StringVar(&opts.coverageDir, "coverage-dir", "", "directory for coverage output")
 	set.StringVar(&opts.module, "module", "", "limit the run to a single module")
 	set.StringVar(&opts.summary, "summary", "", "append a markdown coverage summary to this file")
+	set.StringVar(&opts.out, "out", "", "directory to write the screens into")
+	set.StringVar(&opts.against, "against", "", "print how the screens differ from the ones already there")
+	set.StringVar(&opts.connection, "connection", "", "profile to render the screens against")
 	if err := set.Parse(args); err != nil {
 		return options{}, err
 	}
@@ -342,9 +359,8 @@ commands:
   build      compile every module
   lint       run golangci-lint, built from the version pinned in src/tools
   vuln       run govulncheck, built the same way
-  vuln       run govulncheck when it is installed
   run        start tui4db with the values from .env, passing the rest through
-  run        start tui4db with the values from .env, passing the rest through
+  screens    render every screen of the interface, to look at what changed
   version    print the version from the VERSION file
   help       show this message
 
@@ -355,6 +371,9 @@ flags:
   --coverage-dir <dir> coverage output directory, default <root>/coverage
   --module <name>      limit the run to a single module
   --summary <file>     append a markdown coverage summary, for CI job summaries
+  --out <dir>          where screens are written, default <root>/.local/screens
+  --against <dir>      print how the screens differ from the ones already there
+  --connection <name>  render the screens against a profile instead of a fixture
 `, a.name(), a.name(), float64(DefaultMinCoverage))
 }
 
@@ -379,6 +398,7 @@ var commands = map[string]string{
 	"vuln":     "vuln",
 	"version":  "",
 	"run":      "",
+	"screens":  "",
 }
 
 func known(command string) bool {

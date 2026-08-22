@@ -54,7 +54,7 @@ func (a App) schema(ctx context.Context, session Session, opts options) int {
 		return a.writeJSON(document)
 	}
 	a.header(session)
-	fmt.Fprintln(a.Stdout, session.Theme.TableList(tables))
+	fmt.Fprintln(a.Stdout, session.Theme.TableList(tables, -1, ui.MaxTextWidth))
 	return ExitOK
 }
 
@@ -69,7 +69,7 @@ func (a App) indexes(ctx context.Context, session Session, opts options) int {
 		return a.writeJSON(document)
 	}
 	a.header(session)
-	fmt.Fprintln(a.Stdout, session.Theme.IndexList(indexes))
+	fmt.Fprintln(a.Stdout, session.Theme.IndexList(indexes, -1, ui.MaxTextWidth))
 	return ExitOK
 }
 

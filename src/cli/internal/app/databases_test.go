@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -23,7 +24,10 @@ func browsingCatalog(t *testing.T, conn *fakeConn) Model {
 func TestTheCatalogListsDatabasesAndSchemas(t *testing.T) {
 	m := browsingCatalog(t, healthy())
 	view := plain(m.content())
-	for _, want := range []string{"DATABASES", "app ·", "reporting", "SCHEMAS", "public", "1 table"} {
+	for _, want := range []string{
+		"DATABASES", "● app", "in use", "○ reporting",
+		"SCHEMAS", "several are fine", "▢ public", "1 table",
+	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the catalog must show %q:\n%s", want, view)
 		}
@@ -32,11 +36,86 @@ func TestTheCatalogListsDatabasesAndSchemas(t *testing.T) {
 		t.Error("system schemas are noise")
 	}
 	footer := plain(m.footer(0))
-	if !strings.Contains(footer, "open") {
-		t.Errorf("footer = %s", footer)
+	for _, want := range []string{"pick", "save", "cancel"} {
+		if !strings.Contains(footer, want) {
+			t.Errorf("footer must offer %q: %s", want, footer)
+		}
 	}
 	if strings.Contains(footer, "remove") {
 		t.Errorf("a database is not something this program removes: %s", footer)
+	}
+}
+
+// onSchema walks the form down to its first schema, which is where the ticking
+// happens.
+func onSchema(t *testing.T, m Model) Model {
+	t.Helper()
+	for range len(m.catalog.rows) {
+		chosen, ok := m.catalog.selected()
+		if ok && chosen.section == sectionSchemas {
+			return m
+		}
+		m, _ = press(t, m, "down")
+	}
+	t.Fatal("the form has no schema to tick")
+	return m
+}
+
+func TestTheFormTicksSeveralSchemas(t *testing.T) {
+	m := browsingCatalog(t, twoSchemas())
+	ticked := onSchema(t, m)
+	ticked, cmd := press(t, ticked, " ")
+	if cmd != nil {
+		t.Error("ticking a box reads nothing and reconnects to nothing")
+	}
+	if ticked.view != viewCatalog {
+		t.Error("the form stays open until it is saved or left")
+	}
+	down, _ := press(t, ticked, "down")
+	both, _ := press(t, down, " ")
+	if got := both.catalog.chosen(); !reflect.DeepEqual(got, []string{"public", "reporting"}) {
+		t.Fatalf("chosen = %v", got)
+	}
+	if view := plain(both.content()); !strings.Contains(view, "▣ public") ||
+		!strings.Contains(view, "▣ reporting") {
+		t.Errorf("both boxes must be ticked:\n%s", view)
+	}
+	off, _ := press(t, both, " ")
+	if got := off.catalog.chosen(); !reflect.DeepEqual(got, []string{"public"}) {
+		t.Errorf("space must untick as well: %v", got)
+	}
+
+	saved, cmd := press(t, off, "enter")
+	if cmd == nil || !saved.loading || saved.view != viewDashboard {
+		t.Fatalf("enter must save the form: loading=%v view=%s", saved.loading, saved.view)
+	}
+	if got := saved.session.Connection.Filter(); !reflect.DeepEqual(got, []string{"public"}) {
+		t.Errorf("filter = %v", got)
+	}
+}
+
+func TestTheFormReadsEveryTickedSchema(t *testing.T) {
+	m := browsingCatalog(t, twoSchemas())
+	m.session.Connection.Schemas = []string{"public", "reporting"}
+	loaded := runFirst(t, m.load())
+	msg, ok := loaded.(loadedMsg)
+	if !ok {
+		t.Fatalf("msg = %T", loaded)
+	}
+	seen := map[string]bool{}
+	for _, table := range msg.tables {
+		seen[table.Schema] = true
+	}
+	if !seen["public"] || !seen["reporting"] {
+		t.Errorf("both schemas must be read: %v", seen)
+	}
+
+	m.session.Connection.Schemas = []string{"reporting"}
+	msg = runFirst(t, m.load()).(loadedMsg)
+	for _, table := range msg.tables {
+		if table.Schema != "reporting" {
+			t.Errorf("one schema means one schema: %+v", table)
+		}
 	}
 }
 
@@ -68,7 +147,11 @@ func TestSwitchingDatabaseReconnects(t *testing.T) {
 	if _, ok := down.catalog.selected(); !ok {
 		t.Fatal("the second database must be selectable")
 	}
-	switching, cmd := press(t, down, "enter")
+	picked, _ := press(t, down, " ")
+	if picked.catalog.database != "reporting" {
+		t.Fatalf("space must move the dot: %q", picked.catalog.database)
+	}
+	switching, cmd := press(t, picked, "enter")
 	if cmd == nil || !switching.loading || switching.view != viewDashboard {
 		t.Fatalf("choosing a database must reconnect: loading=%v view=%s", switching.loading, switching.view)
 	}
@@ -83,17 +166,7 @@ func TestSwitchingDatabaseReconnects(t *testing.T) {
 
 func TestSwitchingSchemaJustReloads(t *testing.T) {
 	m := browsingCatalog(t, healthy())
-	schema := m
-	for {
-		chosen, ok := schema.catalog.selected()
-		if !ok {
-			t.Fatal("no schema to choose")
-		}
-		if chosen.section == sectionSchemas {
-			break
-		}
-		schema, _ = press(t, schema, "down")
-	}
+	schema, _ := press(t, onSchema(t, m), " ")
 	reloading, cmd := press(t, schema, "enter")
 	if cmd == nil || !reloading.loading {
 		t.Fatal("a schema change must read the server again")
@@ -119,6 +192,9 @@ func TestTheCatalogLeavesTheCurrentPlaceAlone(t *testing.T) {
 
 	empty := browsingCatalog(t, healthy())
 	empty.catalog.picker = empty.catalog.withRows(nil)
+	if _, cmd := press(t, empty, " "); cmd != nil {
+		t.Error("there is nothing to tick")
+	}
 	if _, cmd := press(t, empty, "enter"); cmd != nil {
 		t.Error("there is nothing to choose")
 	}
@@ -152,7 +228,8 @@ func TestAFailedDatabaseSwitchKeepsTheOldOne(t *testing.T) {
 	m := browsingCatalog(t, healthy())
 	m.workspace = workspace
 	down, _ := press(t, m, "down")
-	switching, cmd := press(t, down, "enter")
+	picked, _ := press(t, down, " ")
+	switching, cmd := press(t, picked, "enter")
 	failed, _ := switching.Update(runFirst(t, cmd))
 	if !strings.Contains(plain(failed.(Model).content()), "does not exist") {
 		t.Errorf("content = %s", plain(failed.(Model).content()))
@@ -173,17 +250,7 @@ func TestSwitchingIsRemembered(t *testing.T) {
 	m := browsingCatalog(t, healthy())
 	m.workspace = workspace
 
-	schema := m
-	for {
-		chosen, ok := schema.catalog.selected()
-		if !ok {
-			t.Fatal("no schema to choose")
-		}
-		if chosen.section == sectionSchemas {
-			break
-		}
-		schema, _ = press(t, schema, "down")
-	}
+	schema, _ := press(t, onSchema(t, m), " ")
 	reloading, cmd := press(t, schema, "enter")
 	remembered := tea.Model(reloading)
 	for _, msg := range runAll(t, cmd) {

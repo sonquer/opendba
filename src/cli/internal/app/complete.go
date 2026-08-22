@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -78,7 +79,7 @@ func (c completion) view() string {
 func (m Model) resuggest() (Model, tea.Cmd) {
 	m.suggest.theme = m.theme
 	prefix := m.wordBeforeCursor()
-	if len(prefix) < 1 || strings.HasSuffix(prefix, ".") && strings.Count(prefix, ".") > 1 {
+	if prefix == "" {
 		m.suggest.items = nil
 		return m, nil
 	}
@@ -119,11 +120,29 @@ func wordRune(r rune) bool {
 	}
 }
 
+// candidates reads the shape of what is being typed. A dot is the whole
+// grammar here: before one is a schema or a table, after one is what it holds.
 func (m Model) candidates(prefix string) []suggestion {
-	if qualifier, stem, ok := strings.Cut(prefix, "."); ok {
-		return limit(m.columnsOf(qualifier, qualifier+".", stem), completionRows)
+	qualifier, stem, dotted := strings.Cut(prefix, ".")
+	if !dotted {
+		return best(m.everything(prefix), prefix, completionRows)
 	}
+	if inner, deeper, again := strings.Cut(stem, "."); again {
+		return best(m.columnsOf(inner, qualifier+"."+inner+".", deeper), prefix, completionRows)
+	}
+	if found := m.tablesIn(qualifier, stem); len(found) > 0 {
+		return best(found, prefix, completionRows)
+	}
+	return best(m.columnsOf(qualifier, qualifier+".", stem), prefix, completionRows)
+}
+
+func (m Model) everything(prefix string) []suggestion {
 	found := make([]suggestion, 0, completionRows)
+	for _, schema := range m.schemas() {
+		if matches(schema, prefix) {
+			found = append(found, suggestion{text: schema, kind: "schema"})
+		}
+	}
 	for _, table := range m.tables {
 		if matches(table.Name, prefix) {
 			found = append(found, suggestion{text: table.Name, kind: table.Kind})
@@ -137,7 +156,35 @@ func (m Model) candidates(prefix string) []suggestion {
 			found = append(found, suggestion{text: keyword, kind: "keyword"})
 		}
 	}
-	return limit(found, completionRows)
+	return found
+}
+
+// tablesIn answers a schema followed by a dot, which is most of the typing on a
+// database with more than one schema.
+func (m Model) tablesIn(schema, stem string) []suggestion {
+	found := make([]suggestion, 0, completionRows)
+	for _, table := range m.tables {
+		if !strings.EqualFold(table.Schema, schema) {
+			continue
+		}
+		if stem == "" || matches(table.Name, stem) {
+			found = append(found, suggestion{text: schema + "." + table.Name, kind: table.Kind})
+		}
+	}
+	return found
+}
+
+func (m Model) schemas() []string {
+	seen := map[string]bool{}
+	var names []string
+	for _, table := range m.tables {
+		if table.Schema == "" || seen[table.Schema] {
+			continue
+		}
+		seen[table.Schema] = true
+		names = append(names, table.Schema)
+	}
+	return names
 }
 
 func (m Model) columnsOf(table, lead, stem string) []suggestion {
@@ -204,11 +251,23 @@ func matches(candidate, prefix string) bool {
 	return prefix != "" && strings.HasPrefix(strings.ToLower(candidate), strings.ToLower(prefix))
 }
 
-func limit(items []suggestion, count int) []suggestion {
+// best keeps the suggestions closest to what was typed. Closest means fewest
+// characters added to it: on a catalogue where a dozen tables start with
+// `product`, `products` is the one being typed and the longest name is the one
+// least likely to be, so a list cut in the order the server listed them throws
+// away the answer and keeps the noise.
+func best(items []suggestion, prefix string, count int) []suggestion {
+	sort.SliceStable(items, func(i, j int) bool {
+		return extra(items[i].text, prefix) < extra(items[j].text, prefix)
+	})
 	if len(items) > count {
 		return items[:count]
 	}
 	return items
+}
+
+func extra(candidate, prefix string) int {
+	return len([]rune(candidate)) - len([]rune(prefix))
 }
 
 // accept replaces the word under the cursor with the chosen suggestion.

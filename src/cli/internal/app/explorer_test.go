@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
 func workbench(t *testing.T) Model {
@@ -66,10 +67,33 @@ func TestTheSidebarTakesTheCursorPastTheSchema(t *testing.T) {
 	}
 }
 
+func TestATableExplainsItself(t *testing.T) {
+	m := workbench(t)
+	side, _ := press(t, m, "tab")
+	shown, cmd := press(t, side, "enter")
+	if shown.page == nil {
+		t.Fatal("enter on a table must show what it is")
+	}
+	if cmd != nil {
+		answered, _ := shown.Update(runFirst(t, cmd))
+		shown = answered.(Model)
+	}
+	view := plain(shown.content())
+	for _, want := range []string{"app.users", "rows", "INDEXES"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the page must show %q:\n%s", want, view)
+		}
+	}
+	closed, _ := press(t, shown, "esc")
+	if closed.page != nil {
+		t.Error("esc must close the page")
+	}
+}
+
 func TestATableGoesIntoTheStatement(t *testing.T) {
 	m := workbench(t)
 	side, _ := press(t, m, "tab")
-	inserted, cmd := press(t, side, "enter")
+	inserted, cmd := press(t, side, "i")
 	if cmd == nil {
 		t.Fatal("inserting must give the editor its focus back")
 	}
@@ -85,7 +109,7 @@ func TestASchemaHeadingInsertsNothing(t *testing.T) {
 	m := workbench(t)
 	side, _ := press(t, m, "tab")
 	side.sidebar.cursor = 0
-	same, cmd := press(t, side, "enter")
+	same, cmd := press(t, side, "i")
 	if cmd != nil || same.statement() != "" {
 		t.Errorf("a schema is not a table: %q", same.statement())
 	}
@@ -100,12 +124,11 @@ func TestATableOpensItsColumns(t *testing.T) {
 	}
 	answered, _ := opened.Update(runFirst(t, cmd))
 	shown := answered.(Model)
-	view := plain(shown.content())
-	if !strings.Contains(view, "email") || !strings.Contains(view, "▾") {
-		t.Errorf("the columns must be listed:\n%s", view)
+	if !strings.Contains(plain(shown.content()), "email") {
+		t.Errorf("the columns must be listed:\n%s", plain(shown.content()))
 	}
 	closed, _ := press(t, shown, "space")
-	if strings.Contains(plain(closed.content()), "▾") {
+	if strings.Contains(plain(closed.content()), "email") {
 		t.Error("space must close it again")
 	}
 }
@@ -239,8 +262,69 @@ func TestTheSidebarWithoutASchemaName(t *testing.T) {
 		t.Errorf("a table without a schema is still a table:\n%s", plain(editing.content()))
 	}
 	side, _ := press(t, editing, "tab")
-	inserted, _ := press(t, side, "enter")
+	inserted, _ := press(t, side, "i")
 	if inserted.statement() != "users" {
 		t.Errorf("statement = %q", inserted.statement())
+	}
+}
+
+func TestTheSidebarWithNothingUnderTheCursor(t *testing.T) {
+	empty := newExplorer(ui.Default())
+	if moved := empty.move(1); moved.cursor != 0 {
+		t.Error("an empty tree does not move")
+	}
+	if _, ok := empty.selected(); ok {
+		t.Error("an empty tree has nothing selected")
+	}
+	if _, ok := empty.table(); ok {
+		t.Error("an empty tree points at no table")
+	}
+	if same := empty.toggle(); len(same.open) != 0 {
+		t.Error("there is nothing to open")
+	}
+	if same := empty.onTable(); same.cursor != 0 {
+		t.Error("there is no table to land on")
+	}
+
+	schemas := newExplorer(ui.Default()).withTables(
+		[]driver.Table{{Schema: "app", Name: "users"}}, nil)
+	schemas.cursor = 0
+	if _, ok := schemas.table(); ok {
+		t.Error("a schema heading is not a table")
+	}
+	if same := schemas.toggle(); len(same.open) != 0 {
+		t.Error("a schema heading opens nothing")
+	}
+}
+
+func TestAColumnPointsAtItsTable(t *testing.T) {
+	side := newExplorer(ui.Default())
+	side.open = map[string]bool{"app.users": true}
+	side = side.withTables([]driver.Table{{Schema: "app", Name: "users"}},
+		map[string][]driver.Column{"users": {{Name: "email", Type: "text"}}})
+	side.cursor = len(side.rows) - 1
+	name, ok := side.table()
+	if !ok || name != "app.users" {
+		t.Errorf("a column belongs to its table, got %q", name)
+	}
+	if closed := side.toggle(); closed.open["app.users"] {
+		t.Error("toggling from a column closes its table")
+	}
+}
+
+func TestTheSidebarKeepsAFloorAndACeiling(t *testing.T) {
+	side := newExplorer(ui.Default())
+	if got := side.width(400); got != sidebarWidth {
+		t.Errorf("width = %d", got)
+	}
+	if got := side.width(40); got != minSidebarWidth {
+		t.Errorf("width = %d", got)
+	}
+	if got := side.width(88); got != 22 {
+		t.Errorf("width = %d", got)
+	}
+	side.hidden = true
+	if got := side.width(400); got != 0 {
+		t.Errorf("a hidden sidebar takes no room, got %d", got)
 	}
 }

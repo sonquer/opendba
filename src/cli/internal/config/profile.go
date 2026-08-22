@@ -33,7 +33,8 @@ type Connection struct {
 	File     string `toml:"file,omitempty"`
 	Options  string `toml:"options,omitempty"`
 
-	DefaultSchema string `toml:"default_schema,omitempty"`
+	DefaultSchema string   `toml:"default_schema,omitempty"`
+	Schemas       []string `toml:"schemas,omitempty"`
 
 	Mode   AccessMode `toml:"mode"`
 	Color  string     `toml:"color"`
@@ -45,6 +46,33 @@ func (c Connection) Schema() string {
 		return ""
 	}
 	return c.DefaultSchema
+}
+
+// Filter is the set of schemas this session looks at. None of them means every
+// schema, which is what an untouched profile asks for.
+func (c Connection) Filter() []string {
+	kept := make([]string, 0, len(c.Schemas))
+	for _, schema := range c.Schemas {
+		if strings.TrimSpace(schema) != "" {
+			kept = append(kept, schema)
+		}
+	}
+	return kept
+}
+
+// Only reports whether a schema is one of the chosen, which an empty filter
+// answers for every schema.
+func (c Connection) Only(schema string) bool {
+	filter := c.Filter()
+	if len(filter) == 0 {
+		return true
+	}
+	for _, chosen := range filter {
+		if chosen == schema {
+			return true
+		}
+	}
+	return false
 }
 
 func (c Connection) Validate() error {

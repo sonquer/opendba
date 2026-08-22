@@ -14,9 +14,11 @@ type row struct {
 	key     string
 	label   string
 	note    string
+	mark    string
 	section string
 	depth   int
 	current bool
+	on      bool
 }
 
 // picker is the list every screen shares: a cursor that wraps, sections that
@@ -24,6 +26,7 @@ type row struct {
 type picker struct {
 	theme  *ui.Theme
 	rows   []row
+	hints  map[string]string
 	cursor int
 	empty  string
 }
@@ -77,7 +80,7 @@ func (p picker) view(width int) string {
 			if len(lines) > 0 {
 				lines = append(lines, "")
 			}
-			lines = append(lines, p.theme.Section(section, "", width), "")
+			lines = append(lines, p.theme.Section(section, p.hints[section], width), "")
 		}
 		lines = append(lines, p.line(item, width, i == p.cursor))
 	}
@@ -91,16 +94,28 @@ func (p picker) line(item row, width int, active bool) string {
 	case active:
 		marker = p.theme.Accent.Render("▌ ")
 		label = p.theme.Accent.Render(item.label)
-	case item.current:
+	case item.current, item.on:
 		label = p.theme.Accent.Render(item.label)
 	}
 	if item.current {
 		label += p.theme.Subtle.Render(" ·")
 	}
-	left := marker + strings.Repeat("  ", item.depth) + label
+	left := marker + strings.Repeat("  ", item.depth) + p.box(item, active) + label
 	if item.note == "" {
 		return left
 	}
 	note := ui.Truncate(item.note, max(width-lipgloss.Width(left)-2, 8))
 	return ui.SplitLine(left, p.theme.Muted.Render(note), width)
+}
+
+// box draws the state of a row in a form, where a row is chosen rather than
+// opened. A list that is not a form leaves the mark empty and loses nothing.
+func (p picker) box(item row, active bool) string {
+	if item.mark == "" {
+		return ""
+	}
+	if item.on || active {
+		return p.theme.Accent.Render(item.mark) + " "
+	}
+	return p.theme.Subtle.Render(item.mark) + " "
 }

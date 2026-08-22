@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
@@ -17,10 +18,16 @@ const modalWidth = 52
 type modal struct {
 	theme   *ui.Theme
 	title   string
+	tag     string
 	body    string
 	confirm string
 	input   textinput.Model
 	action  tea.Msg
+
+	danger bool
+	warn   string
+	ticked bool
+	needs  string
 }
 
 func ask(theme *ui.Theme, title, body string, action tea.Msg) *modal {
@@ -37,8 +44,19 @@ func askTyped(theme *ui.Theme, title, body, word string, action tea.Msg) (*modal
 }
 
 func (d modal) ready() bool {
+	if d.needs != "" && !d.ticked {
+		return false
+	}
 	return d.confirm == "" || strings.TrimSpace(d.input.Value()) == d.confirm
 }
+
+// warning turns a refusal into a question with a way through: the danger is
+// spelled out, and the way through is a box that has to be ticked on purpose.
+func (d *modal) warning(text, tick string) {
+	d.danger, d.warn, d.needs = true, text, tick
+}
+
+func (d *modal) toggle() { d.ticked = !d.ticked }
 
 func (d modal) typing() bool { return d.confirm != "" }
 
@@ -54,16 +72,47 @@ func (d modal) view(width int) string {
 		inner = room
 	}
 	d.input.SetWidth(inner - 4)
-	lines := []string{d.theme.Title.Render(d.title)}
+	title := d.theme.Title.Render(d.title)
+	if d.danger {
+		title = d.theme.Severity(ui.SevCritical).Bold(true).Render(d.title)
+	}
+	lines := []string{ui.SplitLine(title, d.theme.Muted.Render(d.tag), inner)}
 	if d.body != "" {
-		lines = append(lines, "", d.theme.Muted.Render(ui.Truncate(d.body, inner)))
+		lines = append(lines, "", d.theme.Muted.Render(wrap(d.body, inner)))
+	}
+	if d.warn != "" {
+		lines = append(lines, "", d.theme.Severity(ui.SevCritical).
+			Render("⚠ "+wrap(d.warn, inner-2)))
+	}
+	if d.needs != "" {
+		lines = append(lines, "", d.tick()+" "+d.theme.Value.Render(d.needs))
 	}
 	if d.typing() {
 		lines = append(lines, "", d.theme.Prompt.Render("› ")+d.input.View())
 	}
-	lines = append(lines, "", d.theme.Subtle.Render(ui.Dotted(
-		ui.Keystroke("enter")+" yes", ui.Keystroke("esc")+" no")))
-	return d.theme.Panel.Width(inner).Render(strings.Join(lines, "\n"))
+	hints := []string{ui.Keystroke("enter") + " yes", ui.Keystroke("esc") + " no"}
+	if d.needs != "" {
+		hints = append([]string{ui.Keystroke("space") + " ticks the box"}, hints...)
+	}
+	lines = append(lines, "", d.theme.Subtle.Render(ui.Dotted(hints...)))
+	panel := d.theme.Panel
+	if d.danger {
+		panel = panel.BorderForeground(d.theme.P.Critical)
+	}
+	return panel.Width(inner).Render(strings.Join(lines, "\n"))
+}
+
+func (d modal) tick() string {
+	if d.ticked {
+		return d.theme.Accent.Render("▣")
+	}
+	return d.theme.Subtle.Render("▢")
+}
+
+// wrap breaks a sentence at the width it has, because a dialog that scrolls is
+// a dialog nobody reads.
+func wrap(text string, width int) string {
+	return lipgloss.NewStyle().Width(width).Render(text)
 }
 
 func (m Model) confirmQuit() (tea.Model, tea.Cmd) {
@@ -87,6 +136,12 @@ func (m Model) modalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		answered := m.modal.action
 		m.modal = nil
 		return m, func() tea.Msg { return answered }
+	}
+	if key.Matches(msg, m.keys.Expand) && m.modal.needs != "" {
+		dialog := *m.modal
+		dialog.toggle()
+		m.modal = &dialog
+		return m, nil
 	}
 	if !m.modal.typing() {
 		return m, nil

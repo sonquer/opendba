@@ -14,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
+	"github.com/sonquer/tui4db/src/cli/internal/config"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
@@ -64,6 +65,9 @@ type Model struct {
 	wizard  *SetupModel
 	palette *palette
 	modal   *modal
+	page    *details
+	reading int
+	listing int
 	suggest completion
 	fields  map[string][]driver.Column
 	keys    keymap
@@ -82,6 +86,7 @@ type Model struct {
 	generation int
 	focus      pane
 	zoomed     bool
+	split      int
 	spinner    spinner.Model
 }
 
@@ -101,7 +106,7 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 	loader.Style = lipgloss.NewStyle().Foreground(theme.P.Accent)
 	hints := help.New()
 	hints.Styles = helpStyles(theme)
-	hints.ShortSeparator = " · "
+	hints.ShortSeparator = "  "
 	hints.FullSeparator = "   "
 	return Model{
 		keys:      newKeymap(),
@@ -124,13 +129,16 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 	}
 }
 
+// helpStyles puts every key on a cap, because a bare letter beside a word does
+// not read as something to press.
 func helpStyles(theme *ui.Theme) help.Styles {
+	cap := theme.KeycapStyle
 	return help.Styles{
 		Ellipsis:       theme.Subtle,
-		ShortKey:       theme.KeyCap,
+		ShortKey:       cap,
 		ShortDesc:      theme.Muted,
 		ShortSeparator: theme.Subtle,
-		FullKey:        theme.KeyCap,
+		FullKey:        cap,
 		FullDesc:       theme.Muted,
 		FullSeparator:  theme.Subtle,
 	}
@@ -152,7 +160,7 @@ func (m Model) release() {
 
 func (m Model) load() tea.Cmd {
 	conn := m.session.Conn
-	schema := m.session.Connection.Schema()
+	connection := m.session.Connection
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -161,16 +169,41 @@ func (m Model) load() tea.Cmd {
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		tables, err := conn.Tables(ctx, schema)
+		tables, err := conn.Tables(ctx, one(connection))
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		indexes, err := conn.Indexes(ctx, schema)
+		indexes, err := conn.Indexes(ctx, one(connection))
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		return loadedMsg{findings: findings, tables: tables, indexes: indexes}
+		return loadedMsg{
+			findings: findings,
+			tables:   scoped(tables, connection.Only, func(t driver.Table) string { return t.Schema }),
+			indexes:  scoped(indexes, connection.Only, func(i driver.Index) string { return i.Schema }),
+		}
 	}
+}
+
+// one is the schema a driver can filter on its own. A form with several schemas
+// ticked reads the whole server once and keeps what it asked for, because the
+// drivers take one schema and a round trip each is worse than a filter here.
+func one(connection config.Connection) string {
+	if filter := connection.Filter(); len(filter) == 1 {
+		return filter[0]
+	}
+	return ""
+}
+
+// scoped drops what the schema filter does not ask for.
+func scoped[T any](items []T, keep func(string) bool, of func(T) string) []T {
+	kept := items[:0]
+	for _, item := range items {
+		if keep(of(item)) {
+			kept = append(kept, item)
+		}
+	}
+	return kept
 }
 
 func (m Model) run(statement string) tea.Cmd {
@@ -201,8 +234,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.help.SetWidth(ui.FrameWidth(m.width))
+		m.running = m.running.resize(ui.FrameWidth(m.width))
 		m.editor.SetWidth(m.paneWidth())
-		m.editor.SetHeight(editorRows(m.height))
+		m.editor.SetHeight(m.editorRows())
 		m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
 		if m.wizard != nil {
 			return m.toWizard(msg)
@@ -244,6 +278,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case columnsMsg:
 		m.fields[msg.table] = msg.columns
 		m.sidebar = m.sidebar.withTables(m.tables, m.fields)
+		m = m.repage(msg.table)
 		return m.resuggest()
 	case sessionsMsg:
 		m.running = m.running.withSessions(msg, ui.FrameWidth(m.width))
@@ -255,7 +290,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stoppedMsg:
 		return m.stopped(msg)
 	case catalogMsg:
-		m.catalog = m.catalog.withCatalog(msg, m.session.Connection.Schema())
+		m.catalog = m.catalog.withCatalog(msg, m.session.Connection)
 		return m, nil
 	case switchedMsg:
 		return m.switched(msg)
@@ -307,12 +342,41 @@ func (m Model) resultsHeight() int {
 	if m.zoomed {
 		return ui.BodyHeight(m.height) - 4
 	}
-	return resultsRows(m.height)
+	return max(ui.BodyHeight(m.height)-m.editorRows()-5, minResultsRows)
+}
+
+// editorRows is half the pane unless it has been resized, which is the split
+// someone writing a statement against a result actually wants.
+func (m Model) editorRows() int {
+	half := (ui.BodyHeight(m.height) - 4) / 2
+	if m.split > 0 {
+		half = m.split
+	}
+	return min(max(half, minEditorRows), max(ui.BodyHeight(m.height)-6, minEditorRows))
+}
+
+func (m Model) resizeEditor(step int) (tea.Model, tea.Cmd) {
+	m.split = m.editorRows() + step
+	m.editor.SetHeight(m.editorRows())
+	m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
+	return m, nil
+}
+
+func (m Model) recordPage() (tea.Model, tea.Cmd) {
+	page, ok := m.results.record()
+	if !ok {
+		return m, nil
+	}
+	m.page = &page
+	return m, nil
 }
 
 func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.wizard != nil {
 		return m.toWizard(msg)
+	}
+	if m.page != nil {
+		return m.pageKey(msg)
 	}
 	if m.modal != nil {
 		return m.modalKey(msg)
@@ -332,12 +396,28 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.view == viewDashboard && m.onSessions && m.dashboardOwnsKey(msg) {
 		return m.activityKey(msg)
 	}
+	if m.view == viewDashboard && !m.onSessions {
+		if moved, handled := m.walkReadings(msg); handled {
+			return moved.follow(), nil
+		}
+		if key.Matches(msg, m.keys.Choose) {
+			return m.readingPage()
+		}
+	}
+	if m.view == viewSchema || m.view == viewIndexes {
+		if moved, handled := m.walkListing(msg); handled {
+			return moved, nil
+		}
+		if key.Matches(msg, m.keys.Choose) {
+			return m.listingPage()
+		}
+	}
 	switch {
 	case key.Matches(msg, m.keys.Focus):
 		return m.toggleSessions()
 	case key.Matches(msg, m.keys.Catalog):
 		return m.browseCatalog()
-	case key.Matches(msg, m.keys.Palette):
+	case m.keys.opensPalette(msg, false):
 		return m.openPalette()
 	case key.Matches(msg, m.keys.Connections):
 		return m.browse()
@@ -363,7 +443,65 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // dashboardOwnsKey keeps the keys that only mean something to the list of
 // sessions away from the rest of the dashboard.
 func (m Model) dashboardOwnsKey(msg tea.KeyPressMsg) bool {
-	return key.Matches(msg, m.keys.Up, m.keys.Down, m.keys.Cancel, m.keys.Terminate)
+	return key.Matches(msg, m.keys.Up, m.keys.Down, m.keys.Cancel, m.keys.Terminate, m.keys.Choose)
+}
+
+// walkReadings moves the cursor through the health report, which is the list
+// the dashboard is made of.
+func (m Model) walkReadings(msg tea.KeyPressMsg) (Model, bool) {
+	total := len(m.readings(every))
+	if total == 0 {
+		return m, false
+	}
+	switch {
+	case key.Matches(msg, m.keys.Up):
+		m.reading = (m.reading - 1 + total) % total
+	case key.Matches(msg, m.keys.Down):
+		m.reading = (m.reading + 1) % total
+	default:
+		return m, false
+	}
+	return m, true
+}
+
+// walkListing moves the cursor through the tables or the indexes, whichever
+// list is on screen.
+func (m Model) walkListing(msg tea.KeyPressMsg) (Model, bool) {
+	total := m.listed()
+	if total == 0 {
+		return m, false
+	}
+	switch {
+	case key.Matches(msg, m.keys.Up):
+		m.listing = (m.listing - 1 + total) % total
+	case key.Matches(msg, m.keys.Down):
+		m.listing = (m.listing + 1) % total
+	default:
+		return m, false
+	}
+	return m.follow(), true
+}
+
+func (m Model) listed() int {
+	if m.view == viewIndexes {
+		return len(m.indexes)
+	}
+	return len(m.tables)
+}
+
+// follow keeps the row under the cursor on screen after it moves.
+func (m Model) follow() Model {
+	area := ui.BodyHeight(m.height)
+	line := ui.LineOf(m.body(), "▌")
+	switch {
+	case line < 0:
+		return m
+	case line < m.offset:
+		m.offset = line
+	case line >= m.offset+area:
+		m.offset = line - area + 1
+	}
+	return m
 }
 
 func (m Model) toggleSessions() (tea.Model, tea.Cmd) {
@@ -371,13 +509,16 @@ func (m Model) toggleSessions() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.onSessions = !m.onSessions
+	m.running = m.running.focus(m.onSessions)
 	return m, nil
 }
 
 func (m Model) show(target view) (tea.Model, tea.Cmd) {
 	m.view = target
 	m.offset = 0
+	m.listing = 0
 	m.onSessions = false
+	m.running = m.running.focus(false)
 	if target == viewDashboard {
 		m.generation++
 		return m, tea.Batch(m.readSessions(), m.tick())
@@ -421,7 +562,7 @@ func (m Model) openPalette() (tea.Model, tea.Cmd) {
 
 func (m Model) paletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Palette):
+	case key.Matches(msg, m.keys.Back), m.keys.opensPalette(msg, true):
 		m.palette = nil
 		return m, nil
 	case key.Matches(msg, m.keys.Choose):
@@ -445,15 +586,18 @@ func (m Model) paletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// queryKey answers the editor screen. A list of suggestions takes the arrows
+// and nothing else: every other binding in this program answers to a letter as
+// well, and a letter typed into an editor is a letter.
 func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.suggest.active() {
 		switch {
 		case key.Matches(msg, m.keys.Accept):
 			return m.accept()
-		case key.Matches(msg, m.keys.Up):
+		case key.Matches(msg, m.keys.Above):
 			m.suggest = m.suggest.move(-1)
 			return m, nil
-		case key.Matches(msg, m.keys.Down):
+		case key.Matches(msg, m.keys.Below):
 			m.suggest = m.suggest.move(1)
 			return m, nil
 		case key.Matches(msg, m.keys.Back):
@@ -470,7 +614,7 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.show(viewDashboard)
-	case key.Matches(msg, m.keys.Palette):
+	case m.keys.opensPalette(msg, m.focus == focusEditor):
 		m.editor.Blur()
 		return m.openPalette()
 	case key.Matches(msg, m.keys.Connections):
@@ -485,6 +629,10 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.run(m.statement())
 	case key.Matches(msg, m.keys.Sidebar):
 		return m.toggleSidebar()
+	case key.Matches(msg, m.keys.Grow):
+		return m.resizeEditor(2)
+	case key.Matches(msg, m.keys.Shrink):
+		return m.resizeEditor(-2)
 	case key.Matches(msg, m.keys.Focus):
 		return m.nextPane()
 	}
@@ -492,10 +640,19 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case focusSidebar:
 		return m.explorerKey(msg)
 	case focusResults:
-		if key.Matches(msg, m.keys.Zoom) {
+		switch {
+		case key.Matches(msg, m.keys.Zoom):
 			m.zoomed = !m.zoomed
 			m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
 			return m, nil
+		case key.Matches(msg, m.keys.Left):
+			m.results = m.results.shift(-1)
+			return m, nil
+		case key.Matches(msg, m.keys.Right):
+			m.results = m.results.shift(1)
+			return m, nil
+		case key.Matches(msg, m.keys.Choose):
+			return m.recordPage()
 		}
 		updated, cmd := m.results.update(msg)
 		m.results = updated
@@ -572,6 +729,9 @@ func (m Model) content() string {
 		Body:   body,
 		Footer: m.footer(more),
 	})
+	if m.page != nil {
+		return ui.Overlay(screen, m.page.view(m.width, m.height), m.width, m.height)
+	}
 	if m.modal != nil {
 		return ui.Overlay(screen, m.modal.view(m.width), m.width, m.height)
 	}
@@ -590,7 +750,7 @@ func (m Model) content() string {
 func (m Model) header() string {
 	return m.theme.IdentityLine(
 		ui.EnvColor(m.session.Connection.Color),
-		ui.Dotted(m.session.Connection.Name, m.database()),
+		ui.Slashed(m.session.Connection.Name, m.database()),
 		strings.ToLower(m.session.Info.Driver)+" "+m.session.Info.Version,
 		sqlguard.Mode(m.session.Connection.Mode).Label(),
 	)
@@ -612,11 +772,12 @@ func (m Model) body() string {
 	if m.loading {
 		return m.spinner.View() + m.theme.Muted.Render(" reading the server")
 	}
+	width := ui.FrameWidth(m.width)
 	switch m.view {
 	case viewSchema:
-		return m.schemaBody("tables", m.theme.TableList(m.tables))
+		return m.schemaBody("tables", m.theme.TableList(m.tables, m.listing, width))
 	case viewIndexes:
-		return m.schemaBody("indexes", m.theme.IndexList(m.indexes))
+		return m.schemaBody("indexes", m.theme.IndexList(m.indexes, m.listing, width))
 	case viewQuery:
 		return m.workbench()
 	case viewHelp:

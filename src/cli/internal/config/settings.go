@@ -15,6 +15,11 @@ type SafetySettings struct {
 type AppearanceSettings struct {
 	Theme  string `toml:"theme"`
 	Accent string `toml:"accent"`
+
+	// Bar is the shape a measurement is drawn with. How well a glyph draws is
+	// the font's business and a terminal program cannot choose the font it is
+	// rendered in, so this is a choice rather than a constant.
+	Bar string `toml:"bar,omitempty"`
 }
 
 type HistorySettings struct {
@@ -39,7 +44,7 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
-		Appearance: AppearanceSettings{Theme: "dark", Accent: "cyan"},
+		Appearance: AppearanceSettings{Theme: "dark", Accent: "cyan", Bar: "pipes"},
 		Safety: SafetySettings{
 			DefaultMode:    ReadOnly,
 			ConfirmQueries: true,

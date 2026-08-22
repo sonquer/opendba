@@ -107,28 +107,72 @@ func TestIdentityLine(t *testing.T) {
 	}
 }
 
-// column is where text starts on screen, which is not where it starts in the
-// string once box drawing has spent three bytes per cell.
-func column(row, text string) int {
-	return lipgloss.Width(row[:strings.Index(row, text)])
-}
-
 func TestGauge(t *testing.T) {
-	theme := Default()
-	for _, c := range []struct {
-		ratio  float64
-		filled int
-	}{{0, 0}, {0.5, 9}, {1, gaugeWidth}, {-1, 0}, {2, gaugeWidth}} {
-		got := plain(theme.Gauge(c.ratio, SevOK))
-		if strings.Count(got, "█") != c.filled {
-			t.Errorf("Gauge(%v) = %q, want %d filled", c.ratio, got, c.filled)
+	for _, style := range BarStyles {
+		theme := Default()
+		theme.Bars(style.Name)
+		for _, c := range []struct {
+			ratio  float64
+			filled int
+		}{{0, 0}, {0.5, gaugeWidth / 2}, {1, gaugeWidth}, {-1, 0}, {2, gaugeWidth}} {
+			got := plain(theme.Gauge(c.ratio, SevOK))
+			if lipgloss.Width(got) != theme.BarWidth(gaugeWidth) {
+				t.Errorf("%s: every gauge is the same width: %q", style.Name, got)
+			}
+			if style.Full == style.Empty {
+				continue
+			}
+			if strings.Count(got, style.Full) != c.filled {
+				t.Errorf("%s Gauge(%v) = %q, want %d filled", style.Name, c.ratio, got, c.filled)
+			}
+			if strings.Count(got, style.Empty) != gaugeWidth-c.filled {
+				t.Errorf("%s Gauge(%v) = %q, want %d of track",
+					style.Name, c.ratio, got, gaugeWidth-c.filled)
+			}
 		}
-		if lipgloss.Width(got) != gaugeWidth+2 {
-			t.Errorf("every gauge is the same width: %q", got)
+		if lipgloss.Width(theme.Blank()) != theme.BarWidth(gaugeWidth) {
+			t.Errorf("%s: a row without a measurement must still line up", style.Name)
 		}
 	}
-	if lipgloss.Width(theme.Blank()) != gaugeWidth+2 {
-		t.Error("a row without a measurement must still line up")
+}
+
+// A bar made of whole cells can only say one twentieth at a time. A style with
+// parts says the eighths in between, which is the difference between a bar that
+// reports 42% and one that rounds it to 40%.
+func TestAGaugeWithPartsSaysWhatIsBetweenTheCells(t *testing.T) {
+	theme := Default()
+	theme.Bars("smooth")
+	got := plain(theme.Gauge(0.42, SevOK))
+	if !strings.HasPrefix(got, strings.Repeat("█", 8)+"▍") {
+		t.Errorf("42%% of twenty cells is eight whole ones and a third of the ninth: %q", got)
+	}
+	if lipgloss.Width(got) != gaugeWidth {
+		t.Errorf("the partial cell is one of the twenty: %q", got)
+	}
+	whole := Default()
+	whole.Bars("shade")
+	if strings.Contains(plain(whole.Gauge(0.42, SevOK)), "▍") {
+		t.Error("a style with no parts draws whole cells only")
+	}
+}
+
+func TestBarStyles(t *testing.T) {
+	if BarStyleNamed("nothing of the sort").Name != DefaultBarStyle {
+		t.Error("an unknown style falls back rather than failing to start")
+	}
+	if got := BarStyleNamed("ascii"); got.Full != "#" {
+		t.Errorf("style = %+v", got)
+	}
+	names := BarStyleNames()
+	if len(names) != len(BarStyles) || names[0] != DefaultBarStyle {
+		t.Errorf("names = %v", names)
+	}
+	unset := Default()
+	unset.style = BarStyle{}
+	fallback := BarStyleNamed(DefaultBarStyle)
+	want := fallback.Open + strings.Repeat(fallback.Full, 4) + fallback.Close
+	if got := plain(unset.draw(1, SevOK, 4)); got != want {
+		t.Errorf("a theme with no style chosen still draws: %q", got)
 	}
 }
 
@@ -146,8 +190,11 @@ func TestReadWriteIsCalledOut(t *testing.T) {
 	if quiet == loud {
 		t.Error("read write must not look like read only")
 	}
-	if plain(loud) != "READ / WRITE" {
+	if strings.TrimSpace(plain(loud)) != "READ / WRITE" {
 		t.Errorf("Mode() = %q", plain(loud))
+	}
+	if !strings.HasPrefix(plain(quiet), " ") {
+		t.Errorf("a badge is padded so it reads as a label: %q", plain(quiet))
 	}
 }
 
@@ -177,20 +224,24 @@ func TestReadings(t *testing.T) {
 		{Severity: SevOK, Label: "integrity", Value: "ok"},
 	}
 	got := plain(Default().Readings(readings, 60, Measure(readings)))
-	for _, want := range []string{SevWarn.Glyph(), "cache", "94.0%", "small cache", "█", "░", "integrity"} {
+	bar := BarStyleNamed(DefaultBarStyle)
+	for _, want := range []string{"cache", "94.0%", "watch", "integrity", bar.Full, bar.Empty} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the report is missing %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "small cache") {
+		t.Errorf("the sentence belongs on the page, not the row:\n%s", got)
 	}
 	rows := strings.Split(got, "\n")
 	if len(rows) != 2 {
 		t.Fatalf("one row per reading, got %d", len(rows))
 	}
-	if column(rows[0], "94.0%") != column(rows[1], "ok") {
-		t.Errorf("a reading without a bar must still line up:\n%s", got)
+	if strings.Contains(rows[1], "\u2588") || strings.Contains(rows[1], "·") {
+		t.Errorf("a reading that is not a proportion has no bar: %q", rows[1])
 	}
-	if strings.Contains(rows[1], "█") {
-		t.Errorf("a word is not a proportion: %q", rows[1])
+	if lipgloss.Width(rows[0]) < lipgloss.Width(rows[1]) {
+		t.Errorf("a row without a bar still lines up:\n%s", got)
 	}
 	for _, row := range rows {
 		if lipgloss.Width(row) > 60 {
@@ -198,17 +249,54 @@ func TestReadings(t *testing.T) {
 		}
 	}
 
-	// Two blocks measured together keep the same columns, which is what stops
-	// the dashboard looking ragged between groups.
+	marked := plain(Default().Readings([]Reading{{Label: "cache", Value: "1", Cursor: true}}, 40, Columns{}))
+	if !strings.Contains(marked, "\u258c") {
+		t.Errorf("the row under the cursor is marked: %q", marked)
+	}
+
 	wide := []Reading{{Severity: SevOK, Label: "replication", Value: "0 inactive"}}
 	at := Measure(append(append([]Reading{}, readings...), wide...))
 	first := plain(Default().Readings(readings, 60, at))
 	second := plain(Default().Readings(wide, 60, at))
-	if column(second, "0 inactive") != column(strings.Split(first, "\n")[0], "94.0%") {
+	if lipgloss.Width(strings.Split(first, "\n")[1]) != lipgloss.Width(second) {
 		t.Errorf("blocks measured together must line up:\n%s\n%s", first, second)
 	}
 	if alone := plain(Default().Readings(readings, 60, Columns{})); alone == first {
 		t.Error("a block measured on its own uses its own columns")
+	}
+}
+
+func TestVerdictWords(t *testing.T) {
+	words := map[Severity]string{
+		SevOK: "ok", SevWarn: "watch", SevCritical: "act", SevInfo: "note", SevInactive: "n/a",
+	}
+	for severity, want := range words {
+		if got := Verdict(severity); got != want {
+			t.Errorf("Verdict(%v) = %q, want %q", severity, got, want)
+		}
+	}
+}
+
+func TestMeter(t *testing.T) {
+	theme := Default()
+	drawn := plain(theme.Meter(Reading{Severity: SevOK, Ratio: 0.5, Measured: true}, 40))
+	bar := BarStyleNamed(DefaultBarStyle)
+	if !strings.Contains(drawn, bar.Full) || !strings.Contains(drawn, bar.Empty) {
+		t.Errorf("a meter is a bar with a track behind it: %q", drawn)
+	}
+	if !strings.Contains(drawn, "0%") || !strings.Contains(drawn, "100%") {
+		t.Errorf("the scale must be named: %q", drawn)
+	}
+	for _, line := range strings.Split(drawn, "\n") {
+		if lipgloss.Width(line) > 40 {
+			t.Errorf("the meter must fit: %q", line)
+		}
+	}
+	if counted := plain(theme.Meter(Reading{Value: "3"}, 40)); !strings.Contains(counted, "not a proportion") {
+		t.Errorf("a count has no bar to draw: %q", counted)
+	}
+	if narrow := plain(theme.Meter(Reading{Ratio: 1, Measured: true}, 10)); !strings.Contains(narrow, bar.Full) {
+		t.Errorf("a narrow meter still draws: %q", narrow)
 	}
 }
 
@@ -267,5 +355,35 @@ func TestThePaletteIsDarkOnPurpose(t *testing.T) {
 	}
 	if plain(Default().Base.Render("x")) != "x" {
 		t.Error("the base style must not add characters")
+	}
+}
+
+func TestAStatementWithTabsIsMeasuredRight(t *testing.T) {
+	drawn := Default().Statement("SELECT\n\tone,\n\ttwo\nFROM t", 60)
+	for _, line := range strings.Split(drawn, "\n") {
+		if strings.Contains(line, "\t") {
+			t.Errorf("a tab is as wide as the terminal decides, not as wide as we count: %q", line)
+		}
+		if lipgloss.Width(line) > 60 {
+			t.Errorf("no line may leave its panel: %q", line)
+		}
+	}
+	if !strings.Contains(plain(drawn), "  1  SELECT") {
+		t.Errorf("the first line of a statement is line one:\n%s", plain(drawn))
+	}
+}
+
+func TestALongLineWrapsUnderItsOwnNumber(t *testing.T) {
+	long := "SELECT " + strings.Repeat("column_with_a_long_name, ", 6) + "1"
+	drawn := plain(Default().Statement("SELECT 1\n"+long, 50))
+	lines := strings.Split(drawn, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("the long line must wrap:\n%s", drawn)
+	}
+	if !strings.HasPrefix(lines[1], "  2  ") {
+		t.Errorf("the second statement line is line two: %q", lines[1])
+	}
+	if strings.TrimSpace(lines[2]) == "" || strings.HasPrefix(strings.TrimSpace(lines[2]), "3") {
+		t.Errorf("what wrapped keeps the number it wrapped from: %q", lines[2])
 	}
 }

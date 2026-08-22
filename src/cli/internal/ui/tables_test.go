@@ -1,10 +1,13 @@
 package ui
 
 import (
-	"charm.land/lipgloss/v2"
+	"fmt"
+	"image/color"
 	"strings"
 	"testing"
 	"time"
+
+	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
@@ -68,30 +71,70 @@ func TestCounts(t *testing.T) {
 
 func TestTableList(t *testing.T) {
 	theme := Default()
-	out := plain(theme.TableList([]driver.Table{
-		{Schema: "public", Name: "users", Kind: "table", Rows: 1200000, Size: 8192},
-	}))
-	for _, want := range []string{"public.users", "table", "1,200,000", "8.0 KiB"} {
+	tables := []driver.Table{
+		{Schema: "public", Name: "users", Kind: "table", Rows: 1200000, Size: 8192,
+			Stats: true, IndexScans: 900, SeqScans: 100, LiveRows: 1180, DeadRows: 20, CacheHit: 0.98},
+		{Schema: "public", Name: "fresh", Kind: "table", Rows: 0, Size: 8192},
+	}
+	out := plain(theme.TableList(tables, 0, 110))
+	for _, want := range []string{
+		"table", "rows", "size", "read from memory",
+		"public.users", "1,200,000", "8.0 KiB", "98%",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list missing %q:\n%s", want, out)
 		}
 	}
-	if !strings.Contains(plain(theme.TableList(nil)), "no tables here") {
+	if !strings.Contains(out, "never read") {
+		t.Errorf("a table with no counters says so rather than showing a wrong bar:\n%s", out)
+	}
+	rows := strings.Split(out, "\n")
+	if len(rows) != 4 {
+		t.Errorf("a heading, a rule and one row per table:\n%s", out)
+	}
+	painted := strings.Split(theme.TableList(tables, 0, 110), "\n")
+	if !strings.Contains(painted[2], background(theme.P.Selection)) {
+		t.Errorf("the row under the cursor is painted end to end: %q", painted[2])
+	}
+	if strings.Contains(painted[3], background(theme.P.Selection)) {
+		t.Errorf("and only that row: %q", painted[3])
+	}
+	if lipgloss.Width(painted[2]) != 110 {
+		t.Errorf("a painted row reaches the far side: %d", lipgloss.Width(painted[2]))
+	}
+	if !strings.Contains(plain(theme.TableList(nil, 0, 110)), "no tables here") {
 		t.Error("an empty schema must say so")
+	}
+}
+
+func TestATableThatIsWalkedOrRottingIsFlagged(t *testing.T) {
+	theme := Default()
+	rotting := driver.Table{Schema: "public", Name: "queue", Size: 8192, Stats: true,
+		IndexScans: 10, LiveRows: 100, DeadRows: 40, CacheHit: 0.99}
+	if got := plain(theme.TableList([]driver.Table{rotting}, -1, 110)); !strings.Contains(got, "act") {
+		t.Errorf("two rows in five dead is worth acting on:\n%s", got)
+	}
+	cold := driver.Table{Schema: "public", Name: "logs", Size: 8192, Stats: true,
+		IndexScans: 1, LiveRows: 10, CacheHit: 0.4}
+	if got := plain(theme.TableList([]driver.Table{cold}, -1, 110)); !strings.Contains(got, "watch") {
+		t.Errorf("a table read from disk is worth watching:\n%s", got)
 	}
 }
 
 func TestIndexList(t *testing.T) {
 	theme := Default()
-	out := plain(theme.IndexList([]driver.Index{
-		{Table: "orders", Name: "orders_pkey", Size: -1, Scans: -1},
-	}))
-	for _, want := range []string{"orders_pkey", "orders", "n/a"} {
+	indexes := []driver.Index{
+		{Table: "orders", Name: "orders_pkey", Size: 16384, Scans: 90, Primary: true, Unique: true, Stats: true},
+		{Table: "orders", Name: "orders_placed", Size: 8192, Scans: 0, Stats: true},
+		{Table: "orders", Name: "orders_late", Size: -1, Scans: -1},
+	}
+	out := plain(theme.IndexList(indexes, 0, 110))
+	for _, want := range []string{"orders_pkey", "orders", "primary", "idle", "act", "n/a"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list missing %q:\n%s", want, out)
 		}
 	}
-	if !strings.Contains(plain(theme.IndexList(nil)), "no indexes here") {
+	if !strings.Contains(plain(theme.IndexList(nil, 0, 110)), "no indexes here") {
 		t.Error("an empty schema must say so")
 	}
 }
@@ -208,4 +251,50 @@ func TestByteSizeAndDuration(t *testing.T) {
 			t.Errorf("Duration(%v) = %q, want %q", value, got, want)
 		}
 	}
+}
+
+// A window with no room for a sentence keeps the numbers and the name, because
+// those are what the list is for.
+func TestANarrowListingDropsItsNotes(t *testing.T) {
+	theme := Default()
+	indexes := []driver.Index{
+		{Table: "orders", Name: "orders_placed_at_idx", Size: 8192, Scans: 4, Stats: true},
+	}
+	wide := plain(theme.IndexList(indexes, 0, 120))
+	narrow := plain(theme.IndexList(indexes, 0, 64))
+	if !strings.Contains(wide, "used") {
+		t.Errorf("a wide window has room to say why:\n%s", wide)
+	}
+	if strings.Contains(narrow, "used") {
+		t.Errorf("a narrow window gives the sentence up first:\n%s", narrow)
+	}
+	if strings.Contains(narrow, "why") {
+		t.Errorf("a dropped column loses its heading too:\n%s", narrow)
+	}
+	if !strings.Contains(narrow, "index") || !strings.Contains(narrow, "size") {
+		t.Errorf("the columns that stay keep their names:\n%s", narrow)
+	}
+	if !strings.Contains(narrow, "orders_placed") {
+		t.Errorf("the name survives:\n%s", narrow)
+	}
+	if lipgloss.Width(narrow) > 64 {
+		t.Errorf("the row must fit the window: %d", lipgloss.Width(narrow))
+	}
+}
+
+func TestADriverThatCountsNothingSaysSo(t *testing.T) {
+	theme := Default()
+	got := plain(theme.IndexList([]driver.Index{{Table: "t", Name: "t_idx"}}, -1, 120))
+	for _, want := range []string{"unknown", "n/a"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("list missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// background is the escape a colour is set as, which is how a test can say a
+// row was painted rather than merely marked.
+func background(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("48;2;%d;%d;%d", r>>8, g>>8, b>>8)
 }

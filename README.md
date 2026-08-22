@@ -120,9 +120,33 @@ Inside the interface, `ctrl+p` lists your connections: `enter` switches to
 another one, `n` opens the same wizard without leaving the program, and `d`
 removes a connection along with its password once you have typed its name back.
 
+A bar is drawn with whatever glyph your font draws well, which is not something
+a terminal program can decide for you: it writes characters, and the font is
+the emulator's setting. So the shape is yours to pick, in `settings.toml`:
+
+```toml
+[appearance]
+  bar = "smooth"     # █▌ solid, with eighths for what falls between two cells
+  # bar = "shade"    # █░ the classic block and shading pair, in brackets
+  # bar = "rail"     # ━─ heavy and light lines, the quietest of them
+  # bar = "segments" # ▰▱ separate segments rather than one run
+  # bar = "braille"  # █⣿ dots with real gaps, for fonts that blur ░
+  # bar = "ascii"    # #- for terminals with no block glyphs at all
+```
+
+`smooth` is the default because it is the only one that can say what falls
+between two cells: an eighth-block gives twenty cells the resolution of a
+hundred and sixty, so 42% draws as 42% rather than rounding to 40%.
+
+To see them in your own font before choosing:
+
+```bash
+go run ./src/cli/cmd/screens --bars
+```
+
 ### Keys
 
-`ctrl+k` opens the command palette, which reaches every screen without knowing
+`/` opens the command palette, which reaches every screen without knowing
 a single shortcut. The rest:
 
 | key | does |
@@ -135,7 +159,7 @@ a single shortcut. The rest:
 | `ctrl+b` | show or hide the schema beside the editor |
 | `z` | zoom a result to the whole window |
 | `ctrl+d` | databases and schemas on this server |
-| `ctrl+k` | commands |
+| `/` | commands (`ctrl+k` also works) |
 | `?` | keys and the safety rule |
 | `esc` | back |
 | `q` `ctrl+c` | quit |
@@ -152,11 +176,20 @@ statement already names, and SQL keywords. `tab` accepts, `↑↓` picks, `esc`
 closes the list. Columns are read from the server the moment a table is named,
 once per table.
 
-A connection with no schema of its own reads every schema the database holds,
-and each table says which one it came from. `ctrl+d` lists the databases the
-server lets you connect to and the schemas of the one you are in. Choosing a database reconnects with the same profile and the
-same access mode; choosing a schema just reloads. Both are written back to the
-profile, so the next run starts where you left off.
+`ctrl+d` is a form rather than a menu: the databases the server lets you connect
+to, and the schemas of the one you are in. `space` moves the dot to a database
+and ticks as many schemas as you want, `enter` saves, `esc` leaves it all alone.
+No schema ticked means every schema, and each table says which one it came from.
+Saving reconnects if the database changed and reloads if only the schemas did,
+and writes both back to the profile, so the next run starts where you left off.
+
+`s` and `i` are the catalogue, each list under named columns. A table shows how
+many rows it holds, what it and its indexes take on disk, and a bar for the
+share of its reads the server answered from memory; an index shows what it
+costs, how often it was read, its share of the reads on its table, and what it
+is there for. `↑↓` walks either list and `enter` opens the row: the
+columns, the counters the server keeps, and a page saying what those numbers
+mean and what to do about them.
 
 Leaving asks first. `q` and `ctrl+c` raise the question; `ctrl+c` again answers
 it.
@@ -165,7 +198,7 @@ it.
 keyboard protocol (Ghostty, kitty, WezTerm) also send `ctrl+enter` and
 `cmd+enter`, and the footer switches to `⌃⏎` once the terminal says it can tell
 those apart. On macOS the keys are shown the way the keyboard prints them:
-`⌃R`, `⌃K`, `⎋`, `⏎`.
+`⌃R`, `⌃P`, and every named key is spelled out: `enter`, `esc`, `tab`, `space`.
 
 It also works without the interface:
 

@@ -968,7 +968,7 @@ func TestTheWorkspaceRemembersWhereYouWent(t *testing.T) {
 	connection.Database = "app"
 	h := newHarness(t, connection)
 
-	if err := h.app.Remember("local", "reporting", "billing"); err != nil {
+	if err := h.app.Remember("local", "reporting", "billing", []string{"billing"}); err != nil {
 		t.Fatal(err)
 	}
 	profiles, err := h.store.LoadProfiles()
@@ -987,7 +987,7 @@ func TestTheWorkspaceRemembersWhereYouWent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.app.Remember("local", "reporting", "billing"); err != nil {
+	if err := h.app.Remember("local", "reporting", "billing", []string{"billing"}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.Stat(h.store.Paths.ProfilesFile())
@@ -998,7 +998,7 @@ func TestTheWorkspaceRemembersWhereYouWent(t *testing.T) {
 		t.Error("staying where you are must not rewrite the file")
 	}
 
-	if err := h.app.Remember("elsewhere", "x", "y"); err == nil {
+	if err := h.app.Remember("elsewhere", "x", "y", nil); err == nil {
 		t.Error("a connection that does not exist cannot be remembered")
 	}
 }

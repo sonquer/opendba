@@ -23,14 +23,14 @@ const (
 	(SELECT count(*) FROM pg_stat_activity WHERE state = 'active'),
 	(SELECT count(*) FROM pg_stat_activity WHERE state = 'idle in transaction'),
 	(SELECT count(*) FROM pg_locks WHERE NOT granted),
-	(SELECT coalesce(max(extract(epoch FROM now() - query_start)), 0)
+	(SELECT coalesce(max(extract(epoch FROM clock_timestamp() - query_start)), 0)
 		FROM pg_stat_activity WHERE state = 'active' AND backend_type = 'client backend'),
 	(SELECT coalesce(sum(deadlocks), 0) FROM pg_stat_database WHERE datname = current_database()),
 	(SELECT coalesce(round(100.0 * sum(xact_rollback) / nullif(sum(xact_commit) + sum(xact_rollback), 0), 1), 0.0)
 		FROM pg_stat_database WHERE datname = current_database()),
-	(SELECT coalesce(wait_event_type, '') FROM pg_stat_activity
-		WHERE wait_event_type IS NOT NULL AND state = 'active'
-		GROUP BY wait_event_type ORDER BY count(*) DESC LIMIT 1),
+	coalesce((SELECT wait_event_type FROM pg_stat_activity
+		WHERE state = 'active' AND wait_event_type NOT IN ('Client', 'Activity')
+		GROUP BY wait_event_type ORDER BY count(*) DESC LIMIT 1), ''),
 	current_setting('transaction_read_only') = 'on'`
 
 	scansQuery = `SELECT
@@ -292,7 +292,7 @@ func waitingFinding(snapshot Snapshot) driver.Finding {
 }
 
 func longestFinding(snapshot Snapshot) driver.Finding {
-	longest := time.Duration(snapshot.LongestSeconds * float64(time.Second))
+	longest := time.Duration(max(snapshot.LongestSeconds, 0) * float64(time.Second))
 	finding := driver.Finding{
 		Group:     driver.GroupLoad,
 		Subsystem: "longest",

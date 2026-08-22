@@ -13,9 +13,9 @@ func opened(t *testing.T) Model {
 	t.Helper()
 	m := loaded(t, healthy())
 	m.width, m.height = 100, 32
-	shown, cmd := press(t, m, "ctrl+k")
+	shown, cmd := press(t, m, "/")
 	if cmd == nil || shown.palette == nil {
-		t.Fatal("ctrl+k must open the commands")
+		t.Fatal("/ must open the commands")
 	}
 	return shown
 }
@@ -164,5 +164,22 @@ func TestThePaletteIsBlindToOtherMessages(t *testing.T) {
 	same, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	if same.(Model).palette == nil {
 		t.Error("resizing must not close the palette")
+	}
+}
+
+func TestASlashInAStatementIsASlash(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 100, 32
+	editing, _ := press(t, m, "e")
+	typed, _ := press(t, editing, "/")
+	if typed.palette != nil {
+		t.Fatal("a slash in the editor is division, not a command list")
+	}
+	if got := typed.editor.Value(); got != "/" {
+		t.Errorf("editor = %q", got)
+	}
+	commands, _ := press(t, typed, "ctrl+k")
+	if commands.palette == nil {
+		t.Error("the alias must still reach the commands from the editor")
 	}
 }

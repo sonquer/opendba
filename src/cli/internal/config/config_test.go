@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -162,7 +163,7 @@ func TestProfilesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProfiles: %v", err)
 	}
-	if len(loaded.Connections) != 1 || loaded.Connections[0] != profiles.Connections[0] {
+	if len(loaded.Connections) != 1 || !reflect.DeepEqual(loaded.Connections[0], profiles.Connections[0]) {
 		t.Fatalf("round trip changed the profile: %+v", loaded)
 	}
 }
@@ -549,5 +550,24 @@ func TestReadSecureFileRejectsADirectory(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := readSecureFile(dir); err == nil {
 		t.Fatal("want an error when the path is a directory")
+	}
+}
+
+func TestTheBarStyleIsASetting(t *testing.T) {
+	store := newStore(t)
+	settings := DefaultSettings()
+	if settings.Appearance.Bar == "" {
+		t.Fatal("a fresh configuration must name a bar style")
+	}
+	settings.Appearance.Bar = "shade"
+	if err := store.SaveSettings(settings); err != nil {
+		t.Fatalf("SaveSettings: %v", err)
+	}
+	loaded, err := store.LoadSettings()
+	if err != nil {
+		t.Fatalf("LoadSettings: %v", err)
+	}
+	if loaded.Appearance.Bar != "shade" {
+		t.Errorf("bar = %q", loaded.Appearance.Bar)
 	}
 }

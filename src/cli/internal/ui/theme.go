@@ -20,6 +20,19 @@ type Palette struct {
 	Info     color.Color
 	Inactive color.Color
 	OnEnv    color.Color
+
+	Selection   color.Color
+	OnSelection color.Color
+	Keycap      color.Color
+	Empty       color.Color
+	Badge       color.Color
+	OnBadge     color.Color
+
+	BarOK       color.Color
+	BarWarn     color.Color
+	BarCritical color.Color
+	BarInfo     color.Color
+	BarInactive color.Color
 }
 
 // DefaultPalette is dark, and says so to the terminal rather than adapting to
@@ -39,6 +52,19 @@ func DefaultPalette() Palette {
 		Info:     lipgloss.Color("#8aadf4"),
 		Inactive: lipgloss.Color("#585858"),
 		OnEnv:    lipgloss.Color("#101010"),
+
+		Selection:   lipgloss.Color("#27272a"),
+		OnSelection: lipgloss.Color("#fafafa"),
+		Keycap:      lipgloss.Color("#3f3f46"),
+		Empty:       lipgloss.Color("#2a2a2e"),
+		Badge:       lipgloss.Color("#d78ba0"),
+		OnBadge:     lipgloss.Color("#141014"),
+
+		BarOK:       lipgloss.Color("#6ac396"),
+		BarWarn:     lipgloss.Color("#e4b750"),
+		BarCritical: lipgloss.Color("#f47d67"),
+		BarInfo:     lipgloss.Color("#71c9fa"),
+		BarInactive: lipgloss.Color("#6d7277"),
 	}
 }
 
@@ -158,10 +184,16 @@ type Theme struct {
 	SectionHead lipgloss.Style
 	Error       lipgloss.Style
 	Divider     lipgloss.Style
+	Empty       lipgloss.Style
+	Selected2   lipgloss.Style
+	KeycapStyle lipgloss.Style
+	BadgeStyle  lipgloss.Style
 	Panel       lipgloss.Style
 	TableHead   lipgloss.Style
 
 	severities map[Severity]lipgloss.Style
+	bars       map[Severity]lipgloss.Style
+	style      BarStyle
 	markdown   *Markdown
 }
 
@@ -184,8 +216,12 @@ func NewTheme(p Palette) *Theme {
 		Error:       lipgloss.NewStyle().Foreground(p.Critical),
 		Panel: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
 			BorderForeground(p.Border).BorderBackground(p.Bg).Background(p.Bg).Padding(0, 1),
-		TableHead: lipgloss.NewStyle().Foreground(p.Muted),
-		Divider:   lipgloss.NewStyle().Foreground(p.Border),
+		TableHead:   lipgloss.NewStyle().Foreground(p.Muted),
+		Divider:     lipgloss.NewStyle().Foreground(p.Border),
+		Selected2:   lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Selection),
+		KeycapStyle: lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap).Padding(0, 1),
+		BadgeStyle: lipgloss.NewStyle().Foreground(p.OnBadge).Background(p.Badge).
+			Bold(true).Padding(0, 1),
 	}
 	theme.severities = map[Severity]lipgloss.Style{
 		SevOK:       lipgloss.NewStyle().Foreground(p.OK),
@@ -194,7 +230,27 @@ func NewTheme(p Palette) *Theme {
 		SevInfo:     lipgloss.NewStyle().Foreground(p.Info),
 		SevInactive: lipgloss.NewStyle().Foreground(p.Inactive),
 	}
+	theme.bars = map[Severity]lipgloss.Style{
+		SevOK:       lipgloss.NewStyle().Foreground(p.BarOK),
+		SevWarn:     lipgloss.NewStyle().Foreground(p.BarWarn),
+		SevCritical: lipgloss.NewStyle().Foreground(p.BarCritical),
+		SevInfo:     lipgloss.NewStyle().Foreground(p.BarInfo),
+		SevInactive: lipgloss.NewStyle().Foreground(p.BarInactive),
+	}
+	theme.style = BarStyleNamed(DefaultBarStyle)
 	return theme
+}
+
+// Bar is the colour a measurement is drawn in, whichever half of the scale it
+// is. The glyph does the work: a solid block for what was measured and a weave
+// for the rest. Darkening the empty half instead loses it against the page, and
+// a background behind either half turns the scale into two slabs, because a
+// cell with a background is a filled cell whatever is printed on it.
+func (t *Theme) Bar(s Severity) lipgloss.Style {
+	if style, ok := t.bars[s]; ok {
+		return style
+	}
+	return t.bars[SevInactive]
 }
 
 func Default() *Theme { return NewTheme(DefaultPalette()) }

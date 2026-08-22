@@ -177,7 +177,8 @@ func (m Model) switched(msg switchedMsg) (tea.Model, tea.Cmd) {
 	m.loading = true
 	m.failure = ""
 	return m, tea.Batch(m.load(), m.spinner.Tick,
-		m.remember(msg.session.Connection.Database, msg.session.Connection.DefaultSchema),
+		m.remember(msg.session.Connection.Database, msg.session.Connection.DefaultSchema,
+			msg.session.Connection.Filter()),
 		m.notify(m.place(msg.session)))
 }
 

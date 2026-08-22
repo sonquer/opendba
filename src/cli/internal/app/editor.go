@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,31 +15,9 @@ import (
 
 const (
 	minEditorRows  = 3
-	maxEditorRows  = 12
 	minResultsRows = 3
 	minColumnWide  = 6
 )
-
-// editorRows splits the body area between the statement and its results.
-func editorRows(height int) int {
-	rows := ui.BodyHeight(height) / 3
-	switch {
-	case rows < minEditorRows:
-		return minEditorRows
-	case rows > maxEditorRows:
-		return maxEditorRows
-	default:
-		return rows
-	}
-}
-
-func resultsRows(height int) int {
-	rows := ui.BodyHeight(height) - editorRows(height) - 5
-	if rows < minResultsRows {
-		return minResultsRows
-	}
-	return rows
-}
 
 func newEditor(theme *ui.Theme) textarea.Model {
 	editor := textarea.New()
@@ -59,6 +38,10 @@ func newEditor(theme *ui.Theme) textarea.Model {
 
 type results struct {
 	table     table.Model
+	theme     *ui.Theme
+	column    int
+	width     int
+	height    int
 	statement string
 	columns   []string
 	rows      [][]string
@@ -70,6 +53,9 @@ type results struct {
 
 func newResults(theme *ui.Theme, msg queriedMsg, width, height int) results {
 	result := results{
+		theme:     theme,
+		width:     width,
+		height:    height,
 		statement: msg.statement,
 		columns:   msg.columns,
 		rows:      msg.rows,
@@ -81,19 +67,107 @@ func newResults(theme *ui.Theme, msg queriedMsg, width, height int) results {
 		result.failure = msg.err.Error()
 		return result
 	}
-	columns := columnsFor(msg.columns, msg.rows, width)
-	result.table = table.New(
-		table.WithColumns(columns),
-		table.WithRows(rowsFor(msg.rows)),
-		table.WithHeight(height),
-		table.WithWidth(tableWidth(columns, width)),
-		table.WithStyles(tableStyles(theme)),
-		table.WithFocused(true),
-	)
-	return result
+	return result.rebuild()
 }
 
-func tableStyles(theme *ui.Theme) table.Styles {
+// rebuild draws the columns that fit from the one the cursor is on, which is
+// how a result with thirty columns is read at all.
+func (r results) rebuild() results {
+	columns, rows := r.window()
+	at := r.table.Cursor()
+	r.table = table.New(
+		table.WithColumns(columns),
+		table.WithRows(rowsFor(rows)),
+		table.WithHeight(max(r.height, 1)),
+		table.WithWidth(tableWidth(columns, r.width)),
+		table.WithStyles(tableStyles(r.theme, false)),
+		table.WithFocused(true),
+	)
+	r.table.SetCursor(at)
+	return r
+}
+
+// window is the slice of columns that fits, starting at the one in front.
+func (r results) window() ([]table.Column, [][]string) {
+	if len(r.columns) == 0 {
+		return nil, nil
+	}
+	from := min(max(r.column, 0), len(r.columns)-1)
+	names := r.columns[from:]
+	cells := make([][]string, 0, len(r.rows))
+	for _, row := range r.rows {
+		if from < len(row) {
+			cells = append(cells, row[from:])
+			continue
+		}
+		cells = append(cells, nil)
+	}
+	columns := columnsFor(names, cells, r.width)
+	if fits := len(columns); fits > 0 {
+		total := 0
+		kept := 0
+		for _, column := range columns {
+			if total+column.Width+2 > r.width && kept > 0 {
+				break
+			}
+			total += column.Width + 2
+			kept++
+		}
+		columns = columns[:kept]
+		for i := range cells {
+			if len(cells[i]) > kept {
+				cells[i] = cells[i][:kept]
+			}
+		}
+	}
+	return columns, cells
+}
+
+func (r results) shift(step int) results {
+	if !r.present || len(r.columns) == 0 {
+		return r
+	}
+	r.column = min(max(r.column+step, 0), len(r.columns)-1)
+	return r.rebuild()
+}
+
+// place says which column is in front, for a result too wide to show at once.
+func (r results) place() string {
+	shown, _ := r.window()
+	if len(r.columns) == 0 || len(shown) >= len(r.columns) {
+		return ""
+	}
+	return fmt.Sprintf("column %d of %d", r.column+1, len(r.columns))
+}
+
+// record is every column of the row in front, which is the only way to read a
+// wide row without walking sideways.
+func (r results) record() (details, bool) {
+	if !r.present || r.failure != "" || len(r.rows) == 0 {
+		return details{}, false
+	}
+	at := min(max(r.table.Cursor(), 0), len(r.rows)-1)
+	row := r.rows[at]
+	pairs := make([]pair, 0, len(r.columns))
+	for i, name := range r.columns {
+		value := "∅"
+		if i < len(row) {
+			value = row[i]
+		}
+		pairs = append(pairs, pair{key: name, value: value})
+	}
+	return details{
+		theme: r.theme,
+		title: "row " + fmt.Sprintf("%d of %d", at+1, len(r.rows)),
+		tag:   ui.Plural(len(r.columns), "column", "columns"),
+		pairs: pairs,
+		code:  r.statement,
+	}, true
+}
+
+// tableStyles paints the cursor row only when the pane is being driven, so a
+// table nobody is looking at does not claim to have a selection.
+func tableStyles(theme *ui.Theme, focused bool) table.Styles {
 	styles := table.DefaultStyles()
 	styles.Header = styles.Header.
 		BorderStyle(lipgloss.NormalBorder()).
@@ -101,8 +175,11 @@ func tableStyles(theme *ui.Theme) table.Styles {
 		BorderBottom(true).
 		Foreground(theme.P.Muted).
 		Bold(false)
-	styles.Cell = styles.Cell.Foreground(theme.P.Fg)
-	styles.Selected = styles.Selected.Foreground(theme.P.OnEnv).Background(theme.P.Accent)
+	styles.Cell = lipgloss.NewStyle().Padding(0, 1)
+	styles.Selected = lipgloss.NewStyle()
+	if focused {
+		styles.Selected = theme.Selected2
+	}
 	return styles
 }
 
@@ -208,11 +285,8 @@ func (r results) resize(width, height int) results {
 	if !r.present || r.failure != "" {
 		return r
 	}
-	columns := columnsFor(r.columns, r.rows, width)
-	r.table.SetColumns(columns)
-	r.table.SetWidth(tableWidth(columns, width))
-	r.table.SetHeight(height)
-	return r
+	r.width, r.height = width, height
+	return r.rebuild()
 }
 
 func (r results) update(msg tea.Msg) (results, tea.Cmd) {
@@ -224,7 +298,7 @@ func (r results) update(msg tea.Msg) (results, tea.Cmd) {
 	return r, cmd
 }
 
-func (r results) render(theme *ui.Theme) string {
+func (r results) render(theme *ui.Theme, focused bool) string {
 	if !r.present {
 		return theme.Muted.Render("nothing has run yet")
 	}
@@ -234,6 +308,11 @@ func (r results) render(theme *ui.Theme) string {
 	if len(r.rows) == 0 {
 		return theme.Muted.Render("no rows") + "\n" + theme.ResultFooter(0, r.duration, false)
 	}
-	return strings.TrimRight(r.table.View(), "\n") + "\n" +
-		theme.ResultFooter(len(r.rows), r.duration, r.truncated)
+	shown := r.table
+	shown.SetStyles(tableStyles(theme, focused))
+	footer := theme.ResultFooter(len(r.rows), r.duration, r.truncated)
+	if place := r.place(); place != "" {
+		footer = ui.SplitLine(footer, theme.Subtle.Render(place), r.width)
+	}
+	return strings.TrimRight(shown.View(), "\n") + "\n" + footer
 }

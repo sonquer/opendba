@@ -225,6 +225,71 @@ func TestInfoReportsFailures(t *testing.T) {
 	}
 }
 
+// The server answers with nulls for a session the role may not look into, and
+// with no rows at all when nothing is waiting, both of which used to blank the
+// whole group.
+func TestSessions(t *testing.T) {
+	conn, pool := mocked(t, readOnlyConfig())
+	pool.ExpectQuery("pg_stat_activity").WillReturnRows(
+		pgxmock.NewRows([]string{"pid", "user", "application", "client", "database",
+			"state", "wait", "seconds", "query", "mine"}).
+			AddRow(int64(40218), "api", "orders", "10.0.0.4", "bullet", "active", "Lock",
+				72.5, "UPDATE orders SET total = 1", false).
+			AddRow(int64(40219), "", "", "local", "bullet", "idle", "", 4.0, "", true))
+
+	sessions, err := conn.Sessions(context.Background())
+	if err != nil {
+		t.Fatalf("Sessions: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %+v", sessions)
+	}
+	if sessions[0].ID != "40218" || sessions[0].Duration != 72500*time.Millisecond {
+		t.Errorf("session = %+v", sessions[0])
+	}
+	if !sessions[0].Running() || sessions[1].Running() {
+		t.Errorf("only an active session is running: %+v", sessions)
+	}
+	if !sessions[1].Mine {
+		t.Error("our own session must be marked")
+	}
+}
+
+func TestSessionsReportsFailures(t *testing.T) {
+	conn, pool := mocked(t, readOnlyConfig())
+	pool.ExpectQuery("pg_stat_activity").WillReturnError(errors.New("permission denied"))
+	if _, err := conn.Sessions(context.Background()); err == nil {
+		t.Fatal("want an error")
+	}
+}
+
+func TestStoppingASession(t *testing.T) {
+	conn, pool := mocked(t, readOnlyConfig())
+	pool.ExpectQuery("pg_cancel_backend").WithArgs("40218").
+		WillReturnRows(pgxmock.NewRows([]string{"signalled"}).AddRow(true))
+	if err := conn.Stop(context.Background(), "40218", false); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+
+	pool.ExpectQuery("pg_terminate_backend").WithArgs("40218").
+		WillReturnRows(pgxmock.NewRows([]string{"signalled"}).AddRow(true))
+	if err := conn.Stop(context.Background(), "40218", true); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+
+	pool.ExpectQuery("pg_cancel_backend").WithArgs("1").
+		WillReturnRows(pgxmock.NewRows([]string{"signalled"}).AddRow(false))
+	err := conn.Stop(context.Background(), "1", false)
+	if err == nil || !strings.Contains(err.Error(), "already be gone") {
+		t.Errorf("a session that could not be signalled must say so: %v", err)
+	}
+
+	pool.ExpectQuery("pg_cancel_backend").WithArgs("2").WillReturnError(errors.New("permission denied"))
+	if err := conn.Stop(context.Background(), "2", false); err == nil {
+		t.Fatal("want an error")
+	}
+}
+
 func TestDatabases(t *testing.T) {
 	conn, pool := mocked(t, readOnlyConfig())
 	pool.ExpectQuery("pg_database").WillReturnRows(
@@ -266,8 +331,8 @@ func TestSchemas(t *testing.T) {
 func TestTables(t *testing.T) {
 	conn, pool := mocked(t, readOnlyConfig())
 	pool.ExpectQuery("pg_class").WithArgs("app").WillReturnRows(
-		pgxmock.NewRows([]string{"schema", "name", "kind", "rows", "size", "comment"}).
-			AddRow("app", "users", "table", int64(1200), int64(8192), "people"))
+		tableRows().AddRow("app", "users", "table", int64(1200), int64(8192), "people",
+			true, int64(900), int64(100), int64(1180), int64(20), 0.97, int64(4096), vacuumedAt))
 
 	tables, err := conn.Tables(context.Background(), "app")
 	if err != nil {
@@ -279,6 +344,60 @@ func TestTables(t *testing.T) {
 	if tables[0].Rows != 1200 || tables[0].Size != 8192 || tables[0].Comment != "people" {
 		t.Errorf("table = %+v", tables[0])
 	}
+	if !tables[0].Stats || tables[0].IndexScans != 900 || tables[0].DeadRows != 20 {
+		t.Errorf("the counters the server keeps must reach the table: %+v", tables[0])
+	}
+	if tables[0].CacheHit != 0.97 || tables[0].IndexSize != 4096 {
+		t.Errorf("table = %+v", tables[0])
+	}
+	if tables[0].LastVacuum.IsZero() {
+		t.Error("a table that was vacuumed must say when")
+	}
+	if share, ok := tables[0].Indexed(); !ok || share < 0.89 || share > 0.91 {
+		t.Errorf("Indexed() = %v, %v", share, ok)
+	}
+	if dead, ok := tables[0].Dead(); !ok || dead < 0.016 || dead > 0.017 {
+		t.Errorf("Dead() = %v, %v", dead, ok)
+	}
+}
+
+// tableRows is the shape the listing scans, kept in one place because it is
+// long and every test that lists a table needs all of it.
+func tableRows() *pgxmock.Rows {
+	return pgxmock.NewRows([]string{
+		"schema", "name", "kind", "rows", "size", "comment", "stats",
+		"idx_scan", "seq_scan", "live", "dead", "hit", "index_size", "vacuumed",
+	})
+}
+
+var vacuumedAt = time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+
+func indexRows() *pgxmock.Rows {
+	return pgxmock.NewRows([]string{
+		"schema", "table", "name", "definition", "size", "scans", "read", "unique", "primary", "stats",
+	})
+}
+
+// A table nobody has read yet reports no share, rather than a share of nothing.
+func TestATableWithNoStatisticsSaysSo(t *testing.T) {
+	conn, pool := mocked(t, readOnlyConfig())
+	pool.ExpectQuery("pg_class").WithArgs("app").WillReturnRows(
+		tableRows().AddRow("app", "fresh", "table", int64(0), int64(8192), "",
+			false, int64(0), int64(0), int64(0), int64(0), float64(-1), int64(0), time.Unix(0, 0).UTC()))
+
+	tables, err := conn.Tables(context.Background(), "app")
+	if err != nil {
+		t.Fatalf("Tables: %v", err)
+	}
+	if tables[0].Stats || tables[0].CacheHit != 0 || !tables[0].LastVacuum.IsZero() {
+		t.Errorf("table = %+v", tables[0])
+	}
+	if _, ok := tables[0].Indexed(); ok {
+		t.Error("a table with no counters has no share to report")
+	}
+	if _, ok := tables[0].Dead(); ok {
+		t.Error("a table with no counters has no dead rows to report")
+	}
 }
 
 // A connection with no schema configured lists what the whole database holds,
@@ -287,9 +406,11 @@ func TestTables(t *testing.T) {
 func TestTablesWithoutASchemaReachEveryOne(t *testing.T) {
 	conn, pool := mocked(t, readOnlyConfig())
 	pool.ExpectQuery("pg_class").WithArgs("").WillReturnRows(
-		pgxmock.NewRows([]string{"schema", "name", "kind", "rows", "size", "comment"}).
-			AddRow("app", "users", "table", int64(2), int64(8192), "").
-			AddRow("billing", "invoices", "table", int64(9), int64(4096), ""))
+		tableRows().
+			AddRow("app", "users", "table", int64(2), int64(8192), "",
+				true, int64(1), int64(0), int64(2), int64(0), 1.0, int64(0), vacuumedAt).
+			AddRow("billing", "invoices", "table", int64(9), int64(4096), "",
+				true, int64(0), int64(4), int64(9), int64(1), 0.5, int64(0), vacuumedAt))
 
 	tables, err := conn.Tables(context.Background(), "")
 	if err != nil {
@@ -306,8 +427,8 @@ func TestTablesWithoutASchemaReachEveryOne(t *testing.T) {
 func TestIndexesWithoutASchemaReachEveryOne(t *testing.T) {
 	conn, pool := mocked(t, readOnlyConfig())
 	pool.ExpectQuery("pg_index").WithArgs("").WillReturnRows(
-		pgxmock.NewRows([]string{"schema", "table", "name", "definition", "size", "scans", "unique", "primary"}).
-			AddRow("billing", "invoices", "invoices_pkey", "CREATE UNIQUE INDEX", int64(16384), int64(94), true, true))
+		indexRows().AddRow("billing", "invoices", "invoices_pkey", "CREATE UNIQUE INDEX",
+			int64(16384), int64(94), int64(940), true, true, true))
 
 	indexes, err := conn.Indexes(context.Background(), "")
 	if err != nil {
@@ -382,15 +503,30 @@ func TestDeleteAction(t *testing.T) {
 func TestIndexes(t *testing.T) {
 	conn, pool := mocked(t, readOnlyConfig())
 	pool.ExpectQuery("pg_index").WithArgs("public").WillReturnRows(
-		pgxmock.NewRows([]string{"schema", "table", "name", "definition", "size", "scans", "unique", "primary"}).
-			AddRow("public", "orders", "orders_pkey", "CREATE UNIQUE INDEX", int64(16384), int64(94), true, true))
+		indexRows().
+			AddRow("public", "orders", "orders_pkey", "CREATE UNIQUE INDEX",
+				int64(16384), int64(94), int64(940), true, true, true).
+			AddRow("public", "orders", "orders_placed_at", "CREATE INDEX",
+				int64(8192), int64(0), int64(0), false, false, true))
 
 	indexes, err := conn.Indexes(context.Background(), "public")
 	if err != nil {
 		t.Fatalf("Indexes: %v", err)
 	}
-	if len(indexes) != 1 || !indexes[0].Primary || indexes[0].Scans != 94 {
+	if len(indexes) != 2 || !indexes[0].Primary || indexes[0].Scans != 94 {
 		t.Fatalf("indexes = %+v", indexes)
+	}
+	if indexes[0].Rows != 940 {
+		t.Errorf("an index says how many rows it handed back: %+v", indexes[0])
+	}
+	if indexes[0].Idle() {
+		t.Error("a primary key is never idle, it is there to refuse duplicates")
+	}
+	if !indexes[1].Idle() {
+		t.Error("an index nothing has read is idle")
+	}
+	if indexes[1].Qualified() != "public.orders_placed_at" {
+		t.Errorf("index = %+v", indexes[1])
 	}
 }
 

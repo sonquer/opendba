@@ -17,14 +17,15 @@ import (
 
 func (m Model) dashboardBody() string {
 	width := ui.FrameWidth(m.width)
-	return strings.Join([]string{
+	sections := []string{
 		m.verdict4Health(width),
-		m.theme.Muted.Render("  " + m.schema()),
 		"",
 		m.groups(width),
-		"",
-		m.sessions(width),
-	}, "\n")
+	}
+	if running := m.sessions(width); running != "" {
+		sections = append(sections, "", running)
+	}
+	return strings.Join(sections, "\n")
 }
 
 // sessions is the list of what the server is running, for the drivers that
@@ -58,9 +59,8 @@ func (m Model) verdict4Health(width int) string {
 		sentence = ui.Plural(len(trouble), "thing needs", "things need") +
 			" attention: " + strings.Join(trouble, ", ")
 	}
-	line := m.theme.Severity(severity).Render(severity.Glyph()+" ") +
-		m.theme.Value.Render(ui.Truncate(sentence, width/2))
-	return ui.SplitLine(line, m.counts(), width)
+	return m.theme.Severity(severity).Render(severity.Glyph()+" ") +
+		m.theme.Value.Render(ui.Clip(sentence, width-2))
 }
 
 // twoColumns is where a second column still leaves room for the plain words
@@ -107,18 +107,23 @@ func (m Model) groups(width int) string {
 // no finding uses, for measuring them all at once.
 func (m Model) readings(group string) []ui.Reading {
 	readings := make([]ui.Reading, 0, len(m.findings))
+	at := 0
 	for _, finding := range m.findings {
-		if group != every && finding.Group != group {
-			continue
-		}
-		readings = append(readings, ui.Reading{
+		reading := ui.Reading{
+			Code:     finding.Code,
 			Severity: m.theme.Severity4Driver(finding.Severity),
 			Label:    finding.Subsystem,
 			Value:    finding.Value,
 			Note:     finding.Note,
 			Ratio:    finding.Ratio,
 			Measured: finding.Measured,
-		})
+			Cursor:   at == m.reading && !m.onSessions,
+		}
+		at++
+		if group != every && finding.Group != group {
+			continue
+		}
+		readings = append(readings, reading)
 	}
 	return readings
 }
@@ -139,30 +144,6 @@ func (m Model) group(name string, width int, at ui.Columns) string {
 	return m.theme.Section(title, "", width) + "\n\n" + m.theme.Readings(readings, width, at)
 }
 
-func (m Model) counts() string {
-	healthy, warnings, failing := 0, 0, 0
-	for _, finding := range m.findings {
-		switch finding.Severity {
-		case driver.SeverityCritical:
-			failing++
-		case driver.SeverityWarn:
-			warnings++
-		default:
-			healthy++
-		}
-	}
-	return m.theme.Counts(healthy, warnings, failing)
-}
-
-func (m Model) schema() string {
-	return ui.Dotted(
-		m.where(),
-		ui.Plural(len(m.tables), "table", "tables"),
-		ui.Plural(len(m.indexes), "index", "indexes"),
-		ui.ByteSize(m.totalSize()),
-	)
-}
-
 func (m Model) totalSize() int64 {
 	var total int64
 	for _, table := range m.tables {
@@ -173,8 +154,6 @@ func (m Model) totalSize() int64 {
 	return total
 }
 
-// paneWidth is how wide the editor and its results are, which depends on
-// whether the schema is beside them.
 func (m Model) paneWidth() int {
 	width := ui.FrameWidth(m.width)
 	if m.zoomed || m.sidebar.hidden {
@@ -185,15 +164,26 @@ func (m Model) paneWidth() int {
 
 // editorPane stacks the statement, how it was classified, and what it returned.
 func (m Model) editorPane(width, height int) string {
-	rows := editorRows(m.height)
+	rows := m.editorRows()
 	sections := []string{
-		lipgloss.NewStyle().Height(rows).MaxHeight(rows).Render(m.editor.View()),
+		lipgloss.NewStyle().Height(rows).MaxHeight(rows).Render(m.statementView(width)),
 		m.theme.Rule(width),
-		m.verdict(width),
-		m.theme.Rule(width),
-		m.results.render(m.theme),
 	}
+	if verdict := m.verdict(width); verdict != "" {
+		sections = append(sections, verdict, m.theme.Rule(width))
+	}
+	sections = append(sections, m.results.render(m.theme, m.focus == focusResults))
 	return ui.Fit(strings.Join(sections, "\n"), height)
+}
+
+// statementView keeps the editor plain while it is being typed into, because a
+// textarea has no way to colour what is inside it, and shows the statement
+// highlighted the moment the cursor is somewhere else.
+func (m Model) statementView(width int) string {
+	if m.focus == focusEditor || strings.TrimSpace(m.statement()) == "" {
+		return m.editor.View()
+	}
+	return m.theme.Markdown(width).SQL(m.statement())
 }
 
 // zoomBody gives the result the whole window, with the statement that produced
@@ -204,32 +194,39 @@ func (m Model) zoomBody() string {
 	if statement := m.theme.Markdown(width).SQL(m.results.statement); statement != "" {
 		sections = append(sections, statement, m.theme.Rule(width))
 	}
-	sections = append(sections, m.results.render(m.theme))
+	sections = append(sections, m.results.render(m.theme, true))
 	return strings.Join(sections, "\n")
 }
 
 // schemaBody names the schema a list came from, so an empty one reads as a
 // place to leave rather than a database with nothing in it.
 func (m Model) schemaBody(title, list string) string {
+	tag := ui.Dotted(m.where(),
+		ui.Plural(len(m.tables), "table", "tables"),
+		ui.ByteSize(m.totalSize()))
 	return strings.Join([]string{
-		m.theme.Section(title, m.where(), ui.FrameWidth(m.width)),
+		m.theme.Section(title, m.theme.Muted.Render(tag), ui.FrameWidth(m.width)),
 		"",
 		list,
 	}, "\n")
 }
 
+// where names the schemas a listing came from, which is the form's answer and
+// not the default schema for unqualified names.
 func (m Model) where() string {
-	if schema := m.session.Connection.Schema(); schema != "" {
-		return schema
+	filter := m.session.Connection.Filter()
+	if len(filter) == 0 {
+		return "every schema"
 	}
-	return "every schema"
+	return strings.Join(filter, ", ")
 }
 
 // verdict says how the statement would be classified, without shouting at
-// someone who is still typing it.
+// someone who is still typing it. An empty editor has nothing to classify, and
+// the empty result underneath already says there is nothing here yet.
 func (m Model) verdict(width int) string {
 	if strings.TrimSpace(m.statement()) == "" {
-		return m.theme.Muted.Render("nothing to run yet")
+		return ""
 	}
 	result := m.Verdict()
 	if unfinished(result) {

@@ -7,12 +7,12 @@ import (
 
 func TestKeystroke(t *testing.T) {
 	mac := map[string]string{
-		"ctrl+enter":  "⌃⏎",
-		"super+enter": "⌘⏎",
+		"ctrl+enter":  "⌃enter",
+		"super+enter": "⌘enter",
 		"ctrl+k":      "⌃K",
 		"esc":         "esc",
 		"tab":         "tab",
-		"enter":       "⏎",
+		"enter":       "enter",
 		"up":          "↑",
 		"q":           "q",
 		"pgdown":      "⇟",

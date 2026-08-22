@@ -11,7 +11,7 @@ const (
 	MaxTextWidth = 96
 
 	minChromeWidth  = 40
-	minChromeHeight = 10
+	minChromeHeight = 11
 
 	gutter    = 2
 	chromePad = 9
@@ -54,7 +54,7 @@ func (t *Theme) EnvLine(env EnvColor, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	return lipgloss.NewStyle().Foreground(env.Swatch()).Render(strings.Repeat("▔", width))
+	return lipgloss.NewStyle().Foreground(env.Swatch()).Render(strings.Repeat("▀", width))
 }
 
 // BodyHeight returns how many rows Chrome leaves for the body.
@@ -62,7 +62,7 @@ func BodyHeight(height int) int {
 	if height < minChromeHeight {
 		height = minChromeHeight
 	}
-	return height - chromePad
+	return max(height-chromePad, 1)
 }
 
 // FrameWidth returns the width the rules and the footer span.
@@ -108,6 +108,17 @@ func Window(content string, offset, lines int) (string, int) {
 		end = len(rows)
 	}
 	return strings.Join(rows[offset:end], "\n"), len(rows) - end
+}
+
+// LineOf returns the row a marker sits on, which is how a list keeps its cursor
+// on screen without knowing how it was drawn.
+func LineOf(content, marker string) int {
+	for i, row := range strings.Split(content, "\n") {
+		if strings.Contains(row, marker) {
+			return i
+		}
+	}
+	return -1
 }
 
 // MaxOffset returns how far content can be scrolled inside an area.

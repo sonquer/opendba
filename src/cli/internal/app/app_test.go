@@ -129,14 +129,23 @@ func (r *fakeResult) Duration() time.Duration { return 12 * time.Millisecond }
 
 func (r *fakeResult) Close() error { return nil }
 
+// writable is a session on a profile that may change things, which is what the
+// keys that stop other sessions are gated on.
+func writable(conn driver.Conn) cli.Session {
+	opened := session(conn)
+	opened.Connection.Mode = config.ReadWrite
+	return opened
+}
+
 func session(conn driver.Conn) cli.Session {
 	return cli.Session{
-		Connection: config.Connection{Name: "production-eu", Driver: "sqlite", Mode: config.ReadOnly, Color: "red"},
-		Settings:   config.DefaultSettings(),
-		Conn:       conn,
-		Info:       driver.ServerInfo{Driver: "sqlite", Version: "3.45"},
-		Guard:      sqlguard.New(sqldialect.SQLite()),
-		Theme:      ui.Default(),
+		Capabilities: driver.Capabilities{Sessions: true, Health: true},
+		Connection:   config.Connection{Name: "production-eu", Driver: "sqlite", Mode: config.ReadOnly, Color: "red"},
+		Settings:     config.DefaultSettings(),
+		Conn:         conn,
+		Info:         driver.ServerInfo{Driver: "sqlite", Version: "3.45"},
+		Guard:        sqlguard.New(sqldialect.SQLite()),
+		Theme:        ui.Default(),
 	}
 }
 
@@ -176,6 +185,26 @@ func healthy() *fakeConn {
 			{Name: "pg_catalog", Tables: 62, System: true},
 		},
 	}
+}
+
+// twoSchemas is a server with something to choose between, which is what a form
+// that ticks several schemas needs.
+func twoSchemas() *fakeConn {
+	conn := healthy()
+	conn.tables = []driver.Table{
+		{Schema: "public", Name: "users", Kind: "table", Rows: 2, Size: 4096},
+		{Schema: "reporting", Name: "daily", Kind: "view", Rows: 9, Size: 8192},
+	}
+	conn.indexes = []driver.Index{
+		{Schema: "public", Table: "users", Name: "users_pkey", Size: 2048},
+		{Schema: "reporting", Table: "daily", Name: "daily_day", Size: 1024},
+	}
+	conn.schemas = []driver.Schema{
+		{Name: "public", Tables: 1},
+		{Name: "reporting", Tables: 1},
+		{Name: "pg_catalog", Tables: 62, System: true},
+	}
+	return conn
 }
 
 func plain(s string) string { return ansi.Strip(s) }
@@ -320,10 +349,14 @@ func TestLoadsEverythingOnStart(t *testing.T) {
 		t.Fatalf("model = %+v", m)
 	}
 	content := plain(m.content())
-	for _, want := range []string{"production-eu", "sqlite 3.45", "READ ONLY", "integrity", "1 table", "1 index"} {
+	for _, want := range []string{"production-eu", "sqlite 3.45", "READ ONLY", "integrity"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("dashboard missing %q:\n%s", want, content)
 		}
+	}
+	tables, _ := press(t, m, "s")
+	if !strings.Contains(plain(tables.content()), "1 table") {
+		t.Errorf("the tables screen counts what it lists:\n%s", plain(tables.content()))
 	}
 }
 
@@ -430,19 +463,21 @@ func TestReload(t *testing.T) {
 	}
 }
 
+// A page that is read rather than walked scrolls on its own, and cannot be
+// scrolled past either end of itself.
 func TestScrollingIsBounded(t *testing.T) {
 	m := loaded(t, crowded(20))
-	m.height = 12
-	inspect := m
-	if up, _ := press(t, inspect, "up"); up.offset != 0 {
+	m.width, m.height = 90, 12
+	page, _ := press(t, m, "?")
+	if up, _ := press(t, page, "up"); up.offset != 0 {
 		t.Errorf("offset = %d", up.offset)
 	}
-	down, _ := press(t, inspect, "down")
+	down, _ := press(t, page, "down")
 	if down.offset != 1 {
 		t.Errorf("offset = %d", down.offset)
 	}
 	far := down
-	for range 200 {
+	for range 400 {
 		moved, _ := press(t, far, "down")
 		if moved.offset == far.offset {
 			break
@@ -453,19 +488,97 @@ func TestScrollingIsBounded(t *testing.T) {
 	if far.offset != limit {
 		t.Errorf("offset = %d, want the last row at %d", far.offset, limit)
 	}
-	page, _ := press(t, inspect, "pgdown")
-	if page.offset == 0 {
+	paged, _ := press(t, page, "pgdown")
+	if paged.offset == 0 {
 		t.Error("pgdown must move a whole page")
 	}
-	if back, _ := press(t, page, "pgup"); back.offset != 0 {
+	if back, _ := press(t, paged, "pgup"); back.offset != 0 {
 		t.Errorf("pgup must come back to the top, got %d", back.offset)
 	}
-	if unknown, _ := press(t, inspect, "x"); unknown.offset != 0 {
+	if unknown, _ := press(t, page, "w"); unknown.offset != 0 {
 		t.Error("an unknown key scrolls nothing")
 	}
-	dashboard, _ := press(t, inspect, "esc")
+	dashboard, _ := press(t, page, "esc")
 	if dashboard.offset != 0 {
 		t.Error("leaving a view goes back to the top")
+	}
+}
+
+// The tables and the indexes are lists, so the arrows walk them, the body
+// follows the cursor, and enter opens the row it is on.
+func TestTheCatalogueListsAreWalked(t *testing.T) {
+	for _, screen := range []struct {
+		key   string
+		view  view
+		title string
+	}{{"s", viewSchema, "main.users"}, {"i", viewIndexes, "main.users_pkey"}} {
+		m := loaded(t, healthy())
+		m.width, m.height = 100, 20
+		list, _ := press(t, m, screen.key)
+		if list.view != screen.view || list.listing != 0 {
+			t.Fatalf("%s = %s, cursor %d", screen.key, list.view, list.listing)
+		}
+		wrapped, _ := press(t, list, "up")
+		if wrapped.listing != list.listed()-1 {
+			t.Errorf("the list wraps, got %d of %d", wrapped.listing, list.listed())
+		}
+		opened, _ := press(t, list, "enter")
+		if opened.page == nil {
+			t.Fatalf("enter on %s must open the row", screen.view)
+		}
+		if opened.page.title != screen.title {
+			t.Errorf("page = %q, want %q", opened.page.title, screen.title)
+		}
+		closed, _ := press(t, opened, "esc")
+		if closed.page != nil {
+			t.Error("esc closes the page")
+		}
+	}
+}
+
+func TestAnEmptyCatalogueListHasNothingToOpen(t *testing.T) {
+	conn := healthy()
+	conn.tables, conn.indexes = nil, nil
+	m := loaded(t, conn)
+	m.width, m.height = 100, 20
+	for _, key := range []string{"s", "i"} {
+		list, _ := press(t, m, key)
+		moved, _ := press(t, list, "down")
+		if moved.listing != 0 {
+			t.Errorf("there is nothing to walk: %d", moved.listing)
+		}
+		opened, _ := press(t, list, "enter")
+		if opened.page != nil {
+			t.Error("there is nothing to open")
+		}
+		if !strings.Contains(plain(list.content()), "no ") {
+			t.Errorf("an empty list must say so:\n%s", plain(list.content()))
+		}
+	}
+}
+
+// The dashboard is a list, so the arrows walk it and the body follows the
+// cursor rather than scrolling on its own.
+func TestTheDashboardWalksItsReadings(t *testing.T) {
+	m := loaded(t, crowded(20))
+	m.width, m.height = 90, 16
+	down, _ := press(t, m, "down")
+	if down.reading != 1 {
+		t.Fatalf("reading = %d", down.reading)
+	}
+	up, _ := press(t, down, "up")
+	if up.reading != 0 {
+		t.Errorf("reading = %d", up.reading)
+	}
+	wrapped, _ := press(t, up, "up")
+	if wrapped.reading != len(wrapped.readings(every))-1 {
+		t.Errorf("the list wraps, got %d", wrapped.reading)
+	}
+	if wrapped.offset == 0 {
+		t.Error("the body must follow the cursor down the list")
+	}
+	if !strings.Contains(plain(wrapped.content()), "▌") {
+		t.Errorf("the row under the cursor must be visible:\n%s", plain(wrapped.content()))
 	}
 }
 
@@ -499,7 +612,7 @@ func TestWindowSize(t *testing.T) {
 	if strings.TrimSpace(rows[0]) != "" {
 		t.Errorf("the frame breathes at the top: %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "▔") {
+	if !strings.Contains(rows[1], "▀") {
 		t.Errorf("the environment is a line across the top: %q", rows[1])
 	}
 	if !strings.HasPrefix(rows[2], "  → ~ production-eu") {
@@ -508,7 +621,7 @@ func TestWindowSize(t *testing.T) {
 	if resized.editor.Width() > resized.paneWidth() || resized.editor.Width() < resized.paneWidth()-8 {
 		t.Errorf("the editor must fill its pane, got %d of %d", resized.editor.Width(), resized.paneWidth())
 	}
-	if resized.editor.Height() != editorRows(40) {
+	if resized.editor.Height() != resized.editorRows() {
 		t.Errorf("the editor must follow the height, got %d", resized.editor.Height())
 	}
 }
@@ -818,5 +931,22 @@ func TestTheHelpIsADocument(t *testing.T) {
 	}
 	if plain(help.content()) != first {
 		t.Error("a second render at the same width must match the first")
+	}
+}
+
+func TestAnEmptyEditorSaysItOnce(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 100, 32
+	editing, _ := press(t, m, "e")
+	view := plain(editing.content())
+	if strings.Contains(view, "nothing to run yet") {
+		t.Errorf("one placeholder is enough:\n%s", view)
+	}
+	if !strings.Contains(view, "nothing has run yet") {
+		t.Errorf("the result still says it is empty:\n%s", view)
+	}
+	typed, _ := press(t, editing, "s")
+	if typed.verdict(80) == "" {
+		t.Error("a statement being typed is classified")
 	}
 }

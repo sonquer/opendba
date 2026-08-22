@@ -14,14 +14,14 @@ import (
 // user is only visible to a role in pg_monitor, and comes back empty for
 // everyone else, which the interface shows as a dash rather than an error.
 const sessionsQuery = `SELECT pid, coalesce(usename, ''), coalesce(application_name, ''),
-	coalesce(host(client_addr), 'local'), coalesce(state, ''),
+	coalesce(host(client_addr), 'local'), coalesce(datname, ''), coalesce(state, ''),
 	coalesce(wait_event_type, ''),
-	coalesce(extract(epoch FROM now() - coalesce(query_start, backend_start)), 0),
+	greatest(coalesce(extract(epoch FROM clock_timestamp() - coalesce(query_start, backend_start)), 0), 0),
 	coalesce(query, ''),
 	pid = pg_backend_pid()
 FROM pg_stat_activity
-WHERE backend_type = 'client backend' AND datname = current_database()
-ORDER BY coalesce(query_start, backend_start)`
+WHERE coalesce(backend_type, 'client backend') = 'client backend'
+ORDER BY state = 'active' DESC, pid = pg_backend_pid(), coalesce(query_start, backend_start)`
 
 func (c *connection) Sessions(ctx context.Context) ([]driver.Session, error) {
 	var sessions []driver.Session
@@ -32,7 +32,8 @@ func (c *connection) Sessions(ctx context.Context) ([]driver.Session, error) {
 			seconds float64
 		)
 		if err := rows.Scan(&pid, &session.User, &session.Application, &session.Client,
-			&session.State, &session.Wait, &seconds, &session.Statement, &session.Mine); err != nil {
+			&session.Database, &session.State, &session.Wait, &seconds,
+			&session.Statement, &session.Mine); err != nil {
 			return err
 		}
 		session.ID = fmt.Sprintf("%d", pid)
