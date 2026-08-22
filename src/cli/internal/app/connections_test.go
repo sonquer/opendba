@@ -202,12 +202,17 @@ func TestSwitchingToAnotherConnection(t *testing.T) {
 	}
 }
 
-func TestSwitchingToTheSameConnectionChangesNothing(t *testing.T) {
+// There is nothing to open on the connection already in use, so enter goes a
+// level in instead: to the database and the schemas it is reading.
+func TestEnterOnTheConnectionInUseGoesIn(t *testing.T) {
 	workspace := workspaceWith(t)
 	m := browsing(t, workspace)
-	same, cmd := press(t, m, "enter")
-	if cmd != nil || same.view != viewDashboard || same.loading {
-		t.Error("the connection in use is already open")
+	inside, cmd := press(t, m, "enter")
+	if inside.view != viewCatalog || cmd == nil {
+		t.Errorf("view = %s", inside.view)
+	}
+	if inside.loading {
+		t.Error("nothing is reconnected")
 	}
 	if len(workspace.opened) != 0 {
 		t.Errorf("opened = %v", workspace.opened)
@@ -365,5 +370,55 @@ func TestTheConnectionsScreenIsReachedFromTheEditor(t *testing.T) {
 	}
 	if !strings.Contains(plain(listed.footer(0)), "open") {
 		t.Errorf("the list footer must name its own keys: %s", plain(listed.footer(0)))
+	}
+}
+
+// A host, a port or an access mode can be changed without removing the
+// connection and starting again.
+func TestAConnectionCanBeEdited(t *testing.T) {
+	workspace := workspaceWith(t)
+	m := browsing(t, workspace)
+	editing, cmd := press(t, m, "e")
+	if editing.wizard == nil || cmd == nil {
+		t.Fatal("e must open the profile under the cursor")
+	}
+	if editing.wizard.editing.Name != "production-eu" {
+		t.Errorf("editing = %+v", editing.wizard.editing)
+	}
+	if editing.wizard.stage != stageDetails {
+		t.Error("the driver is not a thing an existing connection changes")
+	}
+	view := plain(editing.wizard.content())
+	for _, want := range []string{"configuration", "production-eu"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the screen must say what it is editing %q:\n%s", want, view)
+		}
+	}
+	if editing.wizard.form.value("name") != "production-eu" {
+		t.Errorf("every field must be seeded: %q", editing.wizard.form.value("name"))
+	}
+}
+
+// Saving a profile that is not the one in use writes it and stays where you
+// are. Saving the one in use opens it again, because the change is about the
+// connection you are on.
+func TestSavingAnEditedProfile(t *testing.T) {
+	workspace := workspaceWith(t)
+	m := browsing(t, workspace)
+	editing, _ := press(t, m, "e")
+
+	elsewhere := SetupDone{Connection: config.Connection{ID: "another", Name: "staging"}, Saved: true}
+	stayed, _ := editing.Update(elsewhere)
+	if stayed.(Model).view == viewDashboard || stayed.(Model).loading {
+		t.Error("saving somebody else's profile is not a reason to leave yours")
+	}
+	if !strings.Contains(plain(stayed.(Model).content()), "saved staging") {
+		t.Errorf("but it must say it saved:\n%s", plain(stayed.(Model).content()))
+	}
+
+	mine := SetupDone{Connection: editing.session.Connection, Saved: true}
+	reopened, cmd := editing.Update(mine)
+	if !reopened.(Model).loading || cmd == nil {
+		t.Error("the connection in use must be opened again")
 	}
 }

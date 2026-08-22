@@ -76,7 +76,7 @@ func TestTableList(t *testing.T) {
 			Stats: true, IndexScans: 900, SeqScans: 100, LiveRows: 1180, DeadRows: 20, CacheHit: 0.98},
 		{Schema: "public", Name: "fresh", Kind: "table", Rows: 0, Size: 8192},
 	}
-	out := plain(theme.TableList(tables, 0, 110))
+	out := plain(theme.TableList(tables, List{Cursor: 0, Sort: -1, Width: 110}))
 	for _, want := range []string{
 		"table", "rows", "size", "read from memory",
 		"public.users", "1,200,000", "8.0 KiB", "98%",
@@ -92,17 +92,18 @@ func TestTableList(t *testing.T) {
 	if len(rows) != 4 {
 		t.Errorf("a heading, a rule and one row per table:\n%s", out)
 	}
-	painted := strings.Split(theme.TableList(tables, 0, 110), "\n")
-	if !strings.Contains(painted[2], background(theme.P.Selection)) {
-		t.Errorf("the row under the cursor is painted end to end: %q", painted[2])
+	painted := strings.Split(theme.TableList(tables, List{Cursor: 0, Sort: -1, Width: 110}), "\n")
+	first := len(painted) - 2
+	if !strings.Contains(painted[first], background(theme.P.Selection)) {
+		t.Errorf("the row under the cursor is painted end to end: %q", painted[first])
 	}
-	if strings.Contains(painted[3], background(theme.P.Selection)) {
-		t.Errorf("and only that row: %q", painted[3])
+	if strings.Contains(painted[first+1], background(theme.P.Selection)) {
+		t.Errorf("and only that row: %q", painted[first+1])
 	}
-	if lipgloss.Width(painted[2]) != 110 {
-		t.Errorf("a painted row reaches the far side: %d", lipgloss.Width(painted[2]))
+	if lipgloss.Width(painted[first]) != 110 {
+		t.Errorf("a painted row reaches the far side: %d", lipgloss.Width(painted[first]))
 	}
-	if !strings.Contains(plain(theme.TableList(nil, 0, 110)), "no tables here") {
+	if !strings.Contains(plain(theme.TableList(nil, List{Cursor: 0, Sort: -1, Width: 110})), "no tables here") {
 		t.Error("an empty schema must say so")
 	}
 }
@@ -111,12 +112,12 @@ func TestATableThatIsWalkedOrRottingIsFlagged(t *testing.T) {
 	theme := Default()
 	rotting := driver.Table{Schema: "public", Name: "queue", Size: 8192, Stats: true,
 		IndexScans: 10, LiveRows: 100, DeadRows: 40, CacheHit: 0.99}
-	if got := plain(theme.TableList([]driver.Table{rotting}, -1, 110)); !strings.Contains(got, "act") {
+	if got := plain(theme.TableList([]driver.Table{rotting}, List{Cursor: -1, Sort: -1, Width: 110})); !strings.Contains(got, "act") {
 		t.Errorf("two rows in five dead is worth acting on:\n%s", got)
 	}
 	cold := driver.Table{Schema: "public", Name: "logs", Size: 8192, Stats: true,
 		IndexScans: 1, LiveRows: 10, CacheHit: 0.4}
-	if got := plain(theme.TableList([]driver.Table{cold}, -1, 110)); !strings.Contains(got, "watch") {
+	if got := plain(theme.TableList([]driver.Table{cold}, List{Cursor: -1, Sort: -1, Width: 110})); !strings.Contains(got, "watch") {
 		t.Errorf("a table read from disk is worth watching:\n%s", got)
 	}
 }
@@ -128,13 +129,13 @@ func TestIndexList(t *testing.T) {
 		{Table: "orders", Name: "orders_placed", Size: 8192, Scans: 0, Stats: true},
 		{Table: "orders", Name: "orders_late", Size: -1, Scans: -1},
 	}
-	out := plain(theme.IndexList(indexes, 0, 110))
+	out := plain(theme.IndexList(indexes, List{Cursor: 0, Sort: -1, Width: 110}))
 	for _, want := range []string{"orders_pkey", "orders", "primary", "idle", "act", "n/a"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list missing %q:\n%s", want, out)
 		}
 	}
-	if !strings.Contains(plain(theme.IndexList(nil, 0, 110)), "no indexes here") {
+	if !strings.Contains(plain(theme.IndexList(nil, List{Cursor: 0, Sort: -1, Width: 110})), "no indexes here") {
 		t.Error("an empty schema must say so")
 	}
 }
@@ -260,8 +261,8 @@ func TestANarrowListingDropsItsNotes(t *testing.T) {
 	indexes := []driver.Index{
 		{Table: "orders", Name: "orders_placed_at_idx", Size: 8192, Scans: 4, Stats: true},
 	}
-	wide := plain(theme.IndexList(indexes, 0, 120))
-	narrow := plain(theme.IndexList(indexes, 0, 64))
+	wide := plain(theme.IndexList(indexes, List{Cursor: 0, Sort: -1, Width: 120}))
+	narrow := plain(theme.IndexList(indexes, List{Cursor: 0, Sort: -1, Width: 64}))
 	if !strings.Contains(wide, "used") {
 		t.Errorf("a wide window has room to say why:\n%s", wide)
 	}
@@ -284,7 +285,7 @@ func TestANarrowListingDropsItsNotes(t *testing.T) {
 
 func TestADriverThatCountsNothingSaysSo(t *testing.T) {
 	theme := Default()
-	got := plain(theme.IndexList([]driver.Index{{Table: "t", Name: "t_idx"}}, -1, 120))
+	got := plain(theme.IndexList([]driver.Index{{Table: "t", Name: "t_idx"}}, List{Cursor: -1, Sort: -1, Width: 120}))
 	for _, want := range []string{"unknown", "n/a"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("list missing %q:\n%s", want, got)
@@ -297,4 +298,48 @@ func TestADriverThatCountsNothingSaysSo(t *testing.T) {
 func background(c color.Color) string {
 	r, g, b, _ := c.RGBA()
 	return fmt.Sprintf("48;2;%d;%d;%d", r>>8, g>>8, b>>8)
+}
+
+// A list says what it is in the order of, because a column of numbers nobody
+// sorted and a column somebody sorted look the same.
+func TestTheSortedColumnIsMarked(t *testing.T) {
+	theme := Default()
+	tables := []driver.Table{{Schema: "public", Name: "users", Size: 8192}}
+	if got := plain(theme.TableList(tables, List{Cursor: -1, Sort: 2, Width: 110})); !strings.Contains(got, "size ↑") {
+		t.Errorf("the sorted column must say so:\n%s", got)
+	}
+	down := plain(theme.TableList(tables, List{Cursor: -1, Sort: 2, Reversed: true, Width: 110}))
+	if !strings.Contains(down, "size ↓") {
+		t.Errorf("and which way round:\n%s", down)
+	}
+	if strings.Contains(down, "rows ↓") {
+		t.Errorf("one column at a time:\n%s", down)
+	}
+	none := plain(theme.TableList(tables, List{Cursor: -1, Sort: -1, Width: 110}))
+	if strings.Contains(none, "↑") || strings.Contains(none, "↓") {
+		t.Errorf("a list nobody sorted says nothing:\n%s", none)
+	}
+}
+
+// The bar on an index row is measured against the busiest index on its table,
+// counted before any filter. Narrowed to one index, its own scans would be the
+// busiest thing left and every bar would be full.
+func TestABarSurvivesANarrowedList(t *testing.T) {
+	theme := Default()
+	all := []driver.Index{
+		{Table: "orders", Name: "orders_pkey", Scans: 1000, Stats: true},
+		{Table: "orders", Name: "orders_placed", Scans: 100, Stats: true},
+	}
+	theme.Bars("shade")
+	fill := BarStyleNamed("shade").Full
+	one := plain(theme.IndexList(all[1:], List{
+		Cursor: -1, Sort: -1, Width: 120, Busiest: Busiest(all),
+	}))
+	if got := strings.Count(one, fill); got != 2 {
+		t.Errorf("a tenth of the busiest index is a tenth of the bar, got %d cells:\n%s", got, one)
+	}
+	alone := plain(theme.IndexList(all[1:], List{Cursor: -1, Sort: -1, Width: 120}))
+	if got := strings.Count(alone, fill); got != gaugeWidth {
+		t.Errorf("without the count taken first, an index is the busiest thing left: %d", got)
+	}
 }

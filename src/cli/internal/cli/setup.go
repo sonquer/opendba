@@ -89,6 +89,28 @@ func (s Setup) storeSecret(id string, password []byte) (secretref.Ref, error) {
 	return vault, nil
 }
 
+// Password resolves the secret a saved profile refers to, so a screen editing
+// that profile can test the connection without making anyone retype it. A
+// reference nobody can resolve here, a prompt or a pgpass file, comes back
+// empty and lets the driver deal with it.
+func (s Setup) Password(ctx context.Context, connection config.Connection) []byte {
+	if strings.TrimSpace(connection.Secret) == "" {
+		return nil
+	}
+	ref, err := secretref.Parse(connection.Secret)
+	if err != nil {
+		return nil
+	}
+	if ref.Scheme == secretref.SchemePrompt || ref.Scheme == secretref.SchemePgpass {
+		return nil
+	}
+	secret, err := s.Secrets.Get(ctx, ref)
+	if err != nil {
+		return nil
+	}
+	return secret
+}
+
 func (s Setup) Forget(ctx context.Context, connection config.Connection) error {
 	if strings.TrimSpace(connection.Secret) == "" {
 		return nil

@@ -15,17 +15,19 @@ import (
 // lists is on screen.
 func (m Model) listingPage() (tea.Model, tea.Cmd) {
 	if m.view == viewIndexes {
-		if m.listing < 0 || m.listing >= len(m.indexes) {
+		shown := m.shownIndexes()
+		if m.listing < 0 || m.listing >= len(shown) {
 			return m, nil
 		}
-		page := m.indexPage(m.indexes[m.listing])
+		page := m.indexPage(shown[m.listing])
 		m.page = &page
 		return m, nil
 	}
-	if m.listing < 0 || m.listing >= len(m.tables) {
+	shown := m.shownTables()
+	if m.listing < 0 || m.listing >= len(shown) {
 		return m, nil
 	}
-	table := m.tables[m.listing]
+	table := shown[m.listing]
 	page := m.tablePage(table)
 	m.page = &page
 	return m, m.readOneColumn(table.Name)

@@ -56,8 +56,42 @@ func (t *Theme) Mode(mode string) string {
 	return t.BadgeStyle.Background(t.P.Warn).Render(mode)
 }
 
+// Headline is the one line someone who does not run databases for a living
+// reads and stops at: a word for the state on a badge, what it is about, and
+// how much came back fine. The badge carries the weight, because a glyph in
+// front of a sentence is a sentence.
+func (t *Theme) Headline(severity Severity, subject, balance string, width int) string {
+	badge := t.BadgeStyle.Background(t.Severity(severity).GetForeground()).Render(verdictWord(severity))
+	left := badge + "  " + t.Value.Render(subject)
+	return SplitLine(left, t.Muted.Render(balance), width)
+}
+
+// verdictWord is the state in the language of what to do about it. It is the
+// same judgement as Verdict, said loudly enough for a badge.
+func verdictWord(severity Severity) string {
+	switch severity {
+	case SevCritical:
+		return "ACT"
+	case SevWarn:
+		return "WATCH"
+	case SevOK:
+		return "OK"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 func (t *Theme) Section(title, tag string, width int) string {
 	return SplitLine(t.SectionHead.Render(strings.ToUpper(title)), tag, width)
+}
+
+// Screen names a whole screen rather than a block inside one, so it is not
+// drawn like the blocks: the accent, and a rule under the word itself, which is
+// what separates a title from the headings underneath it.
+func (t *Theme) Screen(title, tag string, width int) string {
+	title = strings.ToUpper(title)
+	return SplitLine(t.Accent.Bold(true).Render(title), tag, width) + "\n" +
+		t.Accent.Render(strings.Repeat("▔", lipgloss.Width(title)))
 }
 
 // SplitLine pushes right to the far end of the given width.

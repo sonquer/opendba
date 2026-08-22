@@ -371,7 +371,7 @@ flags:
   --coverage-dir <dir> coverage output directory, default <root>/coverage
   --module <name>      limit the run to a single module
   --summary <file>     append a markdown coverage summary, for CI job summaries
-  --out <dir>          where screens are written, default <root>/.local/screens
+  --out <dir>          where screens are written, default <root>/.screens
   --against <dir>      print how the screens differ from the ones already there
   --connection <name>  render the screens against a profile instead of a fixture
 `, a.name(), a.name(), float64(DefaultMinCoverage))

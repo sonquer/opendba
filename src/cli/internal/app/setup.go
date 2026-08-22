@@ -55,6 +55,11 @@ type answers struct {
 	readOnly bool
 	name     string
 	color    string
+
+	// existing marks a profile being edited rather than made, which is the
+	// difference between a password field that has to be filled and one that
+	// means keep what is stored.
+	existing bool
 }
 
 const (
@@ -69,7 +74,13 @@ type SetupModel struct {
 	driver     string
 	stage      stage
 	connection config.Connection
-	failure    string
+
+	// editing is the profile this screen opened, empty when it is making a new
+	// one. Editing starts from what is saved rather than from a blank form,
+	// because the id, the secret reference and the schema filter are on the
+	// profile and on no field.
+	editing config.Connection
+	failure string
 	toaster
 	quitting bool
 	width    int
@@ -88,6 +99,47 @@ func NewSetupModel(setup cli.Setup) SetupModel {
 	}
 	model.form, _ = newForm(driverFields(setup, model.theme)...)
 	return model
+}
+
+// EditSetupModel opens an existing profile in the form that made it. The driver
+// cannot be changed, because a postgres profile edited into a sqlite one is a
+// different connection wearing the same name, so it opens on the details.
+func EditSetupModel(setup cli.Setup, connection config.Connection) SetupModel {
+	model := SetupModel{
+		setup:   setup,
+		theme:   ui.Default(),
+		width:   96,
+		height:  30,
+		driver:  connection.Driver,
+		stage:   stageDetails,
+		editing: connection,
+	}
+	values := answersFrom(connection)
+	model.form, _ = newForm(detailsFields(&values, model.theme)...)
+	return model
+}
+
+// answersFrom reads a saved profile back into the form. It is the other half of
+// connectionFrom, and the password is not among them: a secret is written and
+// never read back, so the field starts empty and an empty field means keep it.
+func answersFrom(connection config.Connection) answers {
+	values := defaults()
+	values.existing = true
+	values.driver = connection.Driver
+	values.name = connection.Name
+	values.file = connection.File
+	values.host = connection.Host
+	values.user = connection.User
+	values.database = connection.Database
+	values.color = connection.Color
+	values.readOnly = connection.Mode != config.ReadWrite
+	if connection.Port > 0 {
+		values.port = strconv.Itoa(connection.Port)
+	}
+	if connection.SSLMode != "" {
+		values.sslmode = connection.SSLMode
+	}
+	return values
 }
 
 func defaults() answers {
@@ -113,6 +165,7 @@ func (m SetupModel) snapshot() answers {
 	values.database = m.form.valueOr("database", values.database)
 	values.sslmode = m.form.valueOr("ssl", values.sslmode)
 	values.imported = m.form.valueOr("import", values.imported)
+	values.existing = m.editing.ID != ""
 	if m.form.has("password") {
 		values.password = string(m.form.secret("password"))
 	}
@@ -167,7 +220,7 @@ func connectionFields(values *answers, theme *ui.Theme) []field {
 		textField(theme, "host", "host", values.host, "the server to connect to").require(),
 		textField(theme, "port", "port", values.port, "5432 unless the server was moved").require().checked(port),
 		textField(theme, "user", "user", values.user, "the role tui4db connects as"),
-		secretField(theme, "password", "password", values.password, "kept in your keychain, never in the profile"),
+		secretField(theme, "password", "password", values.password, passwordHint(values.existing)),
 		textField(theme, "database", "database", values.database, "left empty the server picks its default, usually the user name"),
 		choiceField("ssl", "ssl", []string{"prefer", "require", "verify-ca", "verify-full", "disable"}, values.sslmode, "← → picks how the connection is encrypted"),
 		textField(theme, "import", "paste a url", "", "postgres://user:password@host:5432/app fills in everything above"),
@@ -327,8 +380,11 @@ func (m SetupModel) start(save bool, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	}
 	m.failure = ""
 	m.stage = stageTesting
-	connection, password := connectionFrom(values, m.setup.NewID())
+	connection, password := connectionFrom(m.editing, values, m.setup.NewID())
 	m.connection = connection
+	if len(password) == 0 {
+		password = m.setup.Password(context.Background(), m.editing)
+	}
 	return m, tea.Batch(cmd, m.test(connection, password, save))
 }
 
@@ -344,14 +400,28 @@ func (m SetupModel) importURL(values answers, cmd tea.Cmd) (tea.Model, tea.Cmd) 
 	return m, tea.Batch(cmd, focus, m.notify("filled every field from the connection string"))
 }
 
-func connectionFrom(values answers, id string) (config.Connection, []byte) {
-	connection := config.Connection{
-		ID:     id,
-		Name:   strings.TrimSpace(values.name),
-		Driver: values.driver,
-		Mode:   config.ReadOnly,
-		Color:  values.color,
+// connectionFrom writes the answers onto a connection. Editing starts from the
+// profile that is already saved, so its id, its secret reference and its schema
+// filter survive: none of the three is on the form, and building a fresh struct
+// would quietly drop all of them.
+// passwordHint says what an empty field means, which is not the same thing on
+// a profile that already has a password stored as on one that does not.
+func passwordHint(existing bool) string {
+	if existing {
+		return "left empty the stored password is kept"
 	}
+	return "kept in your keychain, never in the profile"
+}
+
+func connectionFrom(base config.Connection, values answers, id string) (config.Connection, []byte) {
+	connection := base
+	if connection.ID == "" {
+		connection.ID = id
+	}
+	connection.Name = strings.TrimSpace(values.name)
+	connection.Driver = values.driver
+	connection.Mode = config.ReadOnly
+	connection.Color = values.color
 	if !values.readOnly {
 		connection.Mode = config.ReadWrite
 	}
@@ -414,7 +484,15 @@ func (m SetupModel) content() string {
 }
 
 func (m SetupModel) headline() string {
-	return m.theme.Prompt.Render("→ ") + m.theme.Muted.Render("~ ") + m.theme.Title.Render("tui4db setup")
+	title := "tui4db setup"
+	if m.editing.ID != "" {
+		title = "configuration"
+	}
+	line := m.theme.Prompt.Render("→ ") + m.theme.Muted.Render("~ ") + m.theme.Title.Render(title)
+	if m.editing.ID != "" {
+		line += m.theme.Separator.Render(" › ") + m.theme.Muted.Render(m.editing.Name)
+	}
+	return line
 }
 
 func setupWidth(terminal int) int {

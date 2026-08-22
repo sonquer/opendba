@@ -54,7 +54,7 @@ func (a App) schema(ctx context.Context, session Session, opts options) int {
 		return a.writeJSON(document)
 	}
 	a.header(session)
-	fmt.Fprintln(a.Stdout, session.Theme.TableList(tables, -1, ui.MaxTextWidth))
+	fmt.Fprintln(a.Stdout, session.Theme.TableList(tables, ui.List{Cursor: -1, Sort: -1, Width: ui.MaxTextWidth}))
 	return ExitOK
 }
 
@@ -69,14 +69,19 @@ func (a App) indexes(ctx context.Context, session Session, opts options) int {
 		return a.writeJSON(document)
 	}
 	a.header(session)
-	fmt.Fprintln(a.Stdout, session.Theme.IndexList(indexes, -1, ui.MaxTextWidth))
+	fmt.Fprintln(a.Stdout, session.Theme.IndexList(indexes, ui.List{Cursor: -1, Sort: -1, Width: ui.MaxTextWidth}))
 	return ExitOK
 }
 
 func (a App) query(ctx context.Context, session Session, opts options, statement string) int {
 	verdict := session.Guard.Classify(statement, Mode(session.Connection.Mode))
-	if !verdict.Allowed() {
+	switch {
+	case verdict.Blocked():
 		fmt.Fprintln(a.Stderr, session.Theme.Verdict(verdict, 0))
+		return ExitBlocked
+	case verdict.NeedsConfirmation() && !opts.yes:
+		fmt.Fprintln(a.Stderr, session.Theme.Verdict(verdict, 0))
+		fmt.Fprintln(a.Stderr, "this changes data. Add --yes to run it without being asked.")
 		return ExitBlocked
 	}
 	result, err := session.Conn.Query(ctx, statement)

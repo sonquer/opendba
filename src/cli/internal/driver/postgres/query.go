@@ -64,9 +64,13 @@ func (r *resultSet) Close() error {
 	return nil
 }
 
+// Query runs a statement inside a transaction of its own. On a read only
+// profile the transaction is opened read only, which is a layer rather than a
+// repetition: the session is already set that way, and this holds whether or
+// not that setting took.
 func (c *connection) Query(ctx context.Context, statement string) (driver.ResultSet, error) {
 	started := time.Now()
-	tx, err := c.db.Begin(ctx)
+	tx, err := c.db.BeginTx(ctx, c.access())
 	if err != nil {
 		return nil, fmt.Errorf("start a read-only transaction: %w", err)
 	}
@@ -188,4 +192,11 @@ func PlanText(node driver.PlanNode) string {
 	}
 	walk(node)
 	return strings.Join(lines, "\n")
+}
+
+func (c *connection) access() pgx.TxOptions {
+	if c.config.ReadOnly() {
+		return pgx.TxOptions{AccessMode: pgx.ReadOnly}
+	}
+	return pgx.TxOptions{}
 }

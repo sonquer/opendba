@@ -43,3 +43,4 @@ cover.out
 # local development, never committed
 .env
 /.local/
+/.screens/

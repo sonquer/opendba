@@ -42,6 +42,10 @@ type keymap struct {
 	Commands    key.Binding
 	Above       key.Binding
 	Below       key.Binding
+	Edit        key.Binding
+	Find        key.Binding
+	Order       key.Binding
+	Reverse     key.Binding
 	enhanced    bool
 }
 
@@ -50,7 +54,7 @@ func newKeymap() keymap {
 		Run:         runBinding(false),
 		Palette:     binding("commands", "/"),
 		Connections: binding("connections", "ctrl+p"),
-		Catalog:     binding("databases", "ctrl+d"),
+		Catalog:     binding("connections", "ctrl+d"),
 		Query:       binding("query", "e"),
 		Schema:      binding("tables", "s"),
 		Indexes:     binding("indexes", "i"),
@@ -81,6 +85,10 @@ func newKeymap() keymap {
 		Commands:    key.NewBinding(key.WithKeys("ctrl+k")),
 		Above:       binding("up", "up"),
 		Below:       binding("down", "down"),
+		Edit:        binding("edit", "e"),
+		Find:        binding("find", "f"),
+		Order:       binding("sort", "o"),
+		Reverse:     binding("reverse", "O"),
 	}
 }
 
@@ -154,7 +162,7 @@ func (s screenKeys) FullHelp() [][]key.Binding { return [][]key.Binding{s} }
 
 // footer picks the keys worth naming on a screen. Everything else stays one
 // ctrl+k away.
-func (k keymap) footer(current view, completing, zoomed, running bool) screenKeys {
+func (k keymap) footer(current view, completing, zoomed, running, filtering bool) screenKeys {
 	if completing {
 		return screenKeys{k.Accept, k.Above, k.Below, k.Back}
 	}
@@ -165,11 +173,14 @@ func (k keymap) footer(current view, completing, zoomed, running bool) screenKey
 	case viewQuery:
 		return screenKeys{k.Run, k.Focus, k.Sidebar, k.Palette, k.Home, k.Leave}
 	case viewSwitch:
-		return screenKeys{k.Up, k.Down, k.Choose, k.New, k.Remove, k.Home}
+		return screenKeys{k.Up, k.Down, k.Choose, k.Edit, k.New, k.Remove, k.Home}
 	case viewCatalog:
 		return screenKeys{k.Up, k.Down, k.Pick, k.Save(), k.Discard()}
 	case viewSchema, viewIndexes:
-		return screenKeys{k.Up, k.Down, k.Choose, k.Schema, k.Indexes, k.Reload, k.Home}
+		if filtering {
+			return screenKeys{k.Above, k.Below, k.Save(), k.Discard()}
+		}
+		return screenKeys{k.Up, k.Down, k.Choose, k.Find, k.Order, k.Reverse, k.Home}
 	case viewDashboard:
 		if running {
 			return screenKeys{k.Up, k.Down, k.Cancel, k.Terminate, k.Focus, k.Quit}

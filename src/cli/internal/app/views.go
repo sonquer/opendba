@@ -38,29 +38,98 @@ func (m Model) sessions(width int) string {
 }
 
 // verdict4Health is the line someone who does not run databases for a living
-// reads and stops: what needs attention, named.
+// reads and stops at: what needs attention, worst first, and how much of the
+// report came back fine.
 func (m Model) verdict4Health(width int) string {
-	worst, trouble := driver.SeverityOK, []string{}
+	tally := m.tally()
+	return m.theme.Headline(m.theme.Severity4Driver(tally.worst),
+		tally.subject(), tally.balance(), width)
+}
+
+// tally is the report counted rather than listed: what is worth acting on,
+// what is worth watching, what is fine, and what could not be read at all.
+type tally struct {
+	worst   driver.Severity
+	act     []string
+	watch   []string
+	fine    int
+	noted   int
+	unknown int
+}
+
+func (m Model) tally() tally {
+	counted := tally{worst: driver.SeverityOK}
 	for _, finding := range m.findings {
 		switch finding.Severity {
 		case driver.SeverityCritical:
-			worst = driver.SeverityCritical
-			trouble = append(trouble, finding.Subsystem)
+			counted.worst = driver.SeverityCritical
+			counted.act = append(counted.act, finding.Subsystem)
 		case driver.SeverityWarn:
-			if worst != driver.SeverityCritical {
-				worst = driver.SeverityWarn
+			if counted.worst != driver.SeverityCritical {
+				counted.worst = driver.SeverityWarn
 			}
-			trouble = append(trouble, finding.Subsystem)
+			counted.watch = append(counted.watch, finding.Subsystem)
+		case driver.SeverityOK:
+			counted.fine++
+		case driver.SeverityInfo:
+			counted.noted++
+		default:
+			counted.unknown++
 		}
 	}
-	severity := m.theme.Severity4Driver(worst)
-	sentence := "nothing needs attention"
-	if len(trouble) > 0 {
-		sentence = ui.Plural(len(trouble), "thing needs", "things need") +
-			" attention: " + strings.Join(trouble, ", ")
+	return counted
+}
+
+// subject names what needs attention, worst first and never more than a
+// handful: a line that lists nine things is a line nobody reads.
+func (t tally) subject() string {
+	trouble := append(append([]string{}, t.act...), t.watch...)
+	if len(trouble) == 0 {
+		return "nothing needs attention"
 	}
-	return m.theme.Severity(severity).Render(severity.Glyph()+" ") +
-		m.theme.Value.Render(ui.Clip(sentence, width-2))
+	if len(trouble) <= named {
+		return strings.Join(trouble, " · ")
+	}
+	return strings.Join(trouble[:named], " · ") +
+		fmt.Sprintf(" · +%d more", len(trouble)-named)
+}
+
+const named = 3
+
+// balance is how much of the report is fine, which is the half of the answer
+// the count of problems does not give.
+func (t tally) balance() string {
+	checks := len(t.act) + len(t.watch) + t.fine + t.noted
+	parts := []string{}
+	switch {
+	case len(t.act) > 0:
+		parts = append(parts, fmt.Sprintf("%d to act", len(t.act)),
+			fmt.Sprintf("%d to watch", len(t.watch)), fmt.Sprintf("%d fine", t.fine))
+	case len(t.watch) > 0:
+		parts = append(parts, fmt.Sprintf("%d of %d checks are fine", t.fine+t.noted, checks))
+	default:
+		parts = append(parts, ui.Plural(checks, "check", "checks")+", all of them fine")
+	}
+	if t.unknown > 0 {
+		parts = append(parts, ui.Plural(t.unknown, "reading", "readings")+" the role cannot see")
+	}
+	return ui.Dotted(parts...)
+}
+
+// balanced puts each block in the shorter column rather than in alternate
+// ones, because the groups are not the same height and alternating them leaves
+// one column half empty while the other runs off the screen.
+func balanced(blocks []string) (left, right []string) {
+	tall, short := 0, 0
+	for _, block := range blocks {
+		height := lipgloss.Height(block) + 1
+		if tall <= short {
+			left, tall = append(left, block), tall+height
+			continue
+		}
+		right, short = append(right, block), short+height
+	}
+	return left, right
 }
 
 // twoColumns is where a second column still leaves room for the plain words
@@ -89,14 +158,7 @@ func (m Model) groups(width int) string {
 	if width < twoColumns {
 		return strings.Join(blocks, "\n\n")
 	}
-	left, right := []string{}, []string{}
-	for i, block := range blocks {
-		if i%2 == 0 {
-			left = append(left, block)
-			continue
-		}
-		right = append(right, block)
-	}
+	left, right := balanced(blocks)
 	half := width / 2
 	return lipgloss.JoinHorizontal(lipgloss.Top,
 		lipgloss.NewStyle().Width(half).Render(strings.Join(left, "\n\n")),
@@ -200,15 +262,48 @@ func (m Model) zoomBody() string {
 
 // schemaBody names the schema a list came from, so an empty one reads as a
 // place to leave rather than a database with nothing in it.
-func (m Model) schemaBody(title, list string) string {
-	tag := ui.Dotted(m.where(),
-		ui.Plural(len(m.tables), "table", "tables"),
-		ui.ByteSize(m.totalSize()))
+func (m Model) schemaBody(title string, shown int, list string) string {
+	width := ui.FrameWidth(m.width)
+	at := m.lists[m.which()]
+	tag := m.scope()
+	if narrowed := at.tag(shown, m.held()); narrowed != "" {
+		tag = narrowed
+	}
 	return strings.Join([]string{
-		m.theme.Section(title, m.theme.Muted.Render(tag), ui.FrameWidth(m.width)),
+		m.theme.Screen(title, m.theme.Muted.Render(tag), width),
 		"",
-		list,
+		at.view(m.theme, width) + list,
 	}, "\n")
+}
+
+// held is how many rows the server gave us, against which a filter says how
+// much it is hiding.
+func (m Model) held() int {
+	if m.view == viewIndexes {
+		return len(m.indexes)
+	}
+	return len(m.tables)
+}
+
+// scope is what the screen is showing and how much of it, which on the indexes
+// screen is a count of indexes and not of tables.
+func (m Model) scope() string {
+	if m.view == viewIndexes {
+		return ui.Dotted(m.where(), ui.Plural(len(m.indexes), "index", "indexes"),
+			ui.ByteSize(m.indexSize()))
+	}
+	return ui.Dotted(m.where(), ui.Plural(len(m.tables), "table", "tables"),
+		ui.ByteSize(m.totalSize()))
+}
+
+func (m Model) indexSize() int64 {
+	var total int64
+	for _, index := range m.indexes {
+		if index.Size > 0 {
+			total += index.Size
+		}
+	}
+	return total
 }
 
 // where names the schemas a listing came from, which is the form's answer and

@@ -11,7 +11,14 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
-const modalWidth = 52
+const (
+	modalWidth = 52
+
+	// statementWidth is what a dialog needs when it is showing the statement it
+	// is about, because a statement wrapped at fifty columns is a statement
+	// nobody can read before answering a question about it.
+	statementWidth = 76
+)
 
 // modal is a question the program will not answer for you. It carries the
 // message to send once the answer is yes.
@@ -28,6 +35,11 @@ type modal struct {
 	warn   string
 	ticked bool
 	needs  string
+
+	// code is the statement the dialog is about, drawn the way a statement is
+	// drawn everywhere else: highlighted, with the line numbers a person points
+	// at when they talk about it.
+	code string
 }
 
 func ask(theme *ui.Theme, title, body string, action tea.Msg) *modal {
@@ -66,23 +78,33 @@ func (d *modal) edit(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
+// view draws the dialog. The lines are built to fit inside the border and its
+// padding, then squared off, so the panel is exactly as wide as it was asked to
+// be and nothing inside it wraps.
 func (d modal) view(width int) string {
-	inner := modalWidth
-	if room := ui.TextWidth(width) - 6; room < inner {
-		inner = room
+	outer := modalWidth
+	if d.code != "" {
+		outer = statementWidth
 	}
+	if room := ui.TextWidth(width) - 6; room < outer {
+		outer = room
+	}
+	inner := outer - 4
 	d.input.SetWidth(inner - 4)
 	title := d.theme.Title.Render(d.title)
 	if d.danger {
 		title = d.theme.Severity(ui.SevCritical).Bold(true).Render(d.title)
 	}
-	lines := []string{ui.SplitLine(title, d.theme.Muted.Render(d.tag), inner)}
+	lines := []string{ui.SplitLine(title, d.tag, inner)}
 	if d.body != "" {
 		lines = append(lines, "", d.theme.Muted.Render(wrap(d.body, inner)))
 	}
 	if d.warn != "" {
 		lines = append(lines, "", d.theme.Severity(ui.SevCritical).
 			Render("⚠ "+wrap(d.warn, inner-2)))
+	}
+	if d.code != "" {
+		lines = append(lines, "", d.theme.Statement(d.code, inner))
 	}
 	if d.needs != "" {
 		lines = append(lines, "", d.tick()+" "+d.theme.Value.Render(d.needs))
@@ -99,7 +121,7 @@ func (d modal) view(width int) string {
 	if d.danger {
 		panel = panel.BorderForeground(d.theme.P.Critical)
 	}
-	return panel.Width(inner).Render(strings.Join(lines, "\n"))
+	return panel.Render(square(strings.Join(lines, "\n"), inner))
 }
 
 func (d modal) tick() string {

@@ -9,13 +9,21 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// The database and its schemas are a level inside the connection they belong
+// to, so they are reached through the list of connections: ctrl+d opens that,
+// and enter on the connection already in use goes in.
 func browsingCatalog(t *testing.T, conn *fakeConn) Model {
 	t.Helper()
 	m := loadedWith(t, conn, workspaceWith(t))
 	m.width, m.height = 100, 32
-	opened, cmd := press(t, m, "ctrl+d")
+	list, cmd := press(t, m, "ctrl+d")
+	if list.view != viewSwitch {
+		t.Fatalf("ctrl+d must open the connections, got %s", list.view)
+	}
+	listed, _ := list.Update(runFirst(t, cmd))
+	opened, cmd := press(t, listed.(Model), "enter")
 	if cmd == nil || opened.view != viewCatalog {
-		t.Fatal("ctrl+d must open the databases")
+		t.Fatalf("enter on the connection in use must go in, got %s", opened.view)
 	}
 	read, _ := opened.Update(cmd())
 	return read.(Model)
@@ -97,7 +105,7 @@ func TestTheFormTicksSeveralSchemas(t *testing.T) {
 func TestTheFormReadsEveryTickedSchema(t *testing.T) {
 	m := browsingCatalog(t, twoSchemas())
 	m.session.Connection.Schemas = []string{"public", "reporting"}
-	loaded := runFirst(t, m.load())
+	loaded := runFirst(t, m.readCatalogue())
 	msg, ok := loaded.(loadedMsg)
 	if !ok {
 		t.Fatalf("msg = %T", loaded)
@@ -111,7 +119,7 @@ func TestTheFormReadsEveryTickedSchema(t *testing.T) {
 	}
 
 	m.session.Connection.Schemas = []string{"reporting"}
-	msg = runFirst(t, m.load()).(loadedMsg)
+	msg = runFirst(t, m.readCatalogue()).(loadedMsg)
 	for _, table := range msg.tables {
 		if table.Schema != "reporting" {
 			t.Errorf("one schema means one schema: %+v", table)
@@ -137,11 +145,8 @@ func TestTheCatalogReportsWhatItCannotRead(t *testing.T) {
 
 func TestSwitchingDatabaseReconnects(t *testing.T) {
 	workspace := workspaceWith(t)
-	m := loadedWith(t, healthy(), workspace)
-	m.width, m.height = 100, 32
-	opened, cmd := press(t, m, "ctrl+d")
-	read, _ := opened.Update(cmd())
-	m = read.(Model)
+	m := browsingCatalog(t, healthy())
+	m.workspace = workspace
 
 	down, _ := press(t, m, "down")
 	if _, ok := down.catalog.selected(); !ok {
@@ -207,11 +212,13 @@ func TestTheCatalogLeavesTheCurrentPlaceAlone(t *testing.T) {
 }
 
 func TestLeavingTheCatalog(t *testing.T) {
-	for _, key := range []string{"esc", "ctrl+d"} {
-		back, _ := press(t, browsingCatalog(t, healthy()), key)
-		if back.view != viewDashboard {
-			t.Errorf("%q must go back, got %s", key, back.view)
-		}
+	back, _ := press(t, browsingCatalog(t, healthy()), "esc")
+	if back.view != viewSwitch {
+		t.Errorf("esc goes back a level, to the connection this belongs to, got %s", back.view)
+	}
+	out, _ := press(t, browsingCatalog(t, healthy()), "ctrl+d")
+	if out.view != viewDashboard {
+		t.Errorf("ctrl+d closes the whole thing, got %s", out.view)
 	}
 	asked, _ := press(t, browsingCatalog(t, healthy()), "q")
 	if asked.modal == nil {
@@ -236,11 +243,11 @@ func TestAFailedDatabaseSwitchKeepsTheOldOne(t *testing.T) {
 	}
 }
 
-func TestTheQueryEditorReachesTheCatalog(t *testing.T) {
+func TestTheQueryEditorReachesTheConnections(t *testing.T) {
 	m := loadedWith(t, healthy(), workspaceWith(t))
 	editing, _ := press(t, m, "e")
 	opened, cmd := press(t, editing, "ctrl+d")
-	if cmd == nil || opened.view != viewCatalog {
+	if cmd == nil || opened.view != viewSwitch {
 		t.Fatalf("view = %s", opened.view)
 	}
 }

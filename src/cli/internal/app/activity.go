@@ -253,12 +253,35 @@ func (m Model) tick() tea.Cmd {
 	return tea.Tick(refreshEvery, func(time.Time) tea.Msg { return tickMsg{generation: generation} })
 }
 
+// refreshed answers the beat. Sessions are read every time, because what a
+// server is running changes by the second; the health of the server is read
+// every fifth beat, because none of it moves that fast; the catalogue is not
+// read at all, because it is the shape of the database rather than its weather
+// and a size sweep of every table three times a minute is what made the
+// dashboard jump.
 func (m Model) refreshed(msg tickMsg) (tea.Model, tea.Cmd) {
 	if msg.generation != m.generation || m.view != viewDashboard {
 		return m, nil
 	}
-	return m, tea.Batch(m.load(), m.readSessions(), m.tick())
+	next, cmds := m.beats()
+	return next, tea.Batch(append(cmds, next.tick())...)
 }
+
+// beats is what one refresh asks the server for, apart from the next beat: the
+// sessions every time, the health of the server every fifth time, and the
+// catalogue never.
+func (m Model) beats() (Model, []tea.Cmd) {
+	m.beat++
+	cmds := []tea.Cmd{m.readSessions()}
+	if m.beat%healthEvery == 0 {
+		cmds = append(cmds, m.readHealth())
+	}
+	return m, cmds
+}
+
+// healthEvery is how many session beats pass between two reads of the health of
+// the server.
+const healthEvery = 5
 
 func (m Model) activityKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
@@ -299,7 +322,7 @@ func (m Model) confirmStop(terminate bool) (tea.Model, tea.Cmd) {
 			stopMsg{id: chosen.ID, terminate: true})
 		dialog.danger = true
 	}
-	dialog.tag = chosen.User
+	dialog.tag = m.theme.Muted.Render(chosen.User)
 	if !m.mayChange() {
 		dialog.warning("this profile is read only. Stopping a session changes the server, "+
 			"which is the one thing read only says will not happen.", "do it anyway")

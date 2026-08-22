@@ -37,6 +37,11 @@ var scripts = []script{
 
 var sizes = []string{"120x36", "80x24"}
 
+// screensDir is where rendered screens land when nobody says otherwise. It is
+// working output rather than a deliverable, so it is ignored by git and named
+// for what it holds.
+const screensDir = ".screens"
+
 // screens renders every screen at every size, so a change can be looked at
 // everywhere at once instead of one screenshot at a time.
 func (a App) screens(ctx context.Context, opts options) int {
@@ -52,7 +57,7 @@ func (a App) screens(ctx context.Context, opts options) int {
 	}
 	out := opts.out
 	if out == "" {
-		out = filepath.Join(space.Root, ".local", "screens")
+		out = filepath.Join(space.Root, screensDir)
 	}
 	environment := values.Environment(os.Environ())
 

@@ -32,7 +32,18 @@ const (
 	viewSwitch    view = "connections"
 )
 
+// part is which of the two reads a message belongs to, so a refresh that asked
+// for one does not blank the other and a failure of one is not cleared by the
+// other coming back.
+type part string
+
+const (
+	partHealth    part = "health"
+	partCatalogue part = "catalogue"
+)
+
 type loadedMsg struct {
+	part     part
 	findings []driver.Finding
 	tables   []driver.Table
 	indexes  []driver.Index
@@ -59,6 +70,7 @@ type Model struct {
 	quitting  bool
 	loading   bool
 	failure   string
+	failing   part
 	toaster
 	list    connections
 	catalog catalog
@@ -68,6 +80,7 @@ type Model struct {
 	page    *details
 	reading int
 	listing int
+	lists   [2]browse
 	suggest completion
 	fields  map[string][]driver.Column
 	keys    keymap
@@ -84,6 +97,7 @@ type Model struct {
 	running    activity
 	onSessions bool
 	generation int
+	beat       int
 	focus      pane
 	zoomed     bool
 	split      int
@@ -122,6 +136,7 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 		spinner:   loader,
 		list:      newConnections(theme),
 		catalog:   newCatalog(theme),
+		lists:     [2]browse{newBrowse(theme, 0, false), newBrowse(theme, 2, true)},
 		suggest:   completion{theme: theme},
 		sidebar:   newExplorer(theme),
 		running:   newActivity(theme, session.Settings.Safety),
@@ -158,31 +173,76 @@ func (m Model) release() {
 	}
 }
 
+// load reads everything: the health of the server and the catalogue it holds.
+// It is what a fresh connection and an explicit reload ask for.
 func (m Model) load() tea.Cmd {
+	return tea.Batch(m.readHealth(), m.readCatalogue())
+}
+
+// readHealth is the part of the dashboard that moves. It is cheap enough to
+// repeat and is the only thing the refresh reads besides the sessions.
+func (m Model) readHealth() tea.Cmd {
 	conn := m.session.Conn
-	connection := m.session.Connection
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 		defer cancel()
 
 		findings, err := conn.Health(ctx)
 		if err != nil {
-			return loadedMsg{err: err}
+			return loadedMsg{part: partHealth, err: err}
 		}
+		return loadedMsg{part: partHealth, findings: findings}
+	}
+}
+
+// readCatalogue is what the server holds rather than what it is doing. It is a
+// size and statistics sweep of every table and every index, so it is read when
+// the shape of the database could have changed and not on a clock.
+func (m Model) readCatalogue() tea.Cmd {
+	conn := m.session.Conn
+	connection := m.session.Connection
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
+		defer cancel()
+
 		tables, err := conn.Tables(ctx, one(connection))
 		if err != nil {
-			return loadedMsg{err: err}
+			return loadedMsg{part: partCatalogue, err: err}
 		}
 		indexes, err := conn.Indexes(ctx, one(connection))
 		if err != nil {
-			return loadedMsg{err: err}
+			return loadedMsg{part: partCatalogue, err: err}
 		}
 		return loadedMsg{
-			findings: findings,
-			tables:   scoped(tables, connection.Only, func(t driver.Table) string { return t.Schema }),
-			indexes:  scoped(indexes, connection.Only, func(i driver.Index) string { return i.Schema }),
+			part:    partCatalogue,
+			tables:  scoped(tables, connection.Only, func(t driver.Table) string { return t.Schema }),
+			indexes: scoped(indexes, connection.Only, func(i driver.Index) string { return i.Schema }),
 		}
 	}
+}
+
+const readTimeout = 30 * time.Second
+
+// loaded applies whichever half of a read came back. A refresh that asked only
+// for the health of the server leaves the catalogue alone, and the other way
+// round, so neither read can blank the other's part of the screen.
+func (m Model) loaded(msg loadedMsg) (tea.Model, tea.Cmd) {
+	m.loading = false
+	if msg.err != nil {
+		m.failure, m.failing = msg.err.Error(), msg.part
+		return m, nil
+	}
+	if m.failing == msg.part {
+		m.failure, m.failing = "", ""
+	}
+	switch msg.part {
+	case partHealth:
+		m.findings = msg.findings
+	case partCatalogue:
+		m.tables, m.indexes = msg.tables, msg.indexes
+		m.sidebar = m.sidebar.withTables(m.tables, m.fields)
+	}
+	return m, nil
 }
 
 // one is the schema a driver can filter on its own. A form with several schemas
@@ -250,14 +310,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner = updated
 		return m, cmd
 	case loadedMsg:
-		m.loading = false
-		if msg.err != nil {
-			m.failure = msg.err.Error()
-			return m, nil
-		}
-		m.findings, m.tables, m.indexes = msg.findings, msg.tables, msg.indexes
-		m.sidebar = m.sidebar.withTables(m.tables, m.fields)
-		return m, nil
+		return m.loaded(msg)
 	case queriedMsg:
 		m.results = newResults(m.theme, msg, m.paneWidth(), m.resultsHeight())
 		m.focus = focusEditor
@@ -306,6 +359,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reloadMsg:
 		m.loading = true
 		return m, tea.Batch(m.load(), m.spinner.Tick)
+	case runMsg:
+		return m, m.run(msg.statement)
 	case newConnectionMsg:
 		return m.compose()
 	case quitMsg:
@@ -405,10 +460,17 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.view == viewSchema || m.view == viewIndexes {
-		if moved, handled := m.walkListing(msg); handled {
-			return moved, nil
+		if moved, cmd, handled := m.browseKey(msg); handled {
+			return moved, cmd
 		}
-		if key.Matches(msg, m.keys.Choose) {
+		switch {
+		case key.Matches(msg, m.keys.Up):
+			moved, _ := m.walkListing(-1)
+			return moved, nil
+		case key.Matches(msg, m.keys.Down):
+			moved, _ := m.walkListing(1)
+			return moved, nil
+		case key.Matches(msg, m.keys.Choose):
 			return m.listingPage()
 		}
 	}
@@ -416,7 +478,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Focus):
 		return m.toggleSessions()
 	case key.Matches(msg, m.keys.Catalog):
-		return m.browseCatalog()
+		return m.browse()
 	case m.keys.opensPalette(msg, false):
 		return m.openPalette()
 	case key.Matches(msg, m.keys.Connections):
@@ -466,33 +528,57 @@ func (m Model) walkReadings(msg tea.KeyPressMsg) (Model, bool) {
 
 // walkListing moves the cursor through the tables or the indexes, whichever
 // list is on screen.
-func (m Model) walkListing(msg tea.KeyPressMsg) (Model, bool) {
+// walkListing moves the cursor by a step, wrapping, and brings the row it
+// lands on into view.
+func (m Model) walkListing(step int) (Model, bool) {
 	total := m.listed()
 	if total == 0 {
 		return m, false
 	}
-	switch {
-	case key.Matches(msg, m.keys.Up):
-		m.listing = (m.listing - 1 + total) % total
-	case key.Matches(msg, m.keys.Down):
-		m.listing = (m.listing + 1) % total
-	default:
-		return m, false
-	}
+	m.listing = (m.listing + step + total) % total
 	return m.follow(), true
 }
 
+// listed is how many rows the screen is drawing, which is the filtered count
+// and not what the server returned.
 func (m Model) listed() int {
 	if m.view == viewIndexes {
-		return len(m.indexes)
+		return len(m.shownIndexes())
 	}
-	return len(m.tables)
+	return len(m.shownTables())
 }
 
 // follow keeps the row under the cursor on screen after it moves.
+//
+// The dashboard marks its cursor with a bar in the margin and can be searched
+// for it. A catalogue list paints the whole row instead, so there is no glyph
+// to look for, and the row's position has to be counted rather than found: a
+// search would match the first bar of a gauge and scroll to the wrong place.
 func (m Model) follow() Model {
+	if m.view == viewSchema || m.view == viewIndexes {
+		return m.followRow(m.listing + m.rowsAbove())
+	}
+	return m.followRow(ui.LineOf(m.body(), "▌"))
+}
+
+// rowsAbove is what a catalogue list draws before its first row: the title and
+// its rule, a blank line, the filter when it is open, and the column headings
+// with the rule under them.
+func (m Model) rowsAbove() int {
+	above := screenTitleRows + headingRows
+	if at := m.lists[m.which()]; at.typing || at.active() {
+		above++
+	}
+	return above
+}
+
+const (
+	screenTitleRows = 3
+	headingRows     = 2
+)
+
+func (m Model) followRow(line int) Model {
 	area := ui.BodyHeight(m.height)
-	line := ui.LineOf(m.body(), "▌")
 	switch {
 	case line < 0:
 		return m
@@ -621,12 +707,10 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.editor.Blur()
 		return m.browse()
 	case key.Matches(msg, m.keys.Catalog):
-		return m.browseCatalog()
+		m.editor.Blur()
+		return m.browse()
 	case key.Matches(msg, m.keys.Run):
-		if !m.Verdict().Allowed() {
-			return m, nil
-		}
-		return m, m.run(m.statement())
+		return m.attempt()
 	case key.Matches(msg, m.keys.Sidebar):
 		return m.toggleSidebar()
 	case key.Matches(msg, m.keys.Grow):
@@ -702,6 +786,37 @@ func (m Model) toggleSidebar() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// attempt is what pressing run does with each of the three verdicts. A refusal
+// says so rather than doing nothing, because a key that silently does nothing
+// is a broken key. A statement that changes data is asked about, once, unless
+// the profile has said not to ask.
+func (m Model) attempt() (tea.Model, tea.Cmd) {
+	statement := m.statement()
+	verdict := m.Verdict()
+	switch {
+	case verdict.Blocked():
+		return m, m.notify(ui.Reason(verdict.Reason))
+	case verdict.NeedsConfirmation() && m.session.Settings.Safety.ConfirmQueries:
+		m.modal = m.confirmRun(statement, verdict)
+		return m, nil
+	}
+	return m, m.run(statement)
+}
+
+// confirmRun is the dialog a write raises. It shows the statement it is about
+// to send, highlighted the way it is everywhere else, and why the classifier
+// thinks it is worth asking about.
+func (m Model) confirmRun(statement string, verdict sqlguard.Result) *modal {
+	dialog := ask(m.theme, "run this statement?", "", runMsg{statement: statement})
+	dialog.tag = m.theme.Mode(cli.Mode(m.session.Connection.Mode).Label())
+	dialog.danger = true
+	dialog.warn = ui.Reason(verdict.Reason)
+	dialog.code = statement
+	return dialog
+}
+
+type runMsg struct{ statement string }
+
 func (m Model) Verdict() sqlguard.Result {
 	return m.session.Guard.Classify(m.statement(), cli.Mode(m.session.Connection.Mode))
 }
@@ -747,6 +862,23 @@ func (m Model) content() string {
 	return screen
 }
 
+// at is how the screen wants its rows drawn, which is where the cursor is and
+// what the list was put in the order of.
+func (m Model) at(width int) ui.List {
+	list := m.lists[m.which()]
+	return ui.List{
+		Cursor: m.listing, Width: width, Sort: list.column, Reversed: list.reversed,
+	}
+}
+
+// blank reports a screen with nothing on it yet. A first read has to say it is
+// working, because there is nothing else to look at. A read that refreshes what
+// is already drawn must not replace it: swapping a full screen for a spinner
+// and back again five times a minute is what makes a dashboard blink.
+func (m Model) blank() bool {
+	return len(m.findings) == 0 && len(m.tables) == 0 && len(m.indexes) == 0
+}
+
 func (m Model) header() string {
 	return m.theme.IdentityLine(
 		ui.EnvColor(m.session.Connection.Color),
@@ -769,15 +901,19 @@ func (m Model) body() string {
 	if m.failure != "" {
 		return m.theme.Error.Render("✗ " + m.failure)
 	}
-	if m.loading {
+	if m.loading && m.blank() {
 		return m.spinner.View() + m.theme.Muted.Render(" reading the server")
 	}
 	width := ui.FrameWidth(m.width)
 	switch m.view {
 	case viewSchema:
-		return m.schemaBody("tables", m.theme.TableList(m.tables, m.listing, width))
+		shown := m.shownTables()
+		return m.schemaBody("tables", len(shown), m.theme.TableList(shown, m.at(width)))
 	case viewIndexes:
-		return m.schemaBody("indexes", m.theme.IndexList(m.indexes, m.listing, width))
+		shown := m.shownIndexes()
+		list := m.at(width)
+		list.Busiest = ui.Busiest(m.indexes)
+		return m.schemaBody("indexes", len(shown), m.theme.IndexList(shown, list))
 	case viewQuery:
 		return m.workbench()
 	case viewHelp:
@@ -792,7 +928,7 @@ func (m Model) body() string {
 }
 
 func (m Model) footer(more int) string {
-	left := m.help.View(m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions))
+	left := m.help.View(m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions, m.lists[m.which()].typing))
 	return ui.SplitLine(left, m.theme.Subtle.Render(scrollHint(more)), ui.FrameWidth(m.width))
 }
 

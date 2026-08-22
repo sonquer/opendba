@@ -121,6 +121,29 @@ func Duration(d time.Duration) string {
 	}
 }
 
+// Age writes how long ago something happened, at the precision a person says it
+// out loud. Duration is for how long something took and stops making sense past
+// an hour; this is for how long ago it was and starts making sense there.
+func Age(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return plural(int(d.Minutes()), "minute")
+	case d < 48*time.Hour:
+		return plural(int(d.Hours()), "hour")
+	default:
+		return plural(int(d.Hours()/24), "day")
+	}
+}
+
+func plural(count int, unit string) string {
+	if count == 1 {
+		return fmt.Sprintf("1 %s ago", unit)
+	}
+	return fmt.Sprintf("%d %ss ago", count, unit)
+}
+
 // Session is one connection the server is holding, ours included.
 type Session struct {
 	ID          string

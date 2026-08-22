@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,13 +34,38 @@ type fakeConn struct {
 	fields    map[string][]driver.Column
 	sessions  []driver.Session
 	stopped   []string
+
+	// A batch runs its commands at once, so the counter is written from more
+	// than one goroutine and has to be held.
+	mu    sync.Mutex
+	reads map[string]int
 }
 
+// fail is also where every read is counted, because a test that asks how often
+// the program went to the server has to count somewhere.
 func (f *fakeConn) fail(step string) error {
+	f.mu.Lock()
+	if f.reads == nil {
+		f.reads = map[string]int{}
+	}
+	f.reads[step]++
+	f.mu.Unlock()
 	if f.failOn == step {
 		return errors.New(step + " failed")
 	}
 	return nil
+}
+
+// counted is what the server has been asked for so far, so a test can measure
+// what one beat added.
+func (f *fakeConn) counted() map[string]int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	taken := map[string]int{}
+	for step, count := range f.reads {
+		taken[step] = count
+	}
+	return taken
 }
 
 func (f *fakeConn) Info(context.Context) (driver.ServerInfo, error) {
@@ -276,8 +302,18 @@ func loadedWith(t *testing.T, conn *fakeConn, workspace cli.Workspace) Model {
 	if m.Init() == nil {
 		t.Fatal("the model must load on start")
 	}
-	updated, _ := m.Update(m.load()())
-	return updated.(Model)
+	return settle(t, m, m.load())
+}
+
+// settle runs a command and feeds every message it produced back into the
+// model, which is what a program does with a batch.
+func settle(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	out := tea.Model(m)
+	for _, msg := range runAll(t, cmd) {
+		out, _ = out.Update(msg)
+	}
+	return out.(Model)
 }
 
 // runAll walks a batch and hands every message back, which is what a program
@@ -669,12 +705,77 @@ func TestQueryEditorRefusesToRunAWrite(t *testing.T) {
 	if editing.Verdict().Allowed() {
 		t.Fatalf("verdict = %+v", editing.Verdict())
 	}
-	_, cmd := press(t, editing, "f5")
-	if cmd != nil {
+	refused, cmd := press(t, editing, "f5")
+	if refused.results.statement != "" {
 		t.Fatal("a blocked statement must not run")
+	}
+	if cmd == nil {
+		t.Fatal("a key that silently does nothing is a broken key")
+	}
+	if !strings.Contains(plain(refused.content()), "READ ONLY") {
+		t.Errorf("the refusal must say why:\n%s", plain(refused.content()))
 	}
 	if !strings.Contains(plain(editing.content()), "blocked") {
 		t.Errorf("content = %s", plain(editing.content()))
+	}
+}
+
+// READ / WRITE was a mode that did nothing: the classifier answered Warn and
+// both run paths dropped it in silence.
+func TestAWriteAsksBeforeItRuns(t *testing.T) {
+	conn := healthy()
+	m := settle(t, NewModel(writable(conn), workspaceWith(t)), nil)
+	m = settle(t, m, m.load())
+	m.width, m.height = 110, 32
+	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "DELETE FROM users")
+	if !editing.Verdict().NeedsConfirmation() {
+		t.Fatalf("verdict = %+v", editing.Verdict())
+	}
+	asked, _ := press(t, editing, "f5")
+	if asked.modal == nil {
+		t.Fatal("a write must be asked about")
+	}
+	if !asked.modal.danger {
+		t.Error("and asked about in the colour of something that costs")
+	}
+	dialog := strings.Join(strings.Fields(plain(asked.modal.view(110))), " ")
+	for _, want := range []string{"run this statement?", "READ / WRITE", "DELETE FROM users"} {
+		if !strings.Contains(dialog, want) {
+			t.Errorf("the dialog must show %q:\n%s", want, dialog)
+		}
+	}
+	answered, cmd := press(t, asked, "enter")
+	if answered.modal != nil || cmd == nil {
+		t.Fatal("enter answers it")
+	}
+	before := conn.counted()["query"]
+	settle(t, settle(t, answered, cmd), answered.run(editing.statement()))
+	if conn.counted()["query"] == before {
+		t.Error("and the statement reaches the server")
+	}
+
+	left, cmd := press(t, asked, "esc")
+	if left.modal != nil || cmd != nil {
+		t.Error("esc leaves it alone")
+	}
+}
+
+// A profile that has said not to ask is not asked.
+func TestAWriteRunsWithoutAskingWhenToldTo(t *testing.T) {
+	conn := healthy()
+	m := settle(t, NewModel(writable(conn), workspaceWith(t)), nil)
+	m.session.Settings.Safety.ConfirmQueries = false
+	m = settle(t, m, m.load())
+	m.width, m.height = 110, 32
+	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "DELETE FROM users")
+	ran, cmd := press(t, editing, "f5")
+	if ran.modal != nil {
+		t.Error("nothing was asked")
+	}
+	if cmd == nil {
+		t.Fatal("and the statement was run")
 	}
 }
 
@@ -948,5 +1049,106 @@ func TestAnEmptyEditorSaysItOnce(t *testing.T) {
 	typed, _ := press(t, editing, "s")
 	if typed.verdict(80) == "" {
 		t.Error("a statement being typed is classified")
+	}
+}
+
+// A list of 148 indexes is a list nobody scrolls. f narrows it, and what is
+// typed reaches the filter rather than the keys those letters are bound to.
+func TestTheCatalogueListsAreSearched(t *testing.T) {
+	m := loaded(t, twoSchemas())
+	m.width, m.height = 120, 30
+	list, _ := press(t, m, "s")
+	finding, cmd := press(t, list, "f")
+	if cmd == nil || !finding.lists[0].typing {
+		t.Fatal("f must open the filter")
+	}
+	typed := finding
+	for _, letter := range []string{"d", "a", "i"} {
+		typed, _ = press(t, typed, letter)
+	}
+	if got := typed.lists[0].needle(); got != "dai" {
+		t.Fatalf("every letter must reach the filter, got %q", got)
+	}
+	if shown := typed.shownTables(); len(shown) != 1 || shown[0].Name != "daily" {
+		t.Errorf("the list must narrow: %+v", shown)
+	}
+	if typed.listed() != 1 {
+		t.Errorf("and everything that counts rows must count the narrowed ones: %d", typed.listed())
+	}
+	view := plain(typed.content())
+	if !strings.Contains(view, "1 of 2 match dai") {
+		t.Errorf("a list hiding rows must say so:\n%s", view)
+	}
+	if strings.Contains(view, "public.users") {
+		t.Errorf("and must not draw them:\n%s", view)
+	}
+
+	kept, _ := press(t, typed, "enter")
+	if kept.lists[0].typing || !kept.lists[0].active() {
+		t.Error("enter keeps the filter and gives the keys back to the list")
+	}
+	opened, _ := press(t, kept, "enter")
+	if opened.page == nil || !strings.Contains(opened.page.title, "daily") {
+		t.Error("enter on the narrowed list opens the row it is actually on")
+	}
+	cleared, _ := press(t, typed, "esc")
+	if cleared.lists[0].active() || len(cleared.shownTables()) != 2 {
+		t.Error("esc clears the filter")
+	}
+}
+
+// The two lists are searched separately, because looking for an index is not
+// looking for a table.
+func TestEachCatalogueListKeepsItsOwnSearch(t *testing.T) {
+	m := loaded(t, twoSchemas())
+	m.width, m.height = 120, 30
+	tables, _ := press(t, m, "s")
+	tables, _ = press(t, tables, "f")
+	tables, _ = press(t, tables, "d")
+	tables, _ = press(t, tables, "enter")
+	indexes, _ := press(t, tables, "i")
+	if indexes.lists[1].active() {
+		t.Error("the other list must not inherit the search")
+	}
+	back, _ := press(t, indexes, "s")
+	if back.lists[0].needle() != "d" {
+		t.Errorf("and this one must keep its own: %q", back.lists[0].needle())
+	}
+}
+
+func TestTheCatalogueListsAreSorted(t *testing.T) {
+	m := loaded(t, twoSchemas())
+	m.width, m.height = 120, 30
+	list, _ := press(t, m, "s")
+	if list.lists[0].column != 0 || list.lists[0].reversed {
+		t.Fatal("tables start in the order of their names")
+	}
+	if first := list.shownTables()[0]; first.Name != "users" && first.Schema != "public" {
+		t.Errorf("first = %+v", first)
+	}
+	sorted, _ := press(t, list, "o")
+	if sorted.lists[0].column != 1 || !sorted.lists[0].reversed {
+		t.Errorf("o moves to the next column, largest first: %+v", sorted.lists[0])
+	}
+	if first := sorted.shownTables()[0]; first.Rows != 9 {
+		t.Errorf("sorted by rows, the largest is first: %+v", first)
+	}
+	flipped, _ := press(t, sorted, "O")
+	if flipped.lists[0].reversed {
+		t.Error("shift+o turns it round")
+	}
+	if first := flipped.shownTables()[0]; first.Rows != 2 {
+		t.Errorf("first = %+v", first)
+	}
+	round := flipped
+	for range columns {
+		round, _ = press(t, round, "o")
+	}
+	if round.lists[0].column != flipped.lists[0].column {
+		t.Error("the columns wrap")
+	}
+	indexes, _ := press(t, m, "i")
+	if indexes.lists[1].column != 2 || !indexes.lists[1].reversed {
+		t.Errorf("indexes start with the largest: %+v", indexes.lists[1])
 	}
 }

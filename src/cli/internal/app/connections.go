@@ -102,6 +102,8 @@ func (m Model) switchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.chosen()
 	case key.Matches(msg, m.keys.New):
 		return m.compose()
+	case key.Matches(msg, m.keys.Edit):
+		return m.configure()
 	case key.Matches(msg, m.keys.Remove):
 		return m.askToRemove()
 	}
@@ -120,15 +122,18 @@ func (m Model) askToRemove() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// chosen answers enter. On another connection it opens that one. On the
+// connection already in use there is nothing to open, so it goes a level in
+// instead, to the database and schemas that connection is reading.
 func (m Model) chosen() (tea.Model, tea.Cmd) {
 	connection, ok := m.list.selected()
 	if !ok {
 		return m, nil
 	}
-	m.view = viewDashboard
 	if connection.label == m.session.Connection.Name {
-		return m, nil
+		return m.browseCatalog()
 	}
+	m.view = viewDashboard
 	m.loading = true
 	m.failure = ""
 	return m, tea.Batch(m.open(connection.label), m.spinner.Tick)
@@ -141,10 +146,41 @@ func (m Model) compose() (tea.Model, tea.Cmd) {
 	return m, wizard.Init()
 }
 
+// configure opens the profile under the cursor in the form that made it, so a
+// host, a port or an access mode can be changed without removing the connection
+// and starting again.
+func (m Model) configure() (tea.Model, tea.Cmd) {
+	chosen, ok := m.list.selected()
+	if !ok {
+		return m, nil
+	}
+	profiles, err := m.workspace.Profiles()
+	if err != nil {
+		m.list.failure = err.Error()
+		return m, nil
+	}
+	connection, found := profiles.ByName(chosen.label)
+	if !found {
+		return m, m.notify("there is no profile named " + chosen.label + " any more")
+	}
+	wizard := EditSetupModel(m.workspace.Setup(), connection)
+	wizard.width, wizard.height = m.width, m.height
+	m.wizard = &wizard
+	return m, wizard.Init()
+}
+
+// created applies what the wizard did. A new connection is opened. An edited
+// one is opened again only when it is the connection this session is already
+// on, because saving somebody else's profile is not a reason to leave yours.
 func (m Model) created(done SetupDone) (tea.Model, tea.Cmd) {
+	editing := m.wizard != nil && m.wizard.editing.ID != ""
+	mine := done.Connection.ID == m.session.Connection.ID
 	m.wizard = nil
 	if !done.Saved {
 		return m, m.profiles()
+	}
+	if editing && !mine {
+		return m, tea.Batch(m.profiles(), m.notify("saved "+done.Connection.Name))
 	}
 	m.view = viewDashboard
 	m.loading = true

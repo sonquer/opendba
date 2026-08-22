@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
@@ -27,8 +29,8 @@ func watching(t *testing.T, conn *fakeConn, open func(driver.Conn) cli.Session) 
 	t.Helper()
 	m := NewModel(open(conn), workspaceWith(t))
 	m.width, m.height = 110, 32
-	loaded, _ := m.Update(m.load()())
-	shown, _ := loaded.(Model).Update(runFirst(t, loaded.(Model).readSessions()))
+	loaded := settle(t, m, m.load())
+	shown, _ := loaded.Update(runFirst(t, loaded.readSessions()))
 	return shown.(Model)
 }
 
@@ -298,5 +300,85 @@ func TestUnknownStopFailures(t *testing.T) {
 	}
 	if _, err := errors.New("x"), error(nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A beat reads what the server is doing, not what it holds. A size sweep of
+// every table three times a minute is what made the dashboard jump.
+func TestTheBeatReadsSessionsAndNotTheCatalogue(t *testing.T) {
+	conn := busy()
+	m := watching(t, conn, session)
+	before := conn.counted()
+
+	live, cmds := m.beats()
+	live = settle(t, live, tea.Batch(cmds...))
+	if got := conn.counted()["sessions"] - before["sessions"]; got != 1 {
+		t.Errorf("the sessions were read %d times on a beat, want 1", got)
+	}
+	for _, step := range []string{"tables", "indexes", "health"} {
+		if got := conn.counted()[step] - before[step]; got != 0 {
+			t.Errorf("%s was read %d times on the first beat, want 0", step, got)
+		}
+	}
+
+	for range healthEvery - 1 {
+		var next []tea.Cmd
+		live, next = live.beats()
+		live = settle(t, live, tea.Batch(next...))
+	}
+	if got := conn.counted()["health"] - before["health"]; got != 1 {
+		t.Errorf("health must be read once every %d beats, got %d", healthEvery, got)
+	}
+	for _, step := range []string{"tables", "indexes"} {
+		if got := conn.counted()[step] - before[step]; got != 0 {
+			t.Errorf("%s is the shape of the database, not its weather: read %d times", step, got)
+		}
+	}
+	if live.beat != healthEvery {
+		t.Errorf("beat = %d", live.beat)
+	}
+}
+
+// A stale beat belongs to a screen that has been left, and reads nothing.
+func TestAStaleBeatReadsNothing(t *testing.T) {
+	conn := busy()
+	m := watching(t, conn, session)
+	before := conn.counted()
+	if _, cmd := m.refreshed(tickMsg{generation: m.generation + 1}); cmd != nil {
+		t.Error("a beat from a connection that has been left must be dropped")
+	}
+	away := m
+	away.view = viewQuery
+	if _, cmd := away.refreshed(tickMsg{generation: away.generation}); cmd != nil {
+		t.Error("a beat while the dashboard is not on screen must be dropped")
+	}
+	if got := conn.counted()["sessions"] - before["sessions"]; got != 0 {
+		t.Errorf("a dropped beat read the server %d times", got)
+	}
+	live, cmd := m.refreshed(tickMsg{generation: m.generation})
+	if cmd == nil || live.(Model).beat != 1 {
+		t.Errorf("a live beat must keep beating: beat = %d", live.(Model).beat)
+	}
+}
+
+// A refresh keeps the screen it already has. Swapping a drawn dashboard for a
+// spinner and back again is what a blink is.
+func TestARefreshDoesNotBlankTheScreen(t *testing.T) {
+	m := watching(t, busy(), session)
+	if m.blank() {
+		t.Fatal("this model has already read the server")
+	}
+	m.loading = true
+	if strings.Contains(plain(m.content()), "reading the server") {
+		t.Errorf("a refresh must leave the screen alone:\n%s", plain(m.content()))
+	}
+	if !strings.Contains(plain(m.content()), "RUNNING") {
+		t.Errorf("the screen must still be there:\n%s", plain(m.content()))
+	}
+	fresh := NewModel(session(busy()), workspaceWith(t))
+	fresh.width, fresh.height = 110, 32
+	fresh.loading = true
+	if !strings.Contains(plain(fresh.content()), "reading the server") {
+		t.Error("a first read has nothing to draw and must say it is working")
 	}
 }

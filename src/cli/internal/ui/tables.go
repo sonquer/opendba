@@ -58,15 +58,48 @@ func (t *Theme) Counts(healthy, warnings, failing int) string {
 	return strings.Join(parts, t.Muted.Render(" · "))
 }
 
+// List is how a catalogue screen wants its rows drawn: where the cursor is,
+// how wide the screen is, and which column the rows were sorted by so the
+// heading can say so.
+type List struct {
+	Cursor int
+	Width  int
+
+	// Sort is the column the rows are already in the order of, counted from
+	// the name at zero through the facts to the bar. A list nobody sorted
+	// leaves it negative.
+	Sort     int
+	Reversed bool
+
+	// Busiest is the scans of the busiest index on each table, measured before
+	// any filter was applied. Without it a list narrowed to one index would
+	// draw that index at the full width of the bar, because it would be the
+	// busiest thing left.
+	Busiest map[string]int64
+}
+
+// Sorted marks the column a list is in the order of, so a heading says what
+// the order is rather than leaving it to be worked out.
+func (l List) Sorted(column int, name string) string {
+	if l.Sort != column {
+		return name
+	}
+	if l.Reversed {
+		return name + " ↓"
+	}
+	return name + " ↑"
+}
+
 // TableList is what the server holds and how it is being read: the size on
 // disk, and a bar for the share of reads the server answered from memory.
-func (t *Theme) TableList(tables []driver.Table, cursor, width int) string {
+func (t *Theme) TableList(tables []driver.Table, list List) string {
 	if len(tables) == 0 {
 		return t.Muted.Render("no tables here")
 	}
-	list := make([]Listing, 0, len(tables))
+	width, cursor := list.Width, list.Cursor
+	rows := make([]Listing, 0, len(tables))
 	for i, entry := range tables {
-		list = append(list, Listing{
+		rows = append(rows, Listing{
 			Name:     entry.Qualified(),
 			Facts:    []string{Count(entry.Rows), ByteSize(entry.Size), ByteSize(entry.IndexSize)},
 			Note:     cached(entry),
@@ -76,10 +109,12 @@ func (t *Theme) TableList(tables []driver.Table, cursor, width int) string {
 			Cursor:   i == cursor,
 		})
 	}
-	return t.Rows(list, Head{
-		Name:  "table",
-		Facts: []string{"rows", "size", "indexes"},
-		Gauge: "read from memory",
+	return t.Rows(rows, Head{
+		Name: list.Sorted(0, "table"),
+		Facts: []string{
+			list.Sorted(1, "rows"), list.Sorted(2, "size"), list.Sorted(3, "indexes"),
+		},
+		Gauge: list.Sorted(4, "read from memory"),
 	}, width)
 }
 
@@ -94,21 +129,22 @@ func cached(table driver.Table) string {
 
 // IndexList is what each index costs and what it is worth: its size, how often
 // the server read it, and a bar for its share of the reads on its table.
-func (t *Theme) IndexList(indexes []driver.Index, cursor, width int) string {
+func (t *Theme) IndexList(indexes []driver.Index, list List) string {
 	if len(indexes) == 0 {
 		return t.Muted.Render("no indexes here")
 	}
-	busiest := map[string]int64{}
-	for _, index := range indexes {
-		busiest[index.Table] = max(busiest[index.Table], index.Scans)
+	width, cursor := list.Width, list.Cursor
+	busiest := list.Busiest
+	if busiest == nil {
+		busiest = Busiest(indexes)
 	}
-	list := make([]Listing, 0, len(indexes))
+	rows := make([]Listing, 0, len(indexes))
 	for i, index := range indexes {
 		share, measured := float64(0), false
 		if top := busiest[index.Table]; top > 0 {
 			share, measured = float64(index.Scans)/float64(top), true
 		}
-		list = append(list, Listing{
+		rows = append(rows, Listing{
 			Name:     index.Name,
 			Facts:    []string{index.Table, ByteSize(index.Size), reads(index)},
 			Note:     worth(index),
@@ -118,12 +154,25 @@ func (t *Theme) IndexList(indexes []driver.Index, cursor, width int) string {
 			Cursor:   i == cursor,
 		})
 	}
-	return t.Rows(list, Head{
-		Name:  "index",
-		Facts: []string{"on table", "size", "reads"},
-		Gauge: "share of its table",
+	return t.Rows(rows, Head{
+		Name: list.Sorted(0, "index"),
+		Facts: []string{
+			list.Sorted(1, "on table"), list.Sorted(2, "size"), list.Sorted(3, "reads"),
+		},
+		Gauge: list.Sorted(4, "share of its table"),
 		Note:  "why",
 	}, width)
+}
+
+// Busiest is the scans of the busiest index on each table, which is what every
+// bar in the list is measured against. It is computed before a filter narrows
+// the list, because the busiest of one index is always itself.
+func Busiest(indexes []driver.Index) map[string]int64 {
+	busiest := map[string]int64{}
+	for _, index := range indexes {
+		busiest[index.Table] = max(busiest[index.Table], index.Scans)
+	}
+	return busiest
 }
 
 // reads is how often the server went to this index, or a word for a driver that

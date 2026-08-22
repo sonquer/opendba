@@ -88,6 +88,11 @@ type options struct {
 	database   string
 	schema     string
 	limit      int
+
+	// yes answers the question a statement that changes data would otherwise
+	// raise. There is no dialog in a pipe, so the answer has to arrive with the
+	// statement or the statement does not run.
+	yes bool
 }
 
 func (a App) Run(ctx context.Context, args []string) int {
@@ -445,6 +450,7 @@ func (a App) parse(command string, args []string) (options, string, error) {
 	set.StringVar(&opts.connection, "connection", "", "the connection to use")
 	set.StringVar(&opts.schema, "schema", "", "limit the report to one schema")
 	set.IntVar(&opts.limit, "limit", 0, "maximum number of rows to read")
+	set.BoolVar(&opts.yes, "yes", false, "run a statement that changes data without being asked")
 	if err := set.Parse(args); err != nil {
 		return options{}, "", err
 	}

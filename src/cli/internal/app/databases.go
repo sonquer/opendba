@@ -178,7 +178,9 @@ func (m Model) catalogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m.confirmQuit()
-	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Catalog):
+	case key.Matches(msg, m.keys.Back):
+		return m.browse()
+	case key.Matches(msg, m.keys.Catalog):
 		m.view = viewDashboard
 	case key.Matches(msg, m.keys.Up):
 		m.catalog.picker = m.catalog.move(-1)

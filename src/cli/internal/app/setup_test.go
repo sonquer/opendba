@@ -158,7 +158,7 @@ func TestConnectionFromTheValues(t *testing.T) {
 	values.password = "hunter2"
 	values.color = string(ui.EnvRed)
 
-	connection, password := connectionFrom(values, "01J")
+	connection, password := connectionFrom(config.Connection{}, values, "01J")
 	if connection.ID != "01J" || connection.Name != "production-eu" || connection.Driver != "postgres" {
 		t.Fatalf("connection = %+v", connection)
 	}
@@ -175,7 +175,7 @@ func TestConnectionFromTheValues(t *testing.T) {
 	values.readOnly = false
 	values.driver = "sqlite"
 	values.file = " /tmp/app.db "
-	connection, password = connectionFrom(values, "01K")
+	connection, password = connectionFrom(config.Connection{}, values, "01K")
 	if connection.Mode != config.ReadWrite || connection.File != "/tmp/app.db" {
 		t.Fatalf("connection = %+v", connection)
 	}
@@ -929,5 +929,59 @@ func TestEveryMarkedFieldIsReportedAtOnce(t *testing.T) {
 		if !strings.Contains(blocked.failure, want) {
 			t.Errorf("failure %q must name %q", blocked.failure, want)
 		}
+	}
+}
+
+// Editing starts from what is saved. The id, the secret reference and the
+// schema filter are on the profile and on no field, so a fresh struct would
+// quietly drop all three.
+func TestEditingKeepsWhatIsNotOnTheForm(t *testing.T) {
+	saved := config.Connection{
+		ID: "kept", Name: "localhost", Driver: "postgres", Host: "db.internal", Port: 6432,
+		User: "reader", Database: "app", SSLMode: "require", Mode: config.ReadWrite,
+		Color: "blue", Secret: "keyring:kept", DefaultSchema: "catalog",
+		Schemas: []string{"catalog", "iam"}, Options: "application_name=x",
+	}
+	values := answersFrom(saved)
+	if values.host != "db.internal" || values.port != "6432" || values.sslmode != "require" {
+		t.Fatalf("the form must be seeded from the profile: %+v", values)
+	}
+	if values.readOnly {
+		t.Error("including the access mode")
+	}
+	if values.password != "" {
+		t.Error("a secret is written and never read back, so the field starts empty")
+	}
+
+	edited, password := connectionFrom(saved, values, "a new id")
+	if edited.ID != "kept" {
+		t.Errorf("id = %q, want the one that was saved", edited.ID)
+	}
+	if edited.Secret != "keyring:kept" {
+		t.Errorf("secret = %q, want the reference to survive", edited.Secret)
+	}
+	if edited.DefaultSchema != "catalog" || len(edited.Schemas) != 2 {
+		t.Errorf("the schema filter must survive: %+v", edited)
+	}
+	if edited.Options != "application_name=x" {
+		t.Errorf("options = %q", edited.Options)
+	}
+	if len(password) != 0 {
+		t.Error("an untouched password field means keep the one that is stored")
+	}
+
+	values.password = "typed again"
+	replaced, password := connectionFrom(saved, values, "a new id")
+	if string(password) != "typed again" || replaced.ID != "kept" {
+		t.Error("a retyped password replaces the secret under the same id")
+	}
+}
+
+func TestANewConnectionGetsANewID(t *testing.T) {
+	values := defaults()
+	values.driver, values.name = "postgres", "fresh"
+	made, _ := connectionFrom(config.Connection{}, values, "minted")
+	if made.ID != "minted" {
+		t.Errorf("id = %q", made.ID)
 	}
 }

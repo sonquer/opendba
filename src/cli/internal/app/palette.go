@@ -49,7 +49,7 @@ func newPalette(theme *ui.Theme, keys keymap) palette {
 			{title: "tables", hint: keys.Schema.Help().Key, msg: gotoMsg{view: viewSchema}},
 			{title: "indexes", hint: keys.Indexes.Help().Key, msg: gotoMsg{view: viewIndexes}},
 			{title: "reload everything", hint: keys.Reload.Help().Key, msg: reloadMsg{}},
-			{title: "databases and schemas", hint: keys.Catalog.Help().Key, msg: gotoMsg{view: viewCatalog}},
+			{title: "database and schemas", hint: "", msg: gotoMsg{view: viewCatalog}},
 			{title: "connections", hint: keys.Connections.Help().Key, msg: gotoMsg{view: viewSwitch}},
 			{title: "new connection", hint: keys.New.Help().Key, msg: newConnectionMsg{}},
 			{title: "keys and safety", hint: keys.Help.Help().Key, msg: gotoMsg{view: viewHelp}},

@@ -15,7 +15,9 @@ const (
 	(SELECT coalesce(sum(temp_files), 0) FROM pg_stat_database WHERE datname = current_database()),
 	(SELECT coalesce(sum(temp_bytes), 0) FROM pg_stat_database WHERE datname = current_database()),
 	(SELECT setting::bigint * 8192 FROM pg_settings WHERE name = 'shared_buffers'),
-	(SELECT setting::bigint * 1024 FROM pg_settings WHERE name = 'work_mem')`
+	(SELECT setting::bigint * 1024 FROM pg_settings WHERE name = 'work_mem'),
+	(SELECT coalesce(round(100.0 * sum(idx_blks_hit) / nullif(sum(idx_blks_hit) + sum(idx_blks_read), 0), 1), 100.0)
+		FROM pg_statio_user_indexes)`
 
 	loadQuery = `SELECT
 	(SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()),
@@ -31,7 +33,9 @@ const (
 	coalesce((SELECT wait_event_type FROM pg_stat_activity
 		WHERE state = 'active' AND wait_event_type NOT IN ('Client', 'Activity')
 		GROUP BY wait_event_type ORDER BY count(*) DESC LIMIT 1), ''),
-	current_setting('transaction_read_only') = 'on'`
+	current_setting('transaction_read_only') = 'on',
+	(SELECT coalesce(max(extract(epoch FROM clock_timestamp() - state_change)), 0)
+		FROM pg_stat_activity WHERE state = 'idle in transaction')`
 
 	scansQuery = `SELECT
 	(SELECT coalesce(sum(seq_scan), 0) FROM pg_stat_user_tables),
@@ -40,13 +44,22 @@ const (
 	(SELECT coalesce(sum(n_live_tup), 0) FROM pg_stat_user_tables),
 	(SELECT coalesce(sum(pg_relation_size(indexrelid)), 0) FROM pg_stat_user_indexes WHERE idx_scan = 0),
 	(SELECT coalesce(sum(pg_relation_size(indexrelid)), 0) FROM pg_stat_user_indexes),
-	(SELECT count(*) FROM pg_stat_user_indexes WHERE idx_scan = 0)`
+	(SELECT count(*) FROM pg_stat_user_indexes WHERE idx_scan = 0),
+	(SELECT coalesce(extract(epoch FROM now() - min(greatest(last_vacuum, last_autovacuum))), 0)
+		FROM pg_stat_user_tables WHERE greatest(last_vacuum, last_autovacuum) IS NOT NULL),
+	(SELECT count(*) FROM pg_stat_user_tables WHERE greatest(last_vacuum, last_autovacuum) IS NULL)`
 
 	storageQuery = `SELECT
 	pg_database_size(current_database()),
 	(SELECT age(datfrozenxid) FROM pg_database WHERE datname = current_database()),
 	(SELECT setting::bigint FROM pg_settings WHERE name = 'autovacuum_freeze_max_age'),
-	(SELECT count(*) FROM pg_replication_slots WHERE NOT active)`
+	(SELECT count(*) FROM pg_replication_slots WHERE NOT active),
+	(SELECT coalesce(sum(pg_database_size(oid)), 0) FROM pg_database
+		WHERE datallowconn AND has_database_privilege(oid, 'CONNECT')),
+	(SELECT count(*) FROM pg_database WHERE datallowconn),
+	CASE WHEN pg_has_role(current_user, 'pg_monitor', 'member')
+		THEN (SELECT coalesce(sum(size), 0) FROM pg_ls_waldir()) ELSE -1 END,
+	(SELECT setting::bigint * 1024 * 1024 FROM pg_settings WHERE name = 'max_wal_size')`
 
 	checkpointsQuery   = `SELECT num_timed, num_requested FROM pg_stat_checkpointer`
 	oldCheckpointQuery = `SELECT checkpoints_timed, checkpoints_req FROM pg_stat_bgwriter`
@@ -61,6 +74,7 @@ type Snapshot struct {
 	TempBytes     int64
 	SharedBuffers int64
 	WorkMem       int64
+	IndexHitRatio float64
 
 	Connections    int64
 	MaxConnections int64
@@ -72,6 +86,7 @@ type Snapshot struct {
 	RollbackRatio  float64
 	WaitingOn      string
 	ReadOnly       bool
+	IdleSeconds    float64
 
 	SeqScans        int64
 	IndexScans      int64
@@ -80,6 +95,8 @@ type Snapshot struct {
 	UnusedIndexSize int64
 	TotalIndexSize  int64
 	UnusedIndexes   int64
+	VacuumSeconds   float64
+	NeverVacuumed   int64
 
 	DatabaseSize      int64
 	TransactionAge    int64
@@ -87,6 +104,10 @@ type Snapshot struct {
 	InactiveSlots     int64
 	TimedCheckpoints  int64
 	ForcedCheckpoints int64
+	ServerSize        int64
+	Databases         int64
+	WalSize           int64
+	MaxWalSize        int64
 
 	Refused map[string]string
 }
@@ -99,21 +120,25 @@ func (s Snapshot) refused(group string) (string, bool) {
 func (c *connection) Health(ctx context.Context) ([]driver.Finding, error) {
 	snapshot := Snapshot{Refused: map[string]string{}}
 	if err := c.db.QueryRow(ctx, memoryQuery).Scan(&snapshot.CacheHitRatio, &snapshot.TempFiles,
-		&snapshot.TempBytes, &snapshot.SharedBuffers, &snapshot.WorkMem); err != nil {
+		&snapshot.TempBytes, &snapshot.SharedBuffers, &snapshot.WorkMem,
+		&snapshot.IndexHitRatio); err != nil {
 		snapshot.Refused[driver.GroupMemory] = err.Error()
 	}
 	if err := c.db.QueryRow(ctx, loadQuery).Scan(&snapshot.Connections, &snapshot.MaxConnections,
 		&snapshot.Active, &snapshot.IdleInTx, &snapshot.WaitingLocks, &snapshot.LongestSeconds,
-		&snapshot.Deadlocks, &snapshot.RollbackRatio, &snapshot.WaitingOn, &snapshot.ReadOnly); err != nil {
+		&snapshot.Deadlocks, &snapshot.RollbackRatio, &snapshot.WaitingOn, &snapshot.ReadOnly,
+		&snapshot.IdleSeconds); err != nil {
 		snapshot.Refused[driver.GroupLoad] = err.Error()
 	}
 	if err := c.db.QueryRow(ctx, scansQuery).Scan(&snapshot.SeqScans, &snapshot.IndexScans,
 		&snapshot.DeadTuples, &snapshot.LiveTuples, &snapshot.UnusedIndexSize,
-		&snapshot.TotalIndexSize, &snapshot.UnusedIndexes); err != nil {
+		&snapshot.TotalIndexSize, &snapshot.UnusedIndexes,
+		&snapshot.VacuumSeconds, &snapshot.NeverVacuumed); err != nil {
 		snapshot.Refused[driver.GroupScans] = err.Error()
 	}
 	if err := c.db.QueryRow(ctx, storageQuery).Scan(&snapshot.DatabaseSize, &snapshot.TransactionAge,
-		&snapshot.FreezeMaxAge, &snapshot.InactiveSlots); err != nil {
+		&snapshot.FreezeMaxAge, &snapshot.InactiveSlots, &snapshot.ServerSize,
+		&snapshot.Databases, &snapshot.WalSize, &snapshot.MaxWalSize); err != nil {
 		snapshot.Refused[driver.GroupStorage] = err.Error()
 	}
 	c.checkpoints(ctx, &snapshot)
@@ -138,7 +163,7 @@ func (c *connection) checkpoints(ctx context.Context, snapshot *Snapshot) {
 var groups = []string{driver.GroupMemory, driver.GroupLoad, driver.GroupScans, driver.GroupStorage}
 
 func Findings(snapshot Snapshot) []driver.Finding {
-	findings := make([]driver.Finding, 0, 16)
+	findings := make([]driver.Finding, 0, 21)
 	for _, group := range groups {
 		if reason, refused := snapshot.refused(group); refused {
 			findings = append(findings, driver.Finding{
@@ -166,17 +191,21 @@ var byGroup = map[string]func(Snapshot) []driver.Finding{
 func memoryFindings(snapshot Snapshot) []driver.Finding {
 	return []driver.Finding{
 		cacheFinding(snapshot),
+		indexCacheFinding(snapshot),
 		spillFinding(snapshot),
 		buffersFinding(snapshot),
 	}
 }
 
+// The measured readings of a group sit together, because a row with no bar
+// between two rows with one breaks the column of bars in half.
 func loadFindings(snapshot Snapshot) []driver.Finding {
 	return []driver.Finding{
 		connectionsFinding(snapshot),
 		waitingFinding(snapshot),
-		longestFinding(snapshot),
 		rollbacksFinding(snapshot),
+		longestFinding(snapshot),
+		idleFinding(snapshot),
 		deadlocksFinding(snapshot),
 		accessFinding(snapshot),
 	}
@@ -187,15 +216,20 @@ func scanFindings(snapshot Snapshot) []driver.Finding {
 		fullScanFinding(snapshot),
 		deadRowsFinding(snapshot),
 		indexesFinding(snapshot),
+		vacuumFinding(snapshot),
 	}
 }
 
+// size is last because it is the least actionable number here: it is always
+// OK, and a group is read from the top.
 func storageFindings(snapshot Snapshot) []driver.Finding {
 	return []driver.Finding{
-		sizeFinding(snapshot),
 		wraparoundFinding(snapshot),
 		checkpointFinding(snapshot),
+		walFinding(snapshot),
 		replicationFinding(snapshot),
+		sizeFinding(snapshot),
+		serverFinding(snapshot),
 	}
 }
 
@@ -500,5 +534,145 @@ func accessFinding(snapshot Snapshot) driver.Finding {
 		Value:     "read / write",
 		Note:      "this session may change data",
 		Severity:  driver.SeverityWarn,
+	}
+}
+
+// indexCacheFinding is the other half of the cache reading: a table can be in
+// memory while the indexes used to find rows in it are not, and a lookup that
+// goes to disk is a lookup that costs whatever an index was meant to save.
+func indexCacheFinding(snapshot Snapshot) driver.Finding {
+	finding := driver.Finding{
+		Group:     driver.GroupMemory,
+		Subsystem: "index cache",
+		Code:      "index_hit_ratio",
+		Value:     fmt.Sprintf("%.1f%%", snapshot.IndexHitRatio),
+		Note:      "the lookups themselves are in memory too",
+		Severity:  driver.SeverityOK,
+	}
+	switch {
+	case snapshot.IndexHitRatio < 90:
+		finding.Severity = driver.SeverityCritical
+		finding.Note = "most index lookups are read from disk before a row is even found"
+	case snapshot.IndexHitRatio < 99:
+		finding.Severity = driver.SeverityWarn
+		finding.Note = "some index lookups go to disk, which costs what the index was for"
+	}
+	return finding.Measure(snapshot.IndexHitRatio, 100)
+}
+
+// idleFinding is the session that opened a transaction and walked away. It
+// holds its locks and it holds the oldest row every cleaner has to read past,
+// so one of these left overnight is worth more trouble than a slow query.
+func idleFinding(snapshot Snapshot) driver.Finding {
+	idle := time.Duration(snapshot.IdleSeconds * float64(time.Second))
+	finding := driver.Finding{
+		Group:     driver.GroupLoad,
+		Subsystem: "idle in transaction",
+		Code:      "idle_in_transaction",
+		Value:     fmt.Sprintf("%d", snapshot.IdleInTx),
+		Note:      "nobody is holding a transaction open and doing nothing with it",
+		Severity:  driver.SeverityOK,
+	}
+	if snapshot.IdleInTx == 0 {
+		return finding
+	}
+	finding.Severity = driver.SeverityWarn
+	finding.Note = "a transaction has been open and idle for " + Duration(idle) +
+		", holding its locks and keeping vacuum from finishing"
+	if idle > stuckTransaction {
+		finding.Severity = driver.SeverityCritical
+		finding.Note = "a transaction has been open and idle for " + Duration(idle) +
+			", which is long enough to be a client that crashed or a session someone forgot"
+	}
+	return finding.Measure(float64(snapshot.IdleInTx), float64(snapshot.Connections))
+}
+
+const stuckTransaction = 5 * time.Minute
+
+// vacuumFinding is whether the cleaner has been round. Every update and delete
+// leaves the old row on disk until it has, and nothing else on this dashboard
+// gets better while it has not.
+func vacuumFinding(snapshot Snapshot) driver.Finding {
+	since := time.Duration(snapshot.VacuumSeconds * float64(time.Second))
+	finding := driver.Finding{
+		Group:     driver.GroupScans,
+		Subsystem: "vacuum",
+		Code:      "vacuum_age",
+		Value:     driver.Age(since),
+		Note:      "every table has been cleaned recently",
+		Severity:  driver.SeverityOK,
+	}
+	if snapshot.NeverVacuumed > 0 {
+		finding.Severity = driver.SeverityWarn
+		finding.Value = fmt.Sprintf("%d never", snapshot.NeverVacuumed)
+		finding.Note = fmt.Sprintf("%d tables have never been vacuumed, so nothing has ever "+
+			"reclaimed the rows they have replaced", snapshot.NeverVacuumed)
+		return finding
+	}
+	switch {
+	case since > staleVacuum:
+		finding.Severity = driver.SeverityCritical
+		finding.Note = "the oldest table was last cleaned " + driver.Age(since) +
+			", which usually means autovacuum is off or something is blocking it"
+	case since > tiredVacuum:
+		finding.Severity = driver.SeverityWarn
+		finding.Note = "the oldest table was last cleaned " + driver.Age(since)
+	}
+	return finding
+}
+
+const (
+	tiredVacuum = 7 * 24 * time.Hour
+	staleVacuum = 30 * 24 * time.Hour
+)
+
+// walFinding is how much write ahead log is on disk. It grows when checkpoints
+// fall behind or a replication slot stops consuming, and it is the one thing
+// that fills a disk without any table getting bigger.
+func walFinding(snapshot Snapshot) driver.Finding {
+	if snapshot.WalSize < 0 {
+		return driver.Finding{
+			Group:     driver.GroupStorage,
+			Subsystem: "wal",
+			Code:      "wal_size",
+			Value:     "n/a",
+			Note:      "reading the write ahead log needs the pg_monitor role",
+			Severity:  driver.SeverityUnknown,
+		}
+	}
+	finding := driver.Finding{
+		Group:     driver.GroupStorage,
+		Subsystem: "wal",
+		Code:      "wal_size",
+		Value:     ByteSize(snapshot.WalSize),
+		Note:      "the write ahead log is the size the server was configured for",
+		Severity:  driver.SeverityOK,
+	}
+	room := snapshot.MaxWalSize * walRunway
+	if room > 0 && snapshot.WalSize > room {
+		finding.Severity = driver.SeverityWarn
+		finding.Note = "the write ahead log is more than " + fmt.Sprintf("%d", walRunway) +
+			" times max_wal_size, so either checkpoints are behind or a slot is holding it"
+	}
+	return finding.Measure(float64(snapshot.WalSize), float64(room))
+}
+
+// walRunway is how far past max_wal_size the log may sit before it is worth
+// saying so. The directory routinely holds more than one checkpoint's worth.
+const walRunway = 2
+
+// serverFinding is everything the instance holds, not just this database. It is
+// the closest a SQL connection can get to how full the machine is: no built in
+// function reports free disk space, and the ones that come near it are for
+// superusers and answer about files rather than about the filesystem.
+func serverFinding(snapshot Snapshot) driver.Finding {
+	return driver.Finding{
+		Group:     driver.GroupStorage,
+		Subsystem: "server",
+		Code:      "server_size",
+		Value:     ByteSize(snapshot.ServerSize),
+		Note: fmt.Sprintf("%d databases on this server, this one included. Free space on the "+
+			"machine is not something a SQL connection can see", snapshot.Databases),
+		Severity: driver.SeverityOK,
 	}
 }

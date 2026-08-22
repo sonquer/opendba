@@ -1,142 +1,275 @@
 <h1 align="center">TUI4DB</h1>
 
 <p align="center">
-  <b>A terminal workbench for databases.</b><br>
-  <i>Know where you are. Know what you're running.</i>
+  <b>A terminal workbench for PostgreSQL and SQLite.</b><br>
+  <i>Know where you are. Know what you are running.</i>
 </p>
 
 <p align="center">
-  <a href="#license"><img alt="license" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue"></a>
-  <img alt="go" src="https://img.shields.io/badge/go-1.26%2B-00ADD8">
-  <img alt="coverage" src="https://img.shields.io/badge/coverage-95%25%20gate-brightgreen">
-  <img alt="comments" src="https://img.shields.io/badge/comments-docs%20only-black">
+  <a href="#licence"><img alt="licence" src="https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue"></a>
+  <img alt="go" src="https://img.shields.io/badge/go-1.26.7-00ADD8">
   <img alt="status" src="https://img.shields.io/badge/status-in%20development-orange">
 </p>
 
 ---
 
-## Spot the write
+TUI4DB connects to a database and shows you what it is doing: the health of the
+server, what is running on it right now, what it holds, and an editor to ask it
+questions. Every statement is parsed before it is sent, and on a read only
+profile anything that would change data is refused rather than warned about.
 
-One of these four statements modifies your database. You have five seconds.
+It is in development. The interface works and the safety model works; the rough
+edges are named at the bottom of this file rather than left for you to find.
 
-```sql
--- A
-SELECT * FROM users FOR UPDATE;
-
--- B
-WITH removed AS (DELETE FROM users WHERE last_login < now() - interval '1 year' RETURNING *)
-SELECT count(*) FROM removed;
-
--- C
-EXPLAIN ANALYZE DELETE FROM sessions WHERE expired;
-
--- D
-/* SELECT */ SELECT * INTO backup FROM orders;
-```
-
-The answer is **all four**. `A` takes row locks and blocks your writers. `B` hides a
-`DELETE` inside a CTE. `C` runs the delete, because that is what `ANALYZE` means. `D`
-creates a table, and the comment is there to fool the reader.
-
-Every SQL guard built on keyword matching gets at least one of these wrong.
-TUI4DB gets all four right, because it does not match keywords. It parses the
-statement with PostgreSQL's own grammar and walks the tree:
-
-```text
-→ ~ tui4db query
-
-  WITH removed AS (DELETE FROM users … RETURNING *) SELECT count(*) FROM removed
-
-  ────────────────────────────────────────────────────────────────────────────
-
-  ✗ blocked      SELECT · the statement contains DELETE
-
-  This connection is READ ONLY. Nothing was sent to the server.
-
-  [e] edit   [m] switch to READ / WRITE   [esc] cancel
-```
-
-And if the parser is ever wrong, three more layers are still standing.
-
-## Production is red. Always.
-
-```text
-████████████████████████████████████████████████████████████████████████████████
-  ● production-eu · PostgreSQL 16.3 · READ ONLY
-████████████████████████████████████████████████████████████████████████████████
-
-  connected · production-eu · postgres 16.3 · read-only · 6h window
-
-    cache hit      [████████████████████]  99.2%   ok
-    connections    [████████░░░░░░░░░░░░]  42/100  ok
-    lock wait      [████████████░░░░░░░░]  61.0%   query 4f2a
-    idle indexes   [████░░░░░░░░░░░░░░░░]  43 GiB  review
-
-  tables 284 · schemas 12 · indexes 1,284 · size 1.8 TB
-
-  ────────────────────────────────────────────────────────────────────────────
-
-  [q] query   [s] schema   [i] indexes   [h] health   [,] settings   [?] help
-```
-
-The environment bar spans the full width of the terminal on every screen. Switch
-connections and the whole interface repaints in the new colour. You will not run
-the staging query against production because you looked away for a second.
-
-## Why
-
-- **Read only is real, not a checkbox.** Four layers, none of which trust the
-  other three: a default-deny classifier over a real parse tree, a database role
-  with no write grants, a pinned session, and a read-only transaction around
-  every read.
-- **Nothing is configured by hand.** Connections, settings and secrets are managed
-  inside the TUI. Passwords never touch a config file. The profile stores a
-  reference to your OS keychain, to an `age`-encrypted vault, or to your existing
-  secret manager.
-- **Keyboard first, Unix shaped.** `psql` + `btop` + `k9s` + `lazygit`, findings
-  first, colour only where it carries information.
-- **Pretty for humans, stable for machines.** The interface is for you; a
-  versioned `--json` contract is for your scripts.
-
-## Status
-
-Early, and honest about it: PostgreSQL and SQLite work, the safety layer is
-finished, and the interface covers the dashboard, the health report, the table
-list and the query editor. Relations, EXPLAIN and the settings screen are next.
-
-## Quickstart
+## Install
 
 ```bash
-go run ./src/cli/cmd/tui4db
+go install github.com/sonquer/tui4db/src/cli/cmd/tui4db@latest
 ```
 
-With no connections configured, TUI4DB opens the setup wizard: pick a driver,
-name it, give it a database file or a host, confirm the access mode (READ ONLY
-is preselected), pick an environment colour. The connection is tested before it
-is saved, and any password goes straight to your keychain. Once it is saved the
-wizard hands over to the interface, already connected.
+There are no binary releases yet.
 
-Inside the interface, `ctrl+p` lists your connections: `enter` switches to
-another one, `n` opens the same wizard without leaving the program, and `d`
-removes a connection along with its password once you have typed its name back.
+The first run has no connection to open, so it asks for one: a driver, then the
+details, then an access mode and a colour for the environment. The connection
+is tested before it is saved, and the password goes to your keychain rather
+than into the profile.
 
-A bar is drawn with whatever glyph your font draws well, which is not something
-a terminal program can decide for you: it writes characters, and the font is
-the emulator's setting. So the shape is yours to pick, in `settings.toml`:
+## The dashboard
+
+Every screen in this file is printed by `go run ./src/cli/cmd/screens`, which
+renders the real program against a seeded SQLite file. They are captured, not
+drawn, so they cannot show something that does not exist.
+
+```text
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite 3.53.3  READ ONLY
+  ─────────────────────────────────────────────────────────────────────────────
+
+   OK   nothing needs attention                       6 checks, all of them fine
+
+  MEMORY
+
+    free pages     [||||||||||||||||||||]           0   ok
+
+  LOAD
+
+    access                                  read only   ok
+
+  SCANS
+
+    foreign keys                                    0   ok
+
+  STORAGE
+
+  ▌ integrity                                      ok   ok
+    journal                                    delete   note
+    size                                     20.0 KiB   note
+```
+
+The line across the top is the environment colour, so a production connection
+looks different from a local one before you have read a single word. The
+headline is the state of the server in one word, what it is about, and how much
+came back fine. Underneath, the readings are grouped by what they are about:
+memory, load, scans, storage.
+
+`↑↓` walks the readings and `enter` opens the one under the cursor: what the
+number is, what it means when it moves, and what to do about it. Every reading
+has a page, on both drivers.
+
+On PostgreSQL the dashboard also lists what the server is running right now,
+with the statement, who is running it and for how long. `c` cancels a session,
+`x` closes it. The sessions refresh every three seconds, the health of the
+server every fifteen, and the catalogue not at all, because the shape of a
+database is not weather.
+
+## Tables and indexes
+
+```text
+  TABLES                                          every schema · 2 tables · 0 B
+  ▔▔▔▔▔▔
+
+    table ↑       rows   size   indexes   read from memory
+  ─────────────────────────────────────────────────────────────────────────────
+    main.orders      0    0 B       0 B                     never read  n/a
+    main.users       0    0 B       0 B                     never read  n/a
+```
+
+A table shows how many rows it holds, what it and its indexes take on disk, and
+a bar for the share of its reads the server answered from memory. An index
+shows what it costs, how often it was read, its share of the reads on its
+table, and what it is there for: a primary key, a uniqueness rule, or plain
+lookups that nothing is doing.
+
+`f` searches, `o` moves the sort to the next column, `O` turns it round, and
+the heading says which column the list is in the order of. `enter` opens the
+row: its columns, the counters the server keeps about it, and a page in plain
+words saying what those numbers mean.
+
+## The editor
+
+```text
+  TABLES                    │ ┃   1 SELECT ...
+                            │ ┃
+   main                     │ ┃
+  ├── orders                │ ┃
+  └── users                 │ ┃
+                            │ ┃
+                            │ ───────────────────────────────────────────────
+                            │ nothing has run yet
+```
+
+The schema on the left, the statement and its result on the right. `tab` walks
+the three panes, `enter` on a table opens its definition, `i` writes its name
+into the statement, `ctrl+b` puts the schema away. `ctrl+up` and `ctrl+down`
+resize the editor, `z` gives a result the whole window.
+
+Typing offers what could finish the word: the tables of this database, the
+columns of the tables the statement already names, and SQL keywords. A dot is
+part of the grammar, so `catalog.` offers that schema's tables and `products.`
+offers that table's columns. `tab` accepts, `↑↓` picks, `esc` closes the list.
+
+`ctrl+r` runs the statement. A wide result moves sideways with `←→` and `enter`
+opens one row as a list of keys and values, which is the only readable way to
+look at a table with thirty columns.
+
+## The safety model
+
+Four layers. None of them trusts the other three.
+
+| layer | what it does |
+|---|---|
+| the classifier | parses the statement with the real grammar for the dialect and decides from the parse tree |
+| the role | whatever you granted the database user, which is yours to set |
+| the session | `default_transaction_read_only`, statement and lock timeouts, `PRAGMA query_only` on SQLite |
+| the transaction | every statement runs in a transaction of its own, opened read only when the profile is |
+
+The classifier is the one that makes the difference. It is not keyword
+matching: `WITH t AS (DELETE FROM users RETURNING *) SELECT * FROM t` starts
+with `WITH` and is a delete, and a parse tree knows that. It refuses anything
+it cannot parse, anything empty, and anything with two statements in it. It
+also refuses a read that calls a function with a side effect, of which it knows
+eighteen, including `pg_terminate_backend`, `setval` and `dblink_exec`.
+
+Three verdicts:
+
+- **allow**, a read, which runs.
+- **warn**, a write, which runs in READ / WRITE once you have been shown the
+  statement and said yes. `confirm_queries = false` in `settings.toml` skips
+  the question, and on the command line the answer is `--yes`.
+- **block**, which does not run in any mode, and says why.
+
+READ ONLY means every write is a block. It does not mean the program cannot
+change the server at all: cancelling or closing a session goes round the
+classifier, so it is a dialog with a warning and a box to tick rather than a
+refusal. That is deliberate, and it is the only path of its kind.
+
+The grammars are ANTLR grammars from
+[antlr/grammars-v4](https://github.com/antlr/grammars-v4), vendored and
+committed, so a build cannot quietly change how a statement is read.
+
+## Keys
+
+`/` opens the command palette, which reaches every screen without knowing a
+single shortcut. `ctrl+k` does the same and is the one to use while typing.
+
+| key | does |
+|---|---|
+| `e` | query editor |
+| `s` `i` | tables, indexes |
+| `r` | read everything again |
+| `ctrl+p` `ctrl+d` | connections |
+| `ctrl+b` | show or hide the schema beside the editor |
+| `ctrl+r` | run the statement |
+| `ctrl+up` `ctrl+down` | resize the editor |
+| `z` | zoom a result to the whole window |
+| `f` `o` `O` | search a list, sort it, turn the sort round |
+| `c` `x` | cancel a session, close it |
+| `/` `ctrl+k` | commands |
+| `?` | keys and the safety rule |
+| `↑↓` `jk` | up and down |
+| `enter` | open what the cursor is on |
+| `esc` | back |
+| `q` `ctrl+c` | quit, and again to confirm |
+
+Terminals that speak the Kitty keyboard protocol (Ghostty, kitty, WezTerm) also
+send `ctrl+enter` and `cmd+enter` to run a statement, and the footer says so
+once the terminal has said it can tell them apart. On macOS the modifiers are
+drawn the way the keyboard prints them, and every named key is spelled out:
+`enter`, `esc`, `tab`, `space`.
+
+## Connections
+
+`ctrl+p` and `ctrl+d` open the same screen, because there is one place where
+connections live:
+
+```text
+  ▌ localhost ·                    postgres · read only · localhost:5432/bullet
+
+  ↑ up  ↓ down  enter open  e edit  n new  d remove  esc dashboard
+```
+
+`enter` opens a connection. On the one already in use there is nothing to open,
+so it goes a level in instead, to the database and the schemas that connection
+is reading: one database, any number of schemas, `space` picks, `enter` saves.
+No schema ticked means every schema.
+
+`e` opens the profile in the form that made it, so a host, a port or an access
+mode can be changed without removing the connection and starting again. The
+password field left empty keeps the one that is stored.
+
+## Without the interface
+
+```bash
+tui4db inspect --connection production
+tui4db schema --json
+tui4db indexes --schema catalog
+tui4db query "SELECT count(*) FROM orders" --limit 100
+tui4db connections
+```
+
+Eight commands: `tui` (the default), `inspect`, `schema`, `indexes`, `query`,
+`connections`, `version`, `help`. Five flags: `--json`, `--connection`,
+`--schema`, `--limit`, and `--yes` for a statement that changes data.
+
+Four exit codes: `0` fine, `1` a failure, `2` a usage error, `3` blocked by the
+classifier. `inspect` also exits `1` when the report is unhealthy, which is
+what makes it usable as a check in CI.
+
+`inspect`, `schema` and `indexes` with `--json` emit a document against
+[`src/cli/schema/tui4db.report.v1.json`](src/cli/schema/tui4db.report.v1.json).
+`query --json` emits its own shape, which that schema does not cover.
+
+## Where things are stored
+
+```text
+$XDG_CONFIG_HOME/tui4db/      (or ~/.config/tui4db/)
+  profiles.toml     0600   connection metadata, never a password
+  settings.toml     0600   theme, bar style, safety defaults
+  secrets.age       0600   only when the encrypted vault is used
+```
+
+Both files are refused if another user can read them, and the directory is
+forced to `0700`. None of this is enforced on Windows.
+
+A password is never in `profiles.toml`, in `--json`, or on any screen. The
+profile holds a reference to it: the keyring, an age encrypted vault, an
+environment variable, a command to run, `~/.pgpass`, or a prompt.
+
+`settings.toml` is read and never written, because there is no settings screen
+yet. The setting worth knowing about is the shape of a bar, since how well a
+glyph draws is the font's business and a terminal program cannot choose the
+font it is drawn in:
 
 ```toml
 [appearance]
-  bar = "smooth"     # █▌ solid, with eighths for what falls between two cells
-  # bar = "shade"    # █░ the classic block and shading pair, in brackets
+  bar = "pipes"      # [||||] ticks, the empty ones in grey; nothing but ASCII
+  # bar = "smooth"   # █▌ solid, with eighths for what falls between two cells
+  # bar = "shade"    # █░ the classic block and shading pair
   # bar = "rail"     # ━─ heavy and light lines, the quietest of them
   # bar = "segments" # ▰▱ separate segments rather than one run
   # bar = "braille"  # █⣿ dots with real gaps, for fonts that blur ░
   # bar = "ascii"    # #- for terminals with no block glyphs at all
 ```
-
-`smooth` is the default because it is the only one that can say what falls
-between two cells: an eighth-block gives twenty cells the resolution of a
-hundred and sixty, so 42% draws as 42% rather than rounding to 40%.
 
 To see them in your own font before choosing:
 
@@ -144,261 +277,44 @@ To see them in your own font before choosing:
 go run ./src/cli/cmd/screens --bars
 ```
 
-### Keys
+## What is not there yet
 
-`/` opens the command palette, which reaches every screen without knowing
-a single shortcut. The rest:
+Named here rather than left to be discovered:
 
-| key | does |
-|---|---|
-| `e` | query editor |
-| `s` `i` | tables, indexes |
-| `h` | health report |
-| `r` | read everything again |
-| `ctrl+p` | connections |
-| `ctrl+b` | show or hide the schema beside the editor |
-| `z` | zoom a result to the whole window |
-| `ctrl+d` | databases and schemas on this server |
-| `/` | commands (`ctrl+k` also works) |
-| `?` | keys and the safety rule |
-| `esc` | back |
-| `q` `ctrl+c` | quit |
+- **Relations and EXPLAIN** are on the driver interface and both drivers
+  implement them, but nothing calls either yet.
+- **Query history** has a package, a file path and a schema, and is not wired
+  into the program. `history.db` is never written.
+- **The `[ai]` section** of `settings.toml` is parsed and has no code behind
+  it.
+- **There is no settings screen**, so `settings.toml` is edited by hand.
+- **MySQL, MariaDB and SQL Server** are planned behind the same driver
+  interface. Only PostgreSQL and SQLite exist.
 
-The editor screen is a workbench: the schema of the current database on the
-left, the statement and its result on the right. `tab` walks the three, `enter`
-on a table writes its qualified name into the statement, `space` opens its
-columns, `ctrl+b` puts the schema away. With a result focused, `z` gives it the
-whole window with the statement that produced it above, highlighted.
+Not planned: a web interface, migrations, backup and restore, or anything that
+writes to your database without you typing it first.
 
-`ctrl+r` runs the statement and typing offers what could finish
-the word: the tables of the current schema, the columns of the tables the
-statement already names, and SQL keywords. `tab` accepts, `↑↓` picks, `esc`
-closes the list. Columns are read from the server the moment a table is named,
-once per table.
+## Contributing
 
-`ctrl+d` is a form rather than a menu: the databases the server lets you connect
-to, and the schemas of the one you are in. `space` moves the dot to a database
-and ticks as many schemas as you want, `enter` saves, `esc` leaves it all alone.
-No schema ticked means every schema, and each table says which one it came from.
-Saving reconnects if the database changed and reloads if only the schemas did,
-and writes both back to the profile, so the next run starts where you left off.
-
-`s` and `i` are the catalogue, each list under named columns. A table shows how
-many rows it holds, what it and its indexes take on disk, and a bar for the
-share of its reads the server answered from memory; an index shows what it
-costs, how often it was read, its share of the reads on its table, and what it
-is there for. `↑↓` walks either list and `enter` opens the row: the
-columns, the counters the server keeps, and a page saying what those numbers
-mean and what to do about them.
-
-Leaving asks first. `q` and `ctrl+c` raise the question; `ctrl+c` again answers
-it.
-
- Terminals that speak the Kitty
-keyboard protocol (Ghostty, kitty, WezTerm) also send `ctrl+enter` and
-`cmd+enter`, and the footer switches to `⌃⏎` once the terminal says it can tell
-those apart. On macOS the keys are shown the way the keyboard prints them:
-`⌃R`, `⌃P`, and every named key is spelled out: `enter`, `esc`, `tab`, `space`.
-
-It also works without the interface:
-
-```bash
-go run ./src/cli/cmd/tui4db connections
-go run ./src/cli/cmd/tui4db inspect
-go run ./src/cli/cmd/tui4db schema --json
-go run ./src/cli/cmd/tui4db query "SELECT count(*) FROM orders"
-```
-
-Once released, installation will be:
-
-```bash
-go install github.com/sonquer/tui4db/src/cli/cmd/tui4db@latest
-```
-
-## The safety model
-
-| Layer | Where | What it does |
-|---|---|---|
-| 0 | client | A default-deny classifier over the real parse tree. Unknown statement, unknown verdict, blocked. |
-| 1 | role | The database role holds no write grants. **This is the only real boundary.** |
-| 2 | session | `default_transaction_read_only`, `statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout`. |
-| 3 | transaction | Every read runs inside `BEGIN … READ ONLY`. |
-
-Layers 0, 2 and 3 are ours. Layer 1 is yours:
-
-```sql
-CREATE ROLE tui4db LOGIN PASSWORD 'change-me';
-GRANT pg_monitor TO tui4db;
-GRANT CONNECT ON DATABASE app TO tui4db;
-GRANT USAGE ON SCHEMA public TO tui4db;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO tui4db;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO tui4db;
-ALTER ROLE tui4db SET default_transaction_read_only = on;
-```
-
-If the connected role can write, the setup screen says so out loud rather than
-letting a READ ONLY badge imply a guarantee it cannot make.
-
-Two rules hold in every mode, including READ / WRITE: multi-statement input is
-always rejected, and nothing is executed before you have seen how it was
-classified.
-
-The classifier is not hand-written keyword sniffing. The PostgreSQL and SQLite
-grammars from [antlr/grammars-v4](https://github.com/antlr/grammars-v4) are
-compiled into parsers, and classification is a walk over the parse tree with an
-allow-list of node types. A statement whose shape is not recognised is blocked,
-not guessed at.
-
-## Development
-
-Everything is a Go program. There is no Makefile, no shell script, and nothing to
-install beyond a Go toolchain.
-
-```bash
-go run ./src/tools/cmd/dev
-```
-
-That opens the dashboard: pick a check, press enter, or `a` to run all of them.
-
-The linters are pinned in `src/tools/go.mod` as tool dependencies and built into
-`.local/bin` the first time they are needed, so everyone runs the same versions
-and nothing is installed into your `GOPATH`.
-
-<table>
-<tr><td>
+[CONTRIBUTING.md](CONTRIBUTING.md) is how to build and test it.
+[AGENTS.md](AGENTS.md) is the rules the code is held to: names instead of
+comments, 95% coverage in both modules, tests that need nothing installed, no
+Makefile and no shell scripts.
 
 ```bash
 go run ./src/tools/cmd/dev check --ci
 ```
 
-</td><td>every gate, plain output, the exact command CI runs</td></tr>
-<tr><td>
-
-```bash
-go run ./src/tools/cmd/dev cover
-```
-
-</td><td>tests, the coverage gate, an Istanbul-style table, and <code>coverage.html</code></td></tr>
-<tr><td>
-
-```bash
-go run ./src/tools/cmd/dev comments
-```
-
-</td><td>fails on any comment in Go source</td></tr>
-<tr><td>
-
-```bash
-go run ./src/tools/cmd/dev vuln
-```
-
-</td><td><code>govulncheck</code> over both modules</td></tr>
-<tr><td>
-
-```bash
-go run ./src/tools/cmd/grammar
-```
-
-</td><td>regenerates the vendored parsers from the grammars (needs a JDK)</td></tr>
-<tr><td>
-
-```bash
-go run ./src/tools/cmd/dev run inspect
-```
-
-</td><td>starts tui4db with the values from <code>.env</code>, passing the rest through</td></tr>
-</table>
-
-Copy `.env.example` to `.env` to keep connection profiles, settings and history
-inside the repository rather than in your home directory:
-
-```bash
-cp .env.example .env && go run ./src/tools/cmd/dev run
-```
-
-Both `.env` and the `.local` directory it points at are ignored by git. TUI4DB
-itself never reads `.env`: a program that picks up configuration from whatever
-directory you happen to stand in is a surprise, and a security relevant one, so
-the development tooling reads the file and hands the values to the program it
-starts.
-
-Coverage prints like this, and writes a single self-contained `coverage.html` in
-the repository root:
-
-```text
-╭──────────────────────────────────────────────────────────────────────╮
-│  file                        stmts    funcs    lines   uncovered     │
-├──────────────────────────────────────────────────────────────────────┤
-│  ALL FILES                   97.41    98.20    97.03                 │
-│    cli/pkg/sqlguard         100.00   100.00   100.00                 │
-│    cli/pkg/sqldialect        98.45   100.00    98.11   142-143       │
-│    cli/internal/config       96.59    97.14    96.02   88-89,131     │
-╰──────────────────────────────────────────────────────────────────────╯
-```
-
-Thresholds live in [`dev.toml`](dev.toml): a total for the workspace, a value per
-module, and a floor per package:
-
-```toml
-[coverage]
-total = 95
-
-[coverage.modules]
-cli = 95
-
-[package]
-"cli/pkg/sqlguard" = 100
-```
-
-Two rules make the difference between this repository and most. **No comment may
-explain code**: nothing inside a function body, nothing trailing a line. If code
-needs prose to be understood it gets renamed or split, and the gate parses every
-file to enforce it. Doc comments on declarations are expected instead. And
-**95% coverage**, enforced, in both modules. See [AGENTS.md](AGENTS.md) for the
-reasoning and [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
-
-## Where things are stored
-
-```text
-$XDG_CONFIG_HOME/tui4db/      (dir 0700)
-  profiles.toml               0600   connection metadata, never a password
-  settings.toml               0600   theme, safety defaults, AI
-  secrets.age                 0600   only when the encrypted vault is used
-
-$XDG_STATE_HOME/tui4db/
-  history.db                  0600   query history and timings (SQLite)
-```
-
-TUI4DB refuses to start if any of them is readable by another user.
-
-## Roadmap
-
-- **Now**: PostgreSQL and SQLite, with connections, schema, relations, indexes,
-  query, EXPLAIN and health.
-- **Next**: MySQL, MariaDB and SQL Server, behind the same driver interface.
-- **Later**: optional AI, where a question becomes SQL and a plan becomes an explanation.
-  Generated SQL lands in the editor and goes through the same classifier as
-  anything you typed. It is never executed on its own.
-
-Not planned: a web UI, migrations, backup and restore, or anything that writes to
-your database without you typing it first.
-
 ## Built with
 
-[Bubble Tea](https://github.com/charmbracelet/bubbletea),
-[Bubbles](https://github.com/charmbracelet/bubbles) and
-[Lip Gloss](https://github.com/charmbracelet/lipgloss) for the interface,
-[Glamour](https://github.com/charmbracelet/glamour) for the pages it writes,
-[ANTLR](https://www.antlr.org) for the SQL grammars,
-[pgx](https://github.com/jackc/pgx) for PostgreSQL and
-[modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) for SQLite. The last
-of those is a cgo-free port, which is why every build is a static binary.
+[Bubble Tea](https://charm.land), [Bubbles](https://charm.land),
+[Lip Gloss](https://charm.land) and [Glamour](https://charm.land) for the
+interface, [pgx](https://github.com/jackc/pgx) for PostgreSQL,
+[modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) for SQLite with no
+cgo, [ANTLR](https://www.antlr.org) for the grammars, and
+[go-keyring](https://github.com/zalando/go-keyring) and
+[age](https://github.com/FiloSottile/age) for the secrets.
 
-## License
+## Licence
 
-Dual-licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-at your option. `SPDX-License-Identifier: MIT OR Apache-2.0`
+MIT or Apache 2.0, at your option.

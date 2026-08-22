@@ -1002,3 +1002,20 @@ func TestTheWorkspaceRemembersWhereYouWent(t *testing.T) {
 		t.Error("a connection that does not exist cannot be remembered")
 	}
 }
+
+// A write in READ / WRITE mode was refused in silence by both run paths. In a
+// pipe there is nobody to ask, so the answer arrives with the statement.
+func TestAWriteNeedsYes(t *testing.T) {
+	keyring.MockInit()
+	connection := localConnection(t)
+	connection.Mode = config.ReadWrite
+	h := newHarness(t, connection)
+
+	code := h.app.Run(context.Background(), []string{"query", "DELETE FROM users"})
+	if code != ExitBlocked {
+		t.Fatalf("exit = %d, want %d", code, ExitBlocked)
+	}
+	if !strings.Contains(h.stderr.String(), "--yes") {
+		t.Errorf("the refusal must say how to answer: %s", h.stderr.String())
+	}
+}
