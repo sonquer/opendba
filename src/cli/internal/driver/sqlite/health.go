@@ -34,7 +34,14 @@ func (c *connection) integrity(ctx context.Context) (driver.Finding, error) {
 	if err := c.db.QueryRowContext(ctx, "PRAGMA integrity_check(1)").Scan(&result); err != nil {
 		return driver.Finding{}, fmt.Errorf("check the database integrity: %w", err)
 	}
-	finding := driver.Finding{Subsystem: "integrity", Code: "integrity_check", Value: result, Severity: driver.SeverityOK}
+	finding := driver.Finding{
+		Group:     driver.GroupStorage,
+		Subsystem: "integrity",
+		Code:      "integrity_check",
+		Value:     result,
+		Note:      "every page reads back the way it was written",
+		Severity:  driver.SeverityOK,
+	}
 	if !strings.EqualFold(result, "ok") {
 		finding.Severity = driver.SeverityCritical
 		finding.Note = "the database file is damaged"
@@ -52,8 +59,10 @@ func (c *connection) foreignKeys(ctx context.Context) (driver.Finding, error) {
 		return driver.Finding{}, fmt.Errorf("check the foreign keys: %w", err)
 	}
 	finding := driver.Finding{
+		Group:     driver.GroupScans,
 		Subsystem: "foreign keys",
 		Code:      "foreign_key_check",
+		Note:      "every reference points at a row that exists",
 		Value:     fmt.Sprintf("%d", violations),
 		Severity:  driver.SeverityOK,
 	}
@@ -71,6 +80,7 @@ func (c *connection) size(ctx context.Context) (driver.Finding, error) {
 		return driver.Finding{}, fmt.Errorf("read the database size: %w", err)
 	}
 	return driver.Finding{
+		Group:     driver.GroupStorage,
 		Subsystem: "size",
 		Code:      "database_size",
 		Value:     ByteSize(pageCount * pageSize),
@@ -86,8 +96,10 @@ func (c *connection) freeSpace(ctx context.Context) (driver.Finding, error) {
 		return driver.Finding{}, fmt.Errorf("read the free page count: %w", err)
 	}
 	finding := driver.Finding{
+		Group:     driver.GroupMemory,
 		Subsystem: "free pages",
 		Code:      "freelist_count",
+		Note:      "the file is as big as the data in it",
 		Value:     fmt.Sprintf("%d", free),
 		Severity:  driver.SeverityOK,
 	}
@@ -95,7 +107,7 @@ func (c *connection) freeSpace(ctx context.Context) (driver.Finding, error) {
 		finding.Severity = driver.SeverityWarn
 		finding.Note = "more than a quarter of the file is unused"
 	}
-	return finding, nil
+	return finding.Measure(float64(free), float64(total)), nil
 }
 
 func (c *connection) journal(ctx context.Context) (driver.Finding, error) {
@@ -104,6 +116,7 @@ func (c *connection) journal(ctx context.Context) (driver.Finding, error) {
 		return driver.Finding{}, fmt.Errorf("read the journal mode: %w", err)
 	}
 	finding := driver.Finding{
+		Group:     driver.GroupStorage,
 		Subsystem: "journal",
 		Code:      "journal_mode",
 		Value:     mode,
@@ -122,6 +135,7 @@ func (c *connection) sessionMode(ctx context.Context) (driver.Finding, error) {
 		return driver.Finding{}, fmt.Errorf("read the session mode: %w", err)
 	}
 	finding := driver.Finding{
+		Group:     driver.GroupLoad,
 		Subsystem: "access",
 		Code:      "query_only",
 		Value:     "read / write",
@@ -136,15 +150,5 @@ func (c *connection) sessionMode(ctx context.Context) (driver.Finding, error) {
 	return finding, nil
 }
 
-func ByteSize(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	value, exponent := float64(bytes), 0
-	for value >= unit && exponent < 4 {
-		value /= unit
-		exponent++
-	}
-	return fmt.Sprintf("%.1f %ciB", value, "KMGT"[exponent-1])
-}
+// ByteSize writes a size the way a person reads one.
+func ByteSize(bytes int64) string { return driver.ByteSize(bytes) }

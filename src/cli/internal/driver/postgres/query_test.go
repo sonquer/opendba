@@ -196,10 +196,22 @@ func TestClose(t *testing.T) {
 
 func healthySnapshot() Snapshot {
 	return Snapshot{
-		Connections:    42,
-		MaxConnections: 100,
-		CacheHitRatio:  99.4,
-		ReadOnly:       true,
+		CacheHitRatio:    99.4,
+		SharedBuffers:    134217728,
+		WorkMem:          4194304,
+		Connections:      42,
+		MaxConnections:   100,
+		Active:           2,
+		ReadOnly:         true,
+		IndexScans:       1000,
+		SeqScans:         40,
+		LiveTuples:       9000,
+		DeadTuples:       100,
+		TotalIndexSize:   4096,
+		DatabaseSize:     104857600,
+		TransactionAge:   1000,
+		FreezeMaxAge:     200000000,
+		TimedCheckpoints: 40,
 	}
 }
 
@@ -234,7 +246,17 @@ func TestFindingThresholds(t *testing.T) {
 		{"blocked", func(s *Snapshot) { s.WaitingLocks = 3 }, "waiting_locks", driver.SeverityCritical},
 		{"rollbacks", func(s *Snapshot) { s.RollbackRatio = 12 }, "rollback_ratio", driver.SeverityWarn},
 		{"unused indexes", func(s *Snapshot) { s.UnusedIndexes = 27; s.UnusedIndexSize = 46170898432 }, "unused_indexes", driver.SeverityWarn},
-		{"long queries", func(s *Snapshot) { s.LongQueries = 2 }, "long_running", driver.SeverityWarn},
+		{"long queries", func(s *Snapshot) { s.LongestSeconds = 90 }, "long_running", driver.SeverityWarn},
+		{"stuck queries", func(s *Snapshot) { s.LongestSeconds = 600 }, "long_running", driver.SeverityCritical},
+		{"spilled to disk", func(s *Snapshot) { s.TempFiles = 12; s.TempBytes = 1 << 30 }, "temp_files", driver.SeverityWarn},
+		{"deadlocks", func(s *Snapshot) { s.Deadlocks = 3 }, "deadlocks", driver.SeverityWarn},
+		{"full scans", func(s *Snapshot) { s.SeqScans = 400 }, "sequential_scans", driver.SeverityWarn},
+		{"nothing but full scans", func(s *Snapshot) { s.SeqScans = 4000 }, "sequential_scans", driver.SeverityCritical},
+		{"dead rows", func(s *Snapshot) { s.DeadTuples = 2000 }, "dead_tuples", driver.SeverityWarn},
+		{"bloat", func(s *Snapshot) { s.DeadTuples = 9000 }, "dead_tuples", driver.SeverityCritical},
+		{"freeze behind", func(s *Snapshot) { s.TransactionAge = 150000000 }, "transaction_age", driver.SeverityWarn},
+		{"wraparound", func(s *Snapshot) { s.TransactionAge = 195000000 }, "transaction_age", driver.SeverityCritical},
+		{"forced checkpoints", func(s *Snapshot) { s.ForcedCheckpoints = 30 }, "forced_checkpoints", driver.SeverityWarn},
 		{"inactive slots", func(s *Snapshot) { s.InactiveSlots = 1 }, "inactive_slots", driver.SeverityCritical},
 		{"writable session", func(s *Snapshot) { s.ReadOnly = false }, "transaction_read_only", driver.SeverityWarn},
 	}
@@ -263,29 +285,140 @@ func TestUnusedIndexSizeIsReadable(t *testing.T) {
 	}
 }
 
+func TestEveryFindingBelongsToAGroup(t *testing.T) {
+	findings := Findings(healthySnapshot())
+	if len(findings) < 12 {
+		t.Fatalf("the report must cover the server, got %d findings", len(findings))
+	}
+	for _, finding := range findings {
+		if finding.Group == "" {
+			t.Errorf("a finding without a group cannot be laid out: %+v", finding)
+		}
+		if finding.Note == "" {
+			t.Errorf("every reading must say what it means in plain words: %+v", finding)
+		}
+	}
+}
+
+// A role that cannot read one view still gets the rest of the report, with the
+// refusal shown where the readings would have been.
+func TestARefusedGroupDegradesAlone(t *testing.T) {
+	snapshot := healthySnapshot()
+	snapshot.Refused = map[string]string{driver.GroupScans: "permission denied for view pg_stat_user_tables"}
+	findings := Findings(snapshot)
+
+	refusal := findingByCode(findings, "unavailable")
+	if refusal.Group != driver.GroupScans || refusal.Severity != driver.SeverityUnknown {
+		t.Fatalf("refusal = %+v", refusal)
+	}
+	if !strings.Contains(refusal.Note, "permission denied") {
+		t.Errorf("the reason belongs on the row: %+v", refusal)
+	}
+	if findingByCode(findings, "sequential_scans").Code != "" {
+		t.Error("a refused group has no readings")
+	}
+	if findingByCode(findings, "cache_hit_ratio").Code == "" {
+		t.Error("the other groups must survive")
+	}
+}
+
 func TestHealth(t *testing.T) {
 	conn, pool := mocked(t, readOnlyConfig())
-	pool.ExpectQuery("pg_stat_activity").WillReturnRows(
-		pgxmock.NewRows([]string{"connections", "max", "idle", "cache", "locks", "rollbacks", "index_size", "indexes", "long", "slots", "read_only"}).
-			AddRow(int64(42), int64(100), int64(0), 99.4, int64(0), 0.4, int64(0), int64(0), int64(0), int64(0), true))
+	expectHealth(pool)
 
 	findings, err := conn.Health(context.Background())
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}
-	if len(findings) != 8 {
+	if len(findings) < 12 {
 		t.Fatalf("findings = %+v", findings)
 	}
 	if findingByCode(findings, "cache_hit_ratio").Value != "99.4%" {
 		t.Errorf("cache = %+v", findingByCode(findings, "cache_hit_ratio"))
 	}
+	if findingByCode(findings, "database_size").Value != "100.0 MiB" {
+		t.Errorf("size = %+v", findingByCode(findings, "database_size"))
+	}
 }
 
+// PostgreSQL 17 moved the checkpoint counters out of pg_stat_bgwriter. An older
+// server refuses the newer view and answers the older one.
+func TestHealthFallsBackToTheOlderCheckpointView(t *testing.T) {
+	conn, pool := mocked(t, readOnlyConfig())
+	pool.ExpectQuery("pg_stat_database").WillReturnRows(memoryRows())
+	pool.ExpectQuery("pg_stat_activity").WillReturnRows(loadRows())
+	pool.ExpectQuery("pg_stat_user_tables").WillReturnRows(scanRows())
+	pool.ExpectQuery("pg_database_size").WillReturnRows(storageRows())
+	pool.ExpectQuery("pg_stat_checkpointer").WillReturnError(errors.New("relation does not exist"))
+	pool.ExpectQuery("pg_stat_bgwriter").WillReturnRows(
+		pgxmock.NewRows([]string{"timed", "requested"}).AddRow(int64(10), int64(6)))
+
+	findings, err := conn.Health(context.Background())
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	if got := findingByCode(findings, "forced_checkpoints").Value; got != "38%" {
+		t.Errorf("the older counters must still be read: %q", got)
+	}
+}
+
+func memoryRows() *pgxmock.Rows {
+	return pgxmock.NewRows([]string{"cache", "temp_files", "temp_bytes", "shared_buffers", "work_mem"}).
+		AddRow(99.4, int64(0), int64(0), int64(134217728), int64(4194304))
+}
+
+func loadRows() *pgxmock.Rows {
+	return pgxmock.NewRows([]string{"connections", "max", "active", "idle_tx", "locks",
+		"longest", "deadlocks", "rollbacks", "waiting_on", "read_only"}).
+		AddRow(int64(42), int64(100), int64(2), int64(0), int64(0), 0.0, int64(0), 0.4, "", true)
+}
+
+func scanRows() *pgxmock.Rows {
+	return pgxmock.NewRows([]string{"seq", "idx", "dead", "live", "unused_size", "index_size", "unused"}).
+		AddRow(int64(40), int64(1000), int64(100), int64(9000), int64(0), int64(4096), int64(0))
+}
+
+func storageRows() *pgxmock.Rows {
+	return pgxmock.NewRows([]string{"size", "age", "freeze", "slots"}).
+		AddRow(int64(104857600), int64(1000), int64(200000000), int64(0))
+}
+
+func expectHealth(pool pgxmock.PgxPoolIface) {
+	pool.ExpectQuery("pg_stat_database").WillReturnRows(memoryRows())
+	pool.ExpectQuery("pg_stat_activity").WillReturnRows(loadRows())
+	pool.ExpectQuery("pg_stat_user_tables").WillReturnRows(scanRows())
+	pool.ExpectQuery("pg_database_size").WillReturnRows(storageRows())
+	pool.ExpectQuery("pg_stat_checkpointer").WillReturnRows(
+		pgxmock.NewRows([]string{"timed", "requested"}).AddRow(int64(40), int64(0)))
+}
+
+// A server that refuses everything is a failure. A server that refuses one
+// thing is a report with a gap in it, which is tested above.
 func TestHealthReportsFailures(t *testing.T) {
 	conn, pool := mocked(t, readOnlyConfig())
-	pool.ExpectQuery("pg_stat_activity").WillReturnError(errors.New("permission denied"))
+	for range 6 {
+		pool.ExpectQuery(".*").WillReturnError(errors.New("permission denied"))
+	}
 	if _, err := conn.Health(context.Background()); err == nil {
 		t.Fatal("want an error")
+	}
+}
+
+func TestHealthSurvivesOneRefusal(t *testing.T) {
+	conn, pool := mocked(t, readOnlyConfig())
+	pool.ExpectQuery("pg_stat_database").WillReturnRows(memoryRows())
+	pool.ExpectQuery("pg_stat_activity").WillReturnRows(loadRows())
+	pool.ExpectQuery("pg_stat_user_tables").WillReturnError(errors.New("permission denied"))
+	pool.ExpectQuery("pg_database_size").WillReturnRows(storageRows())
+	pool.ExpectQuery("pg_stat_checkpointer").WillReturnRows(
+		pgxmock.NewRows([]string{"timed", "requested"}).AddRow(int64(40), int64(0)))
+
+	findings, err := conn.Health(context.Background())
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	if findingByCode(findings, "unavailable").Group != driver.GroupScans {
+		t.Errorf("the refusal must be reported: %+v", findings)
 	}
 }
 

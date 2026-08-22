@@ -403,7 +403,14 @@ const (
 )
 
 func (m SetupModel) content() string {
-	return m.theme.Chrome(m.width, m.height, m.headline(), m.body(setupWidth(m.width)), m.statusLine())
+	return m.theme.Chrome(ui.Frame{
+		Width:  m.width,
+		Height: m.height,
+		Env:    ui.EnvColor(m.form.value("color")),
+		Header: m.headline(),
+		Body:   m.body(setupWidth(m.width)),
+		Footer: m.statusLine(),
+	})
 }
 
 func (m SetupModel) headline() string {

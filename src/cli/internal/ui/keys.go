@@ -14,11 +14,13 @@ var macModifiers = map[string]string{
 	"cmd":   "⌘",
 }
 
+// macKeys are the glyphs a Mac keyboard prints, minus the ones most terminal
+// fonts draw as something else entirely. Those keep their name.
 var macKeys = map[string]string{
 	"enter":     "⏎",
-	"esc":       "⎋",
-	"tab":       "⇥",
-	"space":     "␣",
+	"esc":       "esc",
+	"tab":       "tab",
+	"space":     "space",
 	"backspace": "⌫",
 	"delete":    "⌦",
 	"up":        "↑",

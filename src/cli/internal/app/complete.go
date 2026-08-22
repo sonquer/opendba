@@ -15,7 +15,7 @@ const (
 	completionRows  = 6
 	completionWidth = 34
 	editorGutter    = 6
-	headerRows      = 4
+	headerRows      = 5
 )
 
 var keywords = []string{
@@ -164,29 +164,40 @@ func (m Model) mentioned() []string {
 }
 
 func (m Model) readColumns() tea.Cmd {
-	conn := m.session.Conn
-	schema := m.session.Connection.Schema()
 	var cmds []tea.Cmd
 	for _, table := range m.mentioned() {
-		if _, known := m.fields[table]; known {
-			continue
+		if cmd := m.readOneColumn(table); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
-		name := table
-		cmds = append(cmds, func() tea.Msg {
-			ctx, cancel := context.WithTimeout(context.Background(), catalogTimeout)
-			defer cancel()
-
-			columns, err := conn.Columns(ctx, schema, name)
-			if err != nil {
-				return columnsMsg{table: name}
-			}
-			return columnsMsg{table: name, columns: columns}
-		})
 	}
 	if len(cmds) == 0 {
 		return nil
 	}
 	return tea.Batch(cmds...)
+}
+
+// readOneColumn reads the columns of a table once and remembers them, because
+// both the completions and the schema beside the editor want the same answer.
+func (m Model) readOneColumn(table string) tea.Cmd {
+	name := table
+	if cut := strings.LastIndex(name, "."); cut >= 0 {
+		name = name[cut+1:]
+	}
+	if _, known := m.fields[name]; known {
+		return nil
+	}
+	conn := m.session.Conn
+	schema := m.session.Connection.Schema()
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), catalogTimeout)
+		defer cancel()
+
+		columns, err := conn.Columns(ctx, schema, name)
+		if err != nil {
+			return columnsMsg{table: name}
+		}
+		return columnsMsg{table: name, columns: columns}
+	}
 }
 
 func matches(candidate, prefix string) bool {
@@ -215,10 +226,13 @@ func (m Model) accept() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// suggestionAt puts the list under the word being typed, never over it.
 func (m Model) suggestionAt() (int, int) {
 	info := m.editor.LineInfo()
-	column := info.ColumnOffset - len([]rune(m.suggest.prefix))
-	x := ui.Gutter + editorGutter + column
+	x := ui.Gutter + editorGutter + info.ColumnOffset - len([]rune(m.suggest.prefix))
+	if !m.sidebar.hidden && !m.zoomed {
+		x += m.sidebar.width(ui.FrameWidth(m.width)) + 2
+	}
 	y := headerRows + m.editor.Line() + info.RowOffset + 1
 	return x, y
 }

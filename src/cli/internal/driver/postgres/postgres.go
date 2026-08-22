@@ -44,6 +44,7 @@ func (Driver) Capabilities() driver.Capabilities {
 		IndexStats:      true,
 		ReadOnlySession: true,
 		Cancel:          true,
+		Sessions:        true,
 	}
 }
 

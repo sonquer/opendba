@@ -200,7 +200,8 @@ func TestByteSizeAndDuration(t *testing.T) {
 	durations := map[time.Duration]string{
 		42 * time.Millisecond:   "42ms",
 		1500 * time.Millisecond: "1.50s",
-		90 * time.Second:        "1.5m",
+		90 * time.Second:        "1m30s",
+		2 * time.Hour:           "120m00s",
 	}
 	for value, want := range durations {
 		if got := Duration(value); got != want {

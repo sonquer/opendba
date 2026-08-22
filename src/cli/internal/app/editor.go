@@ -17,7 +17,6 @@ const (
 	maxEditorRows  = 12
 	minResultsRows = 3
 	minColumnWide  = 6
-	maxColumnWide  = 32
 )
 
 // editorRows splits the body area between the statement and its results.
@@ -60,6 +59,7 @@ func newEditor(theme *ui.Theme) textarea.Model {
 
 type results struct {
 	table     table.Model
+	statement string
 	columns   []string
 	rows      [][]string
 	duration  time.Duration
@@ -70,6 +70,7 @@ type results struct {
 
 func newResults(theme *ui.Theme, msg queriedMsg, width, height int) results {
 	result := results{
+		statement: msg.statement,
 		columns:   msg.columns,
 		rows:      msg.rows,
 		duration:  msg.duration,
@@ -105,35 +106,83 @@ func tableStyles(theme *ui.Theme) table.Styles {
 	return styles
 }
 
+// columnsFor gives a result the width it was given: the natural width of the
+// data when it fits, shared out when it does not, and the spare room spread
+// across the columns so the table fills its pane instead of huddling.
 func columnsFor(names []string, rows [][]string, width int) []table.Column {
+	widths := naturalWidths(names, rows)
+	if len(widths) == 0 {
+		return nil
+	}
+	spare := width - total(widths) - 2*len(widths)
+	switch {
+	case spare > 0:
+		share(widths, spare)
+	case spare < 0:
+		squeeze(widths, width-2*len(widths))
+	}
 	columns := make([]table.Column, 0, len(names))
 	for i, name := range names {
-		size := lipgloss.Width(name)
-		for _, row := range rows {
-			if i < len(row) && lipgloss.Width(row[i]) > size {
-				size = lipgloss.Width(row[i])
-			}
-		}
-		columns = append(columns, table.Column{Title: name, Width: clampWidth(size, width, len(names))})
+		columns = append(columns, table.Column{Title: name, Width: widths[i]})
 	}
 	return columns
 }
 
-func clampWidth(size, width, columns int) int {
-	limit := maxColumnWide
-	if columns > 0 && width > 0 {
-		if available := width/columns - 2; available > minColumnWide && available < limit {
-			limit = available
+func naturalWidths(names []string, rows [][]string) []int {
+	widths := make([]int, len(names))
+	for i, name := range names {
+		widths[i] = lipgloss.Width(name)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(widths) && lipgloss.Width(cell) > widths[i] {
+				widths[i] = lipgloss.Width(cell)
+			}
 		}
 	}
-	switch {
-	case size < minColumnWide:
-		return minColumnWide
-	case size > limit:
-		return limit
-	default:
-		return size
+	for i := range widths {
+		if widths[i] < minColumnWide {
+			widths[i] = minColumnWide
+		}
 	}
+	return widths
+}
+
+func share(widths []int, spare int) {
+	each := spare / len(widths)
+	for i := range widths {
+		widths[i] += each
+	}
+	for i := 0; i < spare%len(widths); i++ {
+		widths[i]++
+	}
+}
+
+func squeeze(widths []int, room int) {
+	if room < minColumnWide*len(widths) {
+		for i := range widths {
+			widths[i] = minColumnWide
+		}
+		return
+	}
+	sum := total(widths)
+	left := room
+	for i := range widths {
+		widths[i] = max(widths[i]*room/sum, minColumnWide)
+		left -= widths[i]
+	}
+	for i := 0; left > 0 && i < len(widths); i++ {
+		widths[i]++
+		left--
+	}
+}
+
+func total(widths []int) int {
+	sum := 0
+	for _, width := range widths {
+		sum += width
+	}
+	return sum
 }
 
 func tableWidth(columns []table.Column, available int) int {

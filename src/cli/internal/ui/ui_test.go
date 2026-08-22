@@ -97,13 +97,38 @@ func TestRule(t *testing.T) {
 
 func TestIdentityLine(t *testing.T) {
 	got := plain(Default().IdentityLine(EnvRed, "production-eu", "postgres 16.3", "READ ONLY"))
-	for _, want := range []string{EnvRed.Glyph(), "production-eu", "postgres 16.3", "READ ONLY"} {
+	for _, want := range []string{"→ ~", "production-eu", "postgres 16.3", "READ ONLY"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the line must show %q: %q", want, got)
 		}
 	}
 	if strings.Contains(got, "█") {
-		t.Errorf("the environment is a dot, not a wall: %q", got)
+		t.Errorf("the environment is a line at the top, not a wall: %q", got)
+	}
+}
+
+// column is where text starts on screen, which is not where it starts in the
+// string once box drawing has spent three bytes per cell.
+func column(row, text string) int {
+	return lipgloss.Width(row[:strings.Index(row, text)])
+}
+
+func TestGauge(t *testing.T) {
+	theme := Default()
+	for _, c := range []struct {
+		ratio  float64
+		filled int
+	}{{0, 0}, {0.5, 9}, {1, gaugeWidth}, {-1, 0}, {2, gaugeWidth}} {
+		got := plain(theme.Gauge(c.ratio, SevOK))
+		if strings.Count(got, "█") != c.filled {
+			t.Errorf("Gauge(%v) = %q, want %d filled", c.ratio, got, c.filled)
+		}
+		if lipgloss.Width(got) != gaugeWidth+2 {
+			t.Errorf("every gauge is the same width: %q", got)
+		}
+	}
+	if lipgloss.Width(theme.Blank()) != gaugeWidth+2 {
+		t.Error("a row without a measurement must still line up")
 	}
 }
 
@@ -146,19 +171,44 @@ func TestSplitLineKeepsAGap(t *testing.T) {
 	}
 }
 
-func TestFindingRow(t *testing.T) {
-	got := plain(Default().Finding(SevWarn, "cache", 12, "94.0%", 8, "small cache"))
-	for _, want := range []string{SevWarn.Glyph(), "cache", "94.0%", "small cache"} {
+func TestReadings(t *testing.T) {
+	readings := []Reading{
+		{Severity: SevWarn, Label: "cache", Value: "94.0%", Note: "small cache", Ratio: 0.94, Measured: true},
+		{Severity: SevOK, Label: "integrity", Value: "ok"},
+	}
+	got := plain(Default().Readings(readings, 60, Measure(readings)))
+	for _, want := range []string{SevWarn.Glyph(), "cache", "94.0%", "small cache", "█", "░", "integrity"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("row missing %q: %q", want, got)
+			t.Errorf("the report is missing %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "█") || strings.Contains(got, "░") {
-		t.Errorf("findings are read, not measured: %q", got)
+	rows := strings.Split(got, "\n")
+	if len(rows) != 2 {
+		t.Fatalf("one row per reading, got %d", len(rows))
 	}
-	bare := plain(Default().Finding(SevOK, "integrity", 12, "", 0, ""))
-	if strings.HasSuffix(bare, " ") {
-		t.Errorf("a row without a value or note has no trailing space: %q", bare)
+	if column(rows[0], "94.0%") != column(rows[1], "ok") {
+		t.Errorf("a reading without a bar must still line up:\n%s", got)
+	}
+	if strings.Contains(rows[1], "█") {
+		t.Errorf("a word is not a proportion: %q", rows[1])
+	}
+	for _, row := range rows {
+		if lipgloss.Width(row) > 60 {
+			t.Errorf("a reading must fit its width: %q", row)
+		}
+	}
+
+	// Two blocks measured together keep the same columns, which is what stops
+	// the dashboard looking ragged between groups.
+	wide := []Reading{{Severity: SevOK, Label: "replication", Value: "0 inactive"}}
+	at := Measure(append(append([]Reading{}, readings...), wide...))
+	first := plain(Default().Readings(readings, 60, at))
+	second := plain(Default().Readings(wide, 60, at))
+	if column(second, "0 inactive") != column(strings.Split(first, "\n")[0], "94.0%") {
+		t.Errorf("blocks measured together must line up:\n%s\n%s", first, second)
+	}
+	if alone := plain(Default().Readings(readings, 60, Columns{})); alone == first {
+		t.Error("a block measured on its own uses its own columns")
 	}
 }
 

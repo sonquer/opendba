@@ -132,13 +132,21 @@ a single shortcut. The rest:
 | `h` | health report |
 | `r` | read everything again |
 | `ctrl+p` | connections |
+| `ctrl+b` | show or hide the schema beside the editor |
+| `z` | zoom a result to the whole window |
 | `ctrl+d` | databases and schemas on this server |
 | `ctrl+k` | commands |
 | `?` | keys and the safety rule |
 | `esc` | back |
 | `q` `ctrl+c` | quit |
 
-In the editor, `ctrl+r` runs the statement and typing offers what could finish
+The editor screen is a workbench: the schema of the current database on the
+left, the statement and its result on the right. `tab` walks the three, `enter`
+on a table writes its qualified name into the statement, `space` opens its
+columns, `ctrl+b` puts the schema away. With a result focused, `z` gives it the
+whole window with the statement that produced it above, highlighted.
+
+`ctrl+r` runs the statement and typing offers what could finish
 the word: the tables of the current schema, the columns of the tables the
 statement already names, and SQL keywords. `tab` accepts, `↑↓` picks, `esc`
 closes the list. Columns are read from the server the moment a table is named,
@@ -147,8 +155,11 @@ once per table.
 A connection with no schema of its own reads every schema the database holds,
 and each table says which one it came from. `ctrl+d` lists the databases the
 server lets you connect to and the schemas of the one you are in. Choosing a database reconnects with the same profile and the
-same access mode; choosing a schema just reloads. Neither writes anything to
-your configuration.
+same access mode; choosing a schema just reloads. Both are written back to the
+profile, so the next run starts where you left off.
+
+Leaving asks first. `q` and `ctrl+c` raise the question; `ctrl+c` again answers
+it.
 
  Terminals that speak the Kitty
 keyboard protocol (Ghostty, kitty, WezTerm) also send `ctrl+enter` and
@@ -344,6 +355,7 @@ your database without you typing it first.
 [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Bubbles](https://github.com/charmbracelet/bubbles) and
 [Lip Gloss](https://github.com/charmbracelet/lipgloss) for the interface,
+[Glamour](https://github.com/charmbracelet/glamour) for the pages it writes,
 [ANTLR](https://www.antlr.org) for the SQL grammars,
 [pgx](https://github.com/jackc/pgx) for PostgreSQL and
 [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) for SQLite. The last

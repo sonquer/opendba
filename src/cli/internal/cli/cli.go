@@ -36,6 +36,7 @@ type Workspace interface {
 	Profiles() (config.Profiles, error)
 	Open(ctx context.Context, name string) (Session, func(), error)
 	OpenDatabase(ctx context.Context, name, database string) (Session, func(), error)
+	Remember(name, database, schema string) error
 	Remove(ctx context.Context, name string) error
 	Setup() Setup
 }
@@ -54,13 +55,14 @@ type App struct {
 }
 
 type Session struct {
-	Warning    string
-	Connection config.Connection
-	Settings   config.Settings
-	Conn       driver.Conn
-	Info       driver.ServerInfo
-	Guard      sqlguard.Guard
-	Theme      *ui.Theme
+	Warning      string
+	Capabilities driver.Capabilities
+	Connection   config.Connection
+	Settings     config.Settings
+	Conn         driver.Conn
+	Info         driver.ServerInfo
+	Guard        sqlguard.Guard
+	Theme        *ui.Theme
 }
 
 func Registry() *driver.Registry {
@@ -194,6 +196,28 @@ func (a App) OpenDatabase(ctx context.Context, name, database string) (Session, 
 	return a.open(ctx, options{connection: name, database: database})
 }
 
+// Remember writes the database and schema a session moved to back to the
+// profile, so the next run opens where the last one left off.
+func (a App) Remember(name, database, schema string) error {
+	profiles, err := a.Store.LoadProfiles()
+	if err != nil {
+		return err
+	}
+	connection, ok := profiles.ByName(name)
+	if !ok {
+		return fmt.Errorf("no connection named %q", name)
+	}
+	if connection.Database == database && connection.DefaultSchema == schema {
+		return nil
+	}
+	connection.Database = database
+	connection.DefaultSchema = schema
+	if err := profiles.Upsert(connection); err != nil {
+		return err
+	}
+	return a.Store.SaveProfiles(profiles)
+}
+
 func (a App) Remove(ctx context.Context, name string) error {
 	profiles, err := a.Store.LoadProfiles()
 	if err != nil {
@@ -260,12 +284,13 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		return Session{}, nil, err
 	}
 	session := Session{
-		Connection: connection,
-		Settings:   settings,
-		Conn:       conn,
-		Info:       info,
-		Guard:      sqlguard.New(dialect),
-		Theme:      ui.Default(),
+		Capabilities: target.Capabilities(),
+		Connection:   connection,
+		Settings:     settings,
+		Conn:         conn,
+		Info:         info,
+		Guard:        sqlguard.New(dialect),
+		Theme:        ui.Default(),
 	}
 	return session, func() { _ = conn.Close() }, nil
 }

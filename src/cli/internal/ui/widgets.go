@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ReadOnlyLabel is the mode every driver falls back to, and the only one the
@@ -22,8 +23,10 @@ const (
 	identityServer = 48
 )
 
+// IdentityLine says where you are, in the shape of a shell prompt. The colour
+// of the environment is the line across the top, not a mark in the text.
 func (t *Theme) IdentityLine(env EnvColor, name, server, mode string) string {
-	line := t.Env(env) + " " + t.Title.Render(truncate(name, identityName))
+	line := t.Prompt.Render("→ ") + t.Muted.Render("~ ") + t.Title.Render(truncate(name, identityName))
 	if server != "" {
 		line += t.Muted.Render(" · " + truncate(server, identityServer))
 	}
@@ -49,23 +52,87 @@ func SplitLine(left, right string, width int) string {
 	if right == "" {
 		return left
 	}
-	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 2 {
-		gap = 2
+	room := width - lipgloss.Width(left)
+	if room < lipgloss.Width(right)+2 {
+		room = lipgloss.Width(right) + 2
 	}
-	return left + strings.Repeat(" ", gap) + right
+	return left + lipgloss.NewStyle().Width(room).AlignHorizontal(lipgloss.Right).Render(right)
 }
 
-func (t *Theme) Finding(sev Severity, label string, labelWidth int, value string, valueWidth int, note string) string {
-	row := "  " + t.Severity(sev).Render(sev.Glyph()) + "  "
-	if value == "" && note == "" {
-		return row + t.Value.Render(label)
+const gaugeWidth = 18
+
+// Gauge is a measurement drawn as a bar, filled to the ratio and coloured by
+// what the reading means.
+func (t *Theme) Gauge(ratio float64, sev Severity) string {
+	filled := int(ratio*float64(gaugeWidth) + 0.5)
+	switch {
+	case filled < 0:
+		filled = 0
+	case filled > gaugeWidth:
+		filled = gaugeWidth
 	}
-	row += t.Value.Render(pad(label, labelWidth)) + "  "
-	if note == "" {
-		return row + t.Label.Render(value)
+	return t.Separator.Render("[") +
+		t.Severity(sev).Render(strings.Repeat("█", filled)) +
+		t.Subtle.Render(strings.Repeat("░", gaugeWidth-filled)) +
+		t.Separator.Render("]")
+}
+
+// Blank is the space a gauge would take, so rows without a measurement still
+// line up with the rows that have one.
+func (t *Theme) Blank() string { return strings.Repeat(" ", gaugeWidth+2) }
+
+// Reading is one line of a health report: what was measured, how far along it
+// is, and what that means.
+type Reading struct {
+	Severity Severity
+	Label    string
+	Value    string
+	Note     string
+	Ratio    float64
+	Measured bool
+}
+
+// Columns are the widths readings line up on. Measuring every reading on the
+// screen once, rather than each block on its own, is what keeps separate groups
+// in the same columns.
+type Columns struct {
+	Label int
+	Value int
+}
+
+// Measure returns the columns a set of readings needs.
+func Measure(readings []Reading) Columns {
+	var at Columns
+	for _, reading := range readings {
+		at.Label = max(at.Label, lipgloss.Width(reading.Label))
+		at.Value = max(at.Value, lipgloss.Width(reading.Value))
 	}
-	return row + t.Label.Render(pad(value, valueWidth)) + "  " + t.Muted.Render(note)
+	return at
+}
+
+// Readings draws the report as aligned rows, with a bar for the checks that are
+// a proportion and the same space held open for the checks that are not.
+func (t *Theme) Readings(readings []Reading, width int, at Columns) string {
+	labels, values := at.Label, at.Value
+	if labels == 0 && values == 0 {
+		measured := Measure(readings)
+		labels, values = measured.Label, measured.Value
+	}
+	lines := make([]string, 0, len(readings))
+	for _, reading := range readings {
+		bar := t.Blank()
+		if reading.Measured {
+			bar = t.Gauge(reading.Ratio, reading.Severity)
+		}
+		row := "  " + t.Severity(reading.Severity).Render(reading.Severity.Glyph()) + "  " +
+			t.Value.Render(pad(reading.Label, labels)) + "  " + bar + "  " +
+			t.Label.Render(pad(reading.Value, values))
+		if reading.Note != "" {
+			row += "  " + t.Muted.Render(truncate(reading.Note, width-lipgloss.Width(row)-2))
+		}
+		lines = append(lines, row)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (t *Theme) KV(label string, labelWidth int, value string) string {
@@ -86,14 +153,16 @@ func (t *Theme) Badge(text string, sev Severity) string {
 	return t.Severity(sev).Bold(true).Render(text)
 }
 
+// pad fills a cell to the given width, clipping what does not fit. Widths come
+// from lipgloss so that wide runes and styled text are measured, not counted.
 func pad(s string, w int) string {
-	s = truncate(s, w)
-	if n := w - lipgloss.Width(s); n > 0 {
-		return s + strings.Repeat(" ", n)
+	if w <= 0 {
+		return ""
 	}
-	return s
+	return lipgloss.NewStyle().Width(w).MaxHeight(1).Render(truncate(s, w))
 }
 
+// truncate clips styled text without cutting an escape sequence in half.
 func truncate(s string, w int) string {
 	if w <= 0 {
 		return ""
@@ -101,19 +170,11 @@ func truncate(s string, w int) string {
 	if lipgloss.Width(s) <= w {
 		return s
 	}
-	if w == 1 {
-		return "…"
-	}
-	runes := []rune(s)
-	for i := len(runes); i > 0; i-- {
-		candidate := string(runes[:i]) + "…"
-		if lipgloss.Width(candidate) <= w {
-			return candidate
-		}
-	}
-	return "…"
+	return ansi.Truncate(s, w, "…")
 }
 
+// Truncate clips styled text to a width, marking what was left out.
 func Truncate(s string, w int) string { return truncate(s, w) }
 
+// Pad fills a cell to a width.
 func Pad(s string, w int) string { return pad(s, w) }

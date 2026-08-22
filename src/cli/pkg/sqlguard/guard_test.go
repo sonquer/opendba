@@ -17,6 +17,14 @@ type goldenCase struct {
 
 var postgresGolden = []goldenCase{
 	{"plain select", "SELECT 1", sqldialect.KindSelect, Allow, Allow},
+	{"killing a session", "SELECT pg_terminate_backend(42)", sqldialect.KindSelect, Block, Warn},
+	{"cancelling a statement", "select PG_CANCEL_BACKEND(42)", sqldialect.KindSelect, Block, Warn},
+	{"reloading the configuration", "SELECT pg_reload_conf()", sqldialect.KindSelect, Block, Warn},
+	{"moving a sequence", "SELECT setval('users_id_seq', 1)", sqldialect.KindSelect, Block, Warn},
+	{"resetting the statistics", "SELECT pg_stat_reset()", sqldialect.KindSelect, Block, Warn},
+	{"a column named after a killer", "SELECT pg_terminate_backend FROM audit", sqldialect.KindSelect, Allow, Allow},
+	{"a qualified call to a killer", "SELECT pg_catalog.setval('s', 1)", sqldialect.KindSelect, Block, Warn},
+	{"a killer with room before its bracket", "SELECT pg_terminate_backend  (42)", sqldialect.KindSelect, Block, Warn},
 	{"lower case select", "select id from users", sqldialect.KindSelect, Allow, Allow},
 	{"select with semicolon", "SELECT 1;", sqldialect.KindSelect, Allow, Allow},
 	{"select with line comment", "-- comment\nSELECT 1", sqldialect.KindSelect, Allow, Allow},

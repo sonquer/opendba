@@ -23,7 +23,6 @@ type view string
 
 const (
 	viewDashboard view = "dashboard"
-	viewInspect   view = "health"
 	viewSchema    view = "schema"
 	viewIndexes   view = "indexes"
 	viewCatalog   view = "databases"
@@ -40,6 +39,7 @@ type loadedMsg struct {
 }
 
 type queriedMsg struct {
+	statement string
 	columns   []string
 	rows      [][]string
 	duration  time.Duration
@@ -63,6 +63,7 @@ type Model struct {
 	catalog catalog
 	wizard  *SetupModel
 	palette *palette
+	modal   *modal
 	suggest completion
 	fields  map[string][]driver.Column
 	keys    keymap
@@ -73,11 +74,25 @@ type Model struct {
 	tables   []driver.Table
 	indexes  []driver.Index
 
-	editor       textarea.Model
-	results      results
-	resultsFocus bool
-	spinner      spinner.Model
+	editor     textarea.Model
+	results    results
+	sidebar    explorer
+	running    activity
+	onSessions bool
+	generation int
+	focus      pane
+	zoomed     bool
+	spinner    spinner.Model
 }
+
+// pane is what the keys are talking to inside the editor screen.
+type pane int
+
+const (
+	focusEditor pane = iota
+	focusResults
+	focusSidebar
+)
 
 func NewModel(session cli.Session, workspace cli.Workspace) Model {
 	theme := session.Theme
@@ -103,6 +118,8 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 		list:      newConnections(theme),
 		catalog:   newCatalog(theme),
 		suggest:   completion{theme: theme},
+		sidebar:   newExplorer(theme),
+		running:   newActivity(theme, session.Settings.Safety),
 		fields:    map[string][]driver.Column{},
 	}
 }
@@ -120,7 +137,7 @@ func helpStyles(theme *ui.Theme) help.Styles {
 }
 
 func (m Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.load(), m.spinner.Tick}
+	cmds := []tea.Cmd{m.load(), m.spinner.Tick, m.readSessions(), m.tick()}
 	if m.session.Warning != "" {
 		cmds = append(cmds, m.notify(m.session.Warning))
 	}
@@ -164,11 +181,11 @@ func (m Model) run(statement string) tea.Cmd {
 
 		result, err := conn.Query(ctx, statement)
 		if err != nil {
-			return queriedMsg{err: err}
+			return queriedMsg{statement: statement, err: err}
 		}
 		defer func() { _ = result.Close() }()
 
-		message := queriedMsg{columns: result.Columns()}
+		message := queriedMsg{statement: statement, columns: result.Columns()}
 		for result.Next() {
 			message.rows = append(message.rows, ui.Strings(result.Values()))
 		}
@@ -184,9 +201,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.help.SetWidth(ui.FrameWidth(m.width))
-		m.editor.SetWidth(ui.TextWidth(m.width))
+		m.editor.SetWidth(m.paneWidth())
 		m.editor.SetHeight(editorRows(m.height))
-		m.results = m.results.resize(ui.TextWidth(m.width), resultsRows(m.height))
+		m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
 		if m.wizard != nil {
 			return m.toWizard(msg)
 		}
@@ -205,20 +222,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.findings, m.tables, m.indexes = msg.findings, msg.tables, msg.indexes
+		m.sidebar = m.sidebar.withTables(m.tables, m.fields)
 		return m, nil
 	case queriedMsg:
-		m.results = newResults(m.theme, msg, ui.TextWidth(m.width), resultsRows(m.height))
-		m.resultsFocus = false
+		m.results = newResults(m.theme, msg, m.paneWidth(), m.resultsHeight())
+		m.focus = focusEditor
 		return m, nil
 	case toastMsg:
 		m.expire(msg)
 		return m, nil
 	case profilesMsg:
-		m.list = m.list.withProfiles(msg)
+		m.list = m.list.withProfiles(msg, ui.FrameWidth(m.width))
+		return m, nil
+	case removeMsg:
+		return m, m.remove(msg.name)
+	case rememberedMsg:
+		if msg.err != nil {
+			return m, m.notify(msg.err.Error())
+		}
 		return m, nil
 	case columnsMsg:
 		m.fields[msg.table] = msg.columns
+		m.sidebar = m.sidebar.withTables(m.tables, m.fields)
 		return m.resuggest()
+	case sessionsMsg:
+		m.running = m.running.withSessions(msg, ui.FrameWidth(m.width))
+		return m, nil
+	case tickMsg:
+		return m.refreshed(msg)
+	case stopMsg:
+		return m, m.stop(msg)
+	case stoppedMsg:
+		return m.stopped(msg)
 	case catalogMsg:
 		m.catalog = m.catalog.withCatalog(msg, m.session.Connection.Schema())
 		return m, nil
@@ -266,9 +301,21 @@ func (m Model) toWizard(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) statement() string { return m.editor.Value() }
 
+// resultsHeight is what the result gets: the rest of the pane, or the whole
+// body when it is zoomed.
+func (m Model) resultsHeight() int {
+	if m.zoomed {
+		return ui.BodyHeight(m.height) - 4
+	}
+	return resultsRows(m.height)
+}
+
 func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.wizard != nil {
 		return m.toWizard(msg)
+	}
+	if m.modal != nil {
+		return m.modalKey(msg)
 	}
 	if m.palette != nil {
 		return m.paletteKey(msg)
@@ -282,7 +329,12 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.view == viewCatalog {
 		return m.catalogKey(msg)
 	}
+	if m.view == viewDashboard && m.onSessions && m.dashboardOwnsKey(msg) {
+		return m.activityKey(msg)
+	}
 	switch {
+	case key.Matches(msg, m.keys.Focus):
+		return m.toggleSessions()
 	case key.Matches(msg, m.keys.Catalog):
 		return m.browseCatalog()
 	case key.Matches(msg, m.keys.Palette):
@@ -290,12 +342,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Connections):
 		return m.browse()
 	case key.Matches(msg, m.keys.Quit):
-		m.quitting = true
-		return m, tea.Quit
+		return m.confirmQuit()
 	case key.Matches(msg, m.keys.Back):
 		return m.show(viewDashboard)
-	case key.Matches(msg, m.keys.Health):
-		return m.show(viewInspect)
 	case key.Matches(msg, m.keys.Schema):
 		return m.show(viewSchema)
 	case key.Matches(msg, m.keys.Indexes):
@@ -311,9 +360,28 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m.scroll(msg), nil
 }
 
+// dashboardOwnsKey keeps the keys that only mean something to the list of
+// sessions away from the rest of the dashboard.
+func (m Model) dashboardOwnsKey(msg tea.KeyPressMsg) bool {
+	return key.Matches(msg, m.keys.Up, m.keys.Down, m.keys.Cancel, m.keys.Terminate)
+}
+
+func (m Model) toggleSessions() (tea.Model, tea.Cmd) {
+	if m.view != viewDashboard || len(m.running.sessions) == 0 {
+		return m, nil
+	}
+	m.onSessions = !m.onSessions
+	return m, nil
+}
+
 func (m Model) show(target view) (tea.Model, tea.Cmd) {
 	m.view = target
 	m.offset = 0
+	m.onSessions = false
+	if target == viewDashboard {
+		m.generation++
+		return m, tea.Batch(m.readSessions(), m.tick())
+	}
 	if target == viewQuery {
 		return m, m.editor.Focus()
 	}
@@ -395,9 +463,12 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case key.Matches(msg, m.keys.Leave):
-		m.quitting = true
-		return m, tea.Quit
+		return m.confirmQuit()
 	case key.Matches(msg, m.keys.Back):
+		if m.zoomed {
+			m.zoomed = false
+			return m, nil
+		}
 		return m.show(viewDashboard)
 	case key.Matches(msg, m.keys.Palette):
 		m.editor.Blur()
@@ -412,10 +483,20 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.run(m.statement())
+	case key.Matches(msg, m.keys.Sidebar):
+		return m.toggleSidebar()
 	case key.Matches(msg, m.keys.Focus):
-		return m.toggleFocus()
+		return m.nextPane()
 	}
-	if m.resultsFocus {
+	switch m.focus {
+	case focusSidebar:
+		return m.explorerKey(msg)
+	case focusResults:
+		if key.Matches(msg, m.keys.Zoom) {
+			m.zoomed = !m.zoomed
+			m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
+			return m, nil
+		}
 		updated, cmd := m.results.update(msg)
 		m.results = updated
 		return m, cmd
@@ -426,16 +507,42 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return typed, tea.Batch(cmd, suggesting)
 }
 
-func (m Model) toggleFocus() (tea.Model, tea.Cmd) {
-	if !m.results.present || m.results.failure != "" {
-		return m, nil
+// nextPane walks the workbench: the schema, the statement, the result.
+func (m Model) nextPane() (tea.Model, tea.Cmd) {
+	for range 3 {
+		m.focus = (m.focus + 1) % 3
+		if m.reachable(m.focus) {
+			break
+		}
 	}
-	m.resultsFocus = !m.resultsFocus
-	if m.resultsFocus {
-		m.editor.Blur()
-		return m, nil
+	if m.focus == focusEditor {
+		return m, m.editor.Focus()
 	}
-	return m, m.editor.Focus()
+	if m.focus == focusSidebar {
+		m.sidebar = m.sidebar.onTable()
+	}
+	m.editor.Blur()
+	return m, nil
+}
+
+func (m Model) reachable(target pane) bool {
+	switch target {
+	case focusResults:
+		return m.results.present && m.results.failure == ""
+	case focusSidebar:
+		return !m.sidebar.hidden && len(m.sidebar.rows) > 0
+	default:
+		return true
+	}
+}
+
+func (m Model) toggleSidebar() (tea.Model, tea.Cmd) {
+	m.sidebar.hidden = !m.sidebar.hidden
+	if m.sidebar.hidden && m.focus == focusSidebar {
+		m.focus = focusEditor
+		return m, m.editor.Focus()
+	}
+	return m, nil
 }
 
 func (m Model) Verdict() sqlguard.Result {
@@ -457,7 +564,17 @@ func (m Model) content() string {
 		return m.wizard.content()
 	}
 	body, more := ui.Window(m.body(), m.offset, ui.BodyHeight(m.height))
-	screen := m.theme.Chrome(m.width, m.height, m.header(), body, m.footer(more))
+	screen := m.theme.Chrome(ui.Frame{
+		Width:  m.width,
+		Height: m.height,
+		Env:    ui.EnvColor(m.session.Connection.Color),
+		Header: m.header(),
+		Body:   body,
+		Footer: m.footer(more),
+	})
+	if m.modal != nil {
+		return ui.Overlay(screen, m.modal.view(m.width), m.width, m.height)
+	}
 	if m.palette != nil {
 		return ui.Overlay(screen, m.palette.view(m.width, m.height), m.width, m.height)
 	}
@@ -496,14 +613,12 @@ func (m Model) body() string {
 		return m.spinner.View() + m.theme.Muted.Render(" reading the server")
 	}
 	switch m.view {
-	case viewInspect:
-		return m.theme.FindingTable(m.findings)
 	case viewSchema:
 		return m.schemaBody("tables", m.theme.TableList(m.tables))
 	case viewIndexes:
 		return m.schemaBody("indexes", m.theme.IndexList(m.indexes))
 	case viewQuery:
-		return m.queryBody()
+		return m.workbench()
 	case viewHelp:
 		return m.helpBody()
 	case viewSwitch:
@@ -516,11 +631,7 @@ func (m Model) body() string {
 }
 
 func (m Model) footer(more int) string {
-	left := m.help.View(m.keys.footer(m.view, m.suggest.active()))
-	if m.view == viewSwitch && m.list.removing() {
-		left = m.theme.Muted.Render(ui.Dotted(
-			ui.Keystroke("enter")+" removes it", ui.Keystroke("esc")+" cancels"))
-	}
+	left := m.help.View(m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions))
 	return ui.SplitLine(left, m.theme.Subtle.Render(scrollHint(more)), ui.FrameWidth(m.width))
 }
 

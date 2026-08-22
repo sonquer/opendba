@@ -10,13 +10,13 @@ func TestKeystroke(t *testing.T) {
 		"ctrl+enter":  "⌃⏎",
 		"super+enter": "⌘⏎",
 		"ctrl+k":      "⌃K",
-		"esc":         "⎋",
-		"tab":         "⇥",
+		"esc":         "esc",
+		"tab":         "tab",
 		"enter":       "⏎",
 		"up":          "↑",
 		"q":           "q",
 		"pgdown":      "⇟",
-		"shift+tab":   "⇧⇥",
+		"shift+tab":   "⇧tab",
 	}
 	plainNames := map[string]string{
 		"ctrl+enter":  "ctrl+enter",

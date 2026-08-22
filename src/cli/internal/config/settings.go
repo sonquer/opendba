@@ -8,6 +8,8 @@ type SafetySettings struct {
 	QueryTimeout   string     `toml:"query_timeout"`
 	LockTimeout    string     `toml:"lock_timeout"`
 	RowLimit       int        `toml:"row_limit"`
+	SlowQuery      string     `toml:"slow_query"`
+	StuckQuery     string     `toml:"stuck_query"`
 }
 
 type AppearanceSettings struct {
@@ -44,6 +46,8 @@ func DefaultSettings() Settings {
 			QueryTimeout:   "15s",
 			LockTimeout:    "2s",
 			RowLimit:       1000,
+			SlowQuery:      "30s",
+			StuckQuery:     "5m",
 		},
 		History: HistorySettings{Enabled: true, StoreSQL: true, Limit: 500},
 		AI:      AISettings{Enabled: false, Provider: "local", Model: "gemma"},
@@ -79,6 +83,12 @@ func (s Settings) withDefaults() Settings {
 	}
 	if s.Safety.LockTimeout == "" {
 		s.Safety.LockTimeout = defaults.Safety.LockTimeout
+	}
+	if s.Safety.SlowQuery == "" {
+		s.Safety.SlowQuery = defaults.Safety.SlowQuery
+	}
+	if s.Safety.StuckQuery == "" {
+		s.Safety.StuckQuery = defaults.Safety.StuckQuery
 	}
 	if s.Safety.RowLimit == 0 {
 		s.Safety.RowLimit = defaults.Safety.RowLimit

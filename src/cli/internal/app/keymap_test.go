@@ -58,7 +58,7 @@ func TestTheKeymapIsTheOnlySourceOfHelp(t *testing.T) {
 		}
 	}
 	for _, screen := range []view{viewDashboard, viewQuery, viewSwitch, viewCatalog, viewHelp, viewSchema} {
-		footer := keys.footer(screen, false)
+		footer := keys.footer(screen, false, false, false)
 		if len(footer) == 0 {
 			t.Errorf("%s has no footer", screen)
 		}
@@ -72,8 +72,14 @@ func TestTheKeymapIsTheOnlySourceOfHelp(t *testing.T) {
 			t.Errorf("%s must offer the way back: %+v", screen, footer)
 		}
 	}
-	if completing := keys.footer(viewQuery, true); completing[0].Help().Desc != "accept" {
+	if completing := keys.footer(viewQuery, true, false, false); completing[0].Help().Desc != "accept" {
 		t.Errorf("a list of suggestions owns the keys: %+v", completing[0].Help())
+	}
+	if zoomed := keys.footer(viewQuery, false, true, false); zoomed[0].Help().Desc != "zoom" {
+		t.Errorf("a zoomed result offers the way back: %+v", zoomed[0].Help())
+	}
+	if running := keys.footer(viewDashboard, false, false, true); !offers(running, "cancel") {
+		t.Errorf("the list of sessions offers what can be done to them: %+v", running)
 	}
 }
 

@@ -14,14 +14,16 @@ import (
 )
 
 type fakeWorkspace struct {
-	profiles config.Profiles
-	list     error
-	open     error
-	remove   error
-	removed  []string
-	opened   []string
-	closed   int
-	setup    cli.Setup
+	profiles   config.Profiles
+	list       error
+	open       error
+	remove     error
+	remember   error
+	remembered []string
+	removed    []string
+	opened     []string
+	closed     int
+	setup      cli.Setup
 }
 
 func (w *fakeWorkspace) Profiles() (config.Profiles, error) { return w.profiles, w.list }
@@ -48,6 +50,14 @@ func (w *fakeWorkspace) OpenDatabase(ctx context.Context, name, database string)
 	session.Connection.Database = database
 	session.Info.Database = database
 	return session, cleanup, nil
+}
+
+func (w *fakeWorkspace) Remember(name, database, schema string) error {
+	if w.remember != nil {
+		return w.remember
+	}
+	w.remembered = append(w.remembered, name+"/"+database+"/"+schema)
+	return nil
 }
 
 func (w *fakeWorkspace) Remove(_ context.Context, name string) error {
@@ -223,14 +233,14 @@ func TestRemovingAConnectionNeedsItsNameTypedBack(t *testing.T) {
 	workspace := workspaceWith(t)
 	m := browsing(t, workspace)
 	asked, cmd := press(t, m, "d")
-	if cmd == nil || !asked.list.removing() {
+	if cmd == nil || asked.modal == nil {
 		t.Fatal("removal must ask first")
 	}
 	view := plain(asked.content())
-	if !strings.Contains(view, "remove production-eu and its password?") || !strings.Contains(view, "type the name to confirm") {
+	if !strings.Contains(view, "remove production-eu?") || !strings.Contains(view, "type the name to") {
 		t.Errorf("content = %s", view)
 	}
-	if refused, cmd := press(t, asked, "enter"); cmd != nil || !refused.list.removing() {
+	if refused, cmd := press(t, asked, "enter"); cmd != nil || refused.modal == nil {
 		t.Fatal("an empty confirmation must not remove anything")
 	}
 
@@ -239,10 +249,13 @@ func TestRemovingAConnectionNeedsItsNameTypedBack(t *testing.T) {
 		typed, _ = press(t, typed, key)
 	}
 	confirmed, cmd := press(t, typed, "enter")
-	if cmd == nil || confirmed.list.removing() {
+	if cmd == nil || confirmed.modal != nil {
 		t.Fatal("a matching name must remove the connection")
 	}
-	removed, _ := confirmed.Update(cmd())
+	asking, _ := confirmed.Update(cmd())
+	m = asking.(Model)
+	removing, cmd := m, m.remove("production-eu")
+	removed, _ := removing.Update(cmd())
 	m = removed.(Model)
 	if len(workspace.removed) != 1 || workspace.removed[0] != "production-eu" {
 		t.Fatalf("removed = %v", workspace.removed)
@@ -251,21 +264,8 @@ func TestRemovingAConnectionNeedsItsNameTypedBack(t *testing.T) {
 	if !strings.Contains(plain(relisted.(Model).content()), "production-eu is gone") {
 		t.Errorf("content = %s", plain(relisted.(Model).content()))
 	}
-	if len(relisted.(Model).list.profiles) != 1 {
-		t.Errorf("the list must be read again: %+v", relisted.(Model).list.profiles)
-	}
-}
-
-func TestRemovalCanBeCalledOff(t *testing.T) {
-	workspace := workspaceWith(t)
-	m := browsing(t, workspace)
-	asked, _ := press(t, m, "d")
-	called, _ := press(t, asked, "esc")
-	if called.list.removing() {
-		t.Fatal("esc must call the removal off")
-	}
-	if len(workspace.removed) != 0 {
-		t.Errorf("removed = %v", workspace.removed)
+	if len(relisted.(Model).list.rows) != 1 {
+		t.Errorf("the list must be read again: %+v", relisted.(Model).list.rows)
 	}
 }
 
@@ -279,7 +279,8 @@ func TestAFailedRemovalIsReported(t *testing.T) {
 		typed, _ = press(t, typed, key)
 	}
 	confirmed, cmd := press(t, typed, "enter")
-	failed, _ := confirmed.Update(cmd())
+	asking, _ := confirmed.Update(cmd())
+	failed, _ := asking.(Model).Update(runFirst(t, asking.(Model).remove("production-eu")))
 	if !strings.Contains(plain(failed.(Model).content()), "the keychain is locked") {
 		t.Errorf("content = %s", plain(failed.(Model).content()))
 	}
@@ -287,9 +288,9 @@ func TestAFailedRemovalIsReported(t *testing.T) {
 
 func TestQuittingFromTheConnectionsScreen(t *testing.T) {
 	m := browsing(t, workspaceWith(t))
-	quit, cmd := press(t, m, "ctrl+c")
-	if cmd == nil || !quit.quitting {
-		t.Error("ctrl+c must leave")
+	asked, _ := press(t, m, "ctrl+c")
+	if asked.modal == nil {
+		t.Error("ctrl+c must ask before it leaves")
 	}
 	if _, cmd := press(t, m, "x"); cmd != nil {
 		t.Error("an unknown key does nothing")

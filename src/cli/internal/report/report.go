@@ -33,11 +33,12 @@ type Connection struct {
 }
 
 type Finding struct {
-	Subsystem string `json:"subsystem"`
-	Code      string `json:"code"`
-	Severity  string `json:"severity"`
-	Value     string `json:"value"`
-	Note      string `json:"note,omitempty"`
+	Subsystem string  `json:"subsystem"`
+	Code      string  `json:"code"`
+	Severity  string  `json:"severity"`
+	Value     string  `json:"value"`
+	Ratio     float64 `json:"ratio,omitempty"`
+	Note      string  `json:"note,omitempty"`
 }
 
 type Counts struct {
@@ -108,6 +109,7 @@ func (r Report) WithFindings(findings []driver.Finding) Report {
 			Code:      finding.Code,
 			Severity:  string(finding.Severity),
 			Value:     finding.Value,
+			Ratio:     finding.Ratio,
 			Note:      finding.Note,
 		})
 		switch finding.Severity {

@@ -17,6 +17,7 @@ type Capabilities struct {
 	IndexStats      bool
 	ReadOnlySession bool
 	Cancel          bool
+	Sessions        bool
 }
 
 type Timeouts struct {
@@ -79,6 +80,63 @@ type ServerInfo struct {
 	Superuser   bool
 	ConnectedAt time.Time
 }
+
+// Groups a finding can belong to. They are what the interface lays out in
+// columns, and what a refused permission degrades one of.
+const (
+	GroupMemory  = "memory"
+	GroupLoad    = "load"
+	GroupScans   = "scans"
+	GroupStorage = "storage"
+)
+
+// ByteSize writes a size the way a person reads one. A negative size is a size
+// the server did not report.
+func ByteSize(bytes int64) string {
+	const unit = 1024
+	if bytes < 0 {
+		return "n/a"
+	}
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	value, exponent := float64(bytes), 0
+	for value >= unit && exponent < 4 {
+		value /= unit
+		exponent++
+	}
+	return fmt.Sprintf("%.1f %ciB", value, "KMGT"[exponent-1])
+}
+
+// Duration writes a length of time at the precision that matters at that
+// length.
+func Duration(d time.Duration) string {
+	switch {
+	case d >= time.Minute:
+		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	case d >= time.Second:
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	default:
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+}
+
+// Session is one connection the server is holding, ours included.
+type Session struct {
+	ID          string
+	User        string
+	Application string
+	Client      string
+	State       string
+	Wait        string
+	Duration    time.Duration
+	Statement   string
+	Mine        bool
+}
+
+// Running reports whether this session is doing work rather than waiting for
+// its client to say something.
+func (s Session) Running() bool { return s.State == "active" }
 
 type Database struct {
 	Name    string
@@ -181,11 +239,34 @@ const (
 )
 
 type Finding struct {
+	Group     string
 	Subsystem string
 	Code      string
 	Severity  Severity
 	Value     string
 	Note      string
+
+	// Ratio is where this measurement sits between nothing and everything, for
+	// the checks that are a proportion of something. A check that is a count, a
+	// size or a word leaves it at zero and says so with Measured.
+	Ratio    float64
+	Measured bool
+}
+
+// Measure records a proportion, clamped to what a proportion can be.
+func (f Finding) Measure(part, whole float64) Finding {
+	if whole <= 0 {
+		return f
+	}
+	ratio := part / whole
+	switch {
+	case ratio < 0:
+		ratio = 0
+	case ratio > 1:
+		ratio = 1
+	}
+	f.Ratio, f.Measured = ratio, true
+	return f
 }
 
 type Conn interface {
@@ -196,6 +277,8 @@ type Conn interface {
 	Columns(ctx context.Context, schema, table string) ([]Column, error)
 	Relations(ctx context.Context, schema, table string) ([]Relation, error)
 	Indexes(ctx context.Context, schema string) ([]Index, error)
+	Sessions(ctx context.Context) ([]Session, error)
+	Stop(ctx context.Context, id string, terminate bool) error
 	Query(ctx context.Context, sql string) (ResultSet, error)
 	Explain(ctx context.Context, sql string, analyze bool) (Plan, error)
 	Health(ctx context.Context) ([]Finding, error)

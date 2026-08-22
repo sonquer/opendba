@@ -961,3 +961,44 @@ func TestRemovingReportsAKeychainItCannotReach(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestTheWorkspaceRemembersWhereYouWent(t *testing.T) {
+	keyring.MockInit()
+	connection := localConnection(t)
+	connection.Database = "app"
+	h := newHarness(t, connection)
+
+	if err := h.app.Remember("local", "reporting", "billing"); err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := h.store.LoadProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, ok := profiles.ByName("local")
+	if !ok {
+		t.Fatal("the profile must still be there")
+	}
+	if saved.Database != "reporting" || saved.DefaultSchema != "billing" {
+		t.Fatalf("connection = %+v", saved)
+	}
+
+	before, err := os.Stat(h.store.Paths.ProfilesFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.app.Remember("local", "reporting", "billing"); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(h.store.Paths.ProfilesFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.ModTime().Equal(after.ModTime()) {
+		t.Error("staying where you are must not rewrite the file")
+	}
+
+	if err := h.app.Remember("elsewhere", "x", "y"); err == nil {
+		t.Error("a connection that does not exist cannot be remembered")
+	}
+}

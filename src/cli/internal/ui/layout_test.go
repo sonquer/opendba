@@ -8,7 +8,7 @@ import (
 )
 
 func TestChromePinsTheFooterToTheLastRow(t *testing.T) {
-	screen := plain(Default().Chrome(60, 12, "header", "body", "footer"))
+	screen := plain(Default().Chrome(Frame{Width: 60, Height: 12, Env: EnvRed, Header: "header", Body: "body", Footer: "footer"}))
 	lines := strings.Split(screen, "\n")
 	if len(lines) != 12 {
 		t.Fatalf("the screen must fill the window, got %d rows", len(lines))
@@ -16,35 +16,38 @@ func TestChromePinsTheFooterToTheLastRow(t *testing.T) {
 	if strings.TrimSpace(lines[0]) != "" {
 		t.Errorf("the frame breathes at the top: %q", lines[0])
 	}
-	if !strings.Contains(lines[1], "header") {
-		t.Errorf("row 2 = %q", lines[1])
+	if !strings.Contains(lines[1], "▔") {
+		t.Errorf("the environment is a line across the top: %q", lines[1])
 	}
-	if !strings.HasPrefix(lines[1], strings.Repeat(" ", 2)) {
-		t.Errorf("the frame breathes on the left: %q", lines[1])
+	if !strings.Contains(lines[2], "header") {
+		t.Errorf("row 3 = %q", lines[2])
+	}
+	if !strings.HasPrefix(lines[2], strings.Repeat(" ", 2)) {
+		t.Errorf("the frame breathes on the left: %q", lines[2])
 	}
 	if !strings.Contains(lines[len(lines)-2], "footer") {
 		t.Errorf("the footer sits on the last written row = %q", lines[len(lines)-2])
 	}
-	if !strings.Contains(lines[4], "body") {
-		t.Errorf("the body starts under the rule: %q", lines[4])
+	if !strings.Contains(lines[5], "body") {
+		t.Errorf("the body starts under the rule: %q", lines[5])
 	}
 }
 
 func TestChromeSurvivesATinyWindow(t *testing.T) {
-	screen := plain(Default().Chrome(10, 2, "header", "body", "footer"))
+	screen := plain(Default().Chrome(Frame{Width: 10, Height: 2, Header: "header", Body: "body", Footer: "footer"}))
 	lines := strings.Split(screen, "\n")
 	if len(lines) != minChromeHeight {
 		t.Fatalf("rows = %d", len(lines))
 	}
-	if lipgloss.Width(lines[2]) < minChromeWidth {
-		t.Errorf("the rule keeps a floor: %q", lines[2])
+	if lipgloss.Width(lines[3]) < minChromeWidth {
+		t.Errorf("the rule keeps a floor: %q", lines[3])
 	}
 }
 
 func TestBodyHeightMatchesChrome(t *testing.T) {
 	for _, height := range []int{4, 12, 40} {
 		body := strings.Repeat("row\n", 100)
-		screen := plain(Default().Chrome(40, height, "h", body, "f"))
+		screen := plain(Default().Chrome(Frame{Width: 40, Height: height, Header: "h", Body: body, Footer: "f"}))
 		rows := len(strings.Split(screen, "\n"))
 		if strings.Count(plain(Fit(body, BodyHeight(height))), "row") != BodyHeight(height) {
 			t.Errorf("BodyHeight(%d) does not match what Chrome renders", height)
@@ -77,8 +80,9 @@ func TestFitClipsAndPads(t *testing.T) {
 	if got := Fit("a\nb\nc", 2); got != "a\nb" {
 		t.Errorf("Fit() = %q", got)
 	}
-	if got := Fit("a", 3); got != "a\n\n" {
-		t.Errorf("Fit() = %q", got)
+	padded := Fit("a", 3)
+	if lipgloss.Height(padded) != 3 || strings.TrimSpace(padded) != "a" {
+		t.Errorf("Fit() = %q", padded)
 	}
 }
 

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -171,6 +172,14 @@ func (c *connection) Databases(ctx context.Context) ([]driver.Database, error) {
 		return nil, fmt.Errorf("list the databases: %w", err)
 	}
 	return databases, nil
+}
+
+// Sessions is empty for a file: the only session is the one asking.
+func (c *connection) Sessions(context.Context) ([]driver.Session, error) { return nil, nil }
+
+// Stop has nothing to stop, since there is no other session to signal.
+func (c *connection) Stop(context.Context, string, bool) error {
+	return errors.New("sqlite has no sessions to stop")
 }
 
 func (c *connection) Schemas(ctx context.Context) ([]driver.Schema, error) {

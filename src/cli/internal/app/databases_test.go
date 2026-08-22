@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func browsingCatalog(t *testing.T, conn *fakeConn) Model {
@@ -87,7 +89,7 @@ func TestSwitchingSchemaJustReloads(t *testing.T) {
 		if !ok {
 			t.Fatal("no schema to choose")
 		}
-		if chosen.kind == entrySchema {
+		if chosen.section == sectionSchemas {
 			break
 		}
 		schema, _ = press(t, schema, "down")
@@ -116,7 +118,7 @@ func TestTheCatalogLeavesTheCurrentPlaceAlone(t *testing.T) {
 	}
 
 	empty := browsingCatalog(t, healthy())
-	empty.catalog.entries = nil
+	empty.catalog.picker = empty.catalog.withRows(nil)
 	if _, cmd := press(t, empty, "enter"); cmd != nil {
 		t.Error("there is nothing to choose")
 	}
@@ -135,9 +137,9 @@ func TestLeavingTheCatalog(t *testing.T) {
 			t.Errorf("%q must go back, got %s", key, back.view)
 		}
 	}
-	quit, cmd := press(t, browsingCatalog(t, healthy()), "q")
-	if cmd == nil || !quit.quitting {
-		t.Error("q must quit")
+	asked, _ := press(t, browsingCatalog(t, healthy()), "q")
+	if asked.modal == nil {
+		t.Error("q must ask before it leaves")
 	}
 	if same, cmd := press(t, browsingCatalog(t, healthy()), "x"); cmd != nil || same.view != viewCatalog {
 		t.Error("an unknown key does nothing")
@@ -163,5 +165,52 @@ func TestTheQueryEditorReachesTheCatalog(t *testing.T) {
 	opened, cmd := press(t, editing, "ctrl+d")
 	if cmd == nil || opened.view != viewCatalog {
 		t.Fatalf("view = %s", opened.view)
+	}
+}
+
+func TestSwitchingIsRemembered(t *testing.T) {
+	workspace := workspaceWith(t)
+	m := browsingCatalog(t, healthy())
+	m.workspace = workspace
+
+	schema := m
+	for {
+		chosen, ok := schema.catalog.selected()
+		if !ok {
+			t.Fatal("no schema to choose")
+		}
+		if chosen.section == sectionSchemas {
+			break
+		}
+		schema, _ = press(t, schema, "down")
+	}
+	reloading, cmd := press(t, schema, "enter")
+	remembered := tea.Model(reloading)
+	for _, msg := range runAll(t, cmd) {
+		remembered, _ = remembered.Update(msg)
+	}
+	if len(workspace.remembered) == 0 || !strings.HasSuffix(workspace.remembered[0], "/public") {
+		t.Errorf("a schema must be written back to the profile: %v", workspace.remembered)
+	}
+	if remembered.(Model).session.Connection.DefaultSchema != "public" {
+		t.Error("the session must be where it was asked to be")
+	}
+}
+
+func TestAProfileThatCannotBeWrittenIsOnlyAnnounced(t *testing.T) {
+	workspace := workspaceWith(t)
+	workspace.remember = errors.New("profiles.toml is read only")
+	m := browsingCatalog(t, healthy())
+	m.workspace = workspace
+
+	reported, cmd := m.Update(rememberedMsg{err: workspace.remember})
+	if cmd == nil {
+		t.Fatal("a failed write must be said out loud")
+	}
+	if !strings.Contains(plain(reported.(Model).content()), "read only") {
+		t.Errorf("content = %s", plain(reported.(Model).content()))
+	}
+	if quiet, cmd := m.Update(rememberedMsg{}); cmd != nil || quiet.(Model).text != "" {
+		t.Error("a write that worked says nothing")
 	}
 }

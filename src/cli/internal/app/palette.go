@@ -6,7 +6,6 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
@@ -18,6 +17,8 @@ type reloadMsg struct{}
 type newConnectionMsg struct{}
 
 type quitMsg struct{}
+
+type removeMsg struct{ name string }
 
 type command struct {
 	title string
@@ -47,7 +48,6 @@ func newPalette(theme *ui.Theme, keys keymap) palette {
 			{title: "query editor", hint: keys.Query.Help().Key, msg: gotoMsg{view: viewQuery}},
 			{title: "tables", hint: keys.Schema.Help().Key, msg: gotoMsg{view: viewSchema}},
 			{title: "indexes", hint: keys.Indexes.Help().Key, msg: gotoMsg{view: viewIndexes}},
-			{title: "health report", hint: keys.Health.Help().Key, msg: gotoMsg{view: viewInspect}},
 			{title: "reload everything", hint: keys.Reload.Help().Key, msg: reloadMsg{}},
 			{title: "databases and schemas", hint: keys.Catalog.Help().Key, msg: gotoMsg{view: viewCatalog}},
 			{title: "connections", hint: keys.Connections.Help().Key, msg: gotoMsg{view: viewSwitch}},
@@ -112,13 +112,23 @@ func (p palette) view(width, height int) string {
 	if len(found) == 0 {
 		lines = append(lines, p.theme.Muted.Render("  nothing matches"))
 	}
-	for i, item := range found {
-		if i >= rows {
-			lines = append(lines, p.theme.Subtle.Render(
-				fmt.Sprintf("  … %d more", len(found)-rows)))
-			break
-		}
-		lines = append(lines, p.row(item, inner, i == p.cursor))
+	list := newPicker(p.theme, "")
+	shown := found
+	if len(shown) > rows {
+		shown = shown[:rows]
+	}
+	items := make([]row, 0, len(shown))
+	for _, item := range shown {
+		items = append(items, row{key: item.title, label: item.title, note: item.hint})
+	}
+	list = list.withRows(items)
+	list.cursor = p.cursor
+	if len(items) > 0 {
+		lines = append(lines, list.view(inner))
+	}
+	if len(found) > rows {
+		lines = append(lines, p.theme.Subtle.Render(
+			fmt.Sprintf("  … %d more", len(found)-rows)))
 	}
 	return p.theme.Panel.Render(strings.Join(lines, "\n"))
 }
@@ -136,18 +146,4 @@ func paletteInner(width int) int {
 		return limit
 	}
 	return paletteWidth
-}
-
-func (p palette) row(item command, width int, active bool) string {
-	title := p.theme.Value.Render(item.title)
-	marker := "  "
-	if active {
-		marker = p.theme.Accent.Render("▌ ")
-		title = p.theme.Accent.Render(item.title)
-	}
-	gap := width - lipgloss.Width(item.title) - lipgloss.Width(item.hint) - 2
-	if gap < 1 {
-		gap = 1
-	}
-	return marker + title + strings.Repeat(" ", gap) + p.theme.Subtle.Render(item.hint)
 }

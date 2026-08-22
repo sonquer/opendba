@@ -14,20 +14,47 @@ const (
 	minChromeHeight = 10
 
 	gutter    = 2
-	chromePad = 8
+	chromePad = 9
 )
 
-// Chrome frames a screen: the header and a rule at the top, the body filling
-// everything in between, and the footer on the last row of the window.
-func (t *Theme) Chrome(width, height int, header, body, footer string) string {
-	inner := FrameWidth(width)
+// Frame is everything Chrome needs to draw a screen.
+type Frame struct {
+	Width  int
+	Height int
+	Env    EnvColor
+	Header string
+	Body   string
+	Footer string
+}
+
+// Chrome frames a screen: a thin line of the environment colour across the very
+// top, the header and a rule under it, the body filling everything in between,
+// and the footer on the last written row of the window.
+func (t *Theme) Chrome(f Frame) string {
+	inner := FrameWidth(f.Width)
+	height := f.Height
 	if height < minChromeHeight {
 		height = minChromeHeight
 	}
-	top := strings.Join([]string{strings.TrimRight(header, "\n"), t.Rule(inner), ""}, "\n")
-	bottom := strings.Join([]string{"", t.Rule(inner), strings.TrimRight(footer, "\n")}, "\n")
-	return lipgloss.NewStyle().Padding(1, gutter).
-		Render(strings.Join([]string{top, Fit(body, BodyHeight(height)), bottom}, "\n"))
+	rows := []string{
+		t.EnvLine(f.Env, inner),
+		strings.TrimRight(f.Header, "\n"),
+		t.Rule(inner),
+		"",
+		Fit(f.Body, BodyHeight(height)),
+		"",
+		t.Rule(inner),
+		strings.TrimRight(f.Footer, "\n"),
+	}
+	return lipgloss.NewStyle().Padding(1, gutter).Render(strings.Join(rows, "\n"))
+}
+
+// EnvLine is the environment, as wide as the screen and as thin as a rule.
+func (t *Theme) EnvLine(env EnvColor, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return lipgloss.NewStyle().Foreground(env.Swatch()).Render(strings.Repeat("▔", width))
 }
 
 // BodyHeight returns how many rows Chrome leaves for the body.
@@ -61,14 +88,11 @@ func TextWidth(width int) int {
 
 // Fit clips or pads content so that it occupies exactly the given number of rows.
 func Fit(content string, lines int) string {
-	rows := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(rows) > lines {
-		rows = rows[:lines]
+	if lines < 1 {
+		lines = 1
 	}
-	for len(rows) < lines {
-		rows = append(rows, "")
-	}
-	return strings.Join(rows, "\n")
+	return lipgloss.NewStyle().Height(lines).MaxHeight(lines).
+		Render(strings.TrimRight(content, "\n"))
 }
 
 // Window returns the slice of content that starts at offset and fits in the

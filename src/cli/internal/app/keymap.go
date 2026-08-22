@@ -15,7 +15,6 @@ type keymap struct {
 	Query       key.Binding
 	Schema      key.Binding
 	Indexes     key.Binding
-	Health      key.Binding
 	Reload      key.Binding
 	Help        key.Binding
 	Back        key.Binding
@@ -29,6 +28,11 @@ type keymap struct {
 	Remove      key.Binding
 	Focus       key.Binding
 	Accept      key.Binding
+	Expand      key.Binding
+	Sidebar     key.Binding
+	Zoom        key.Binding
+	Cancel      key.Binding
+	Terminate   key.Binding
 	enhanced    bool
 }
 
@@ -41,7 +45,6 @@ func newKeymap() keymap {
 		Query:       binding("query", "e"),
 		Schema:      binding("tables", "s"),
 		Indexes:     binding("indexes", "i"),
-		Health:      binding("health", "h"),
 		Reload:      binding("reload", "r"),
 		Help:        binding("help", "?"),
 		Back:        binding("back", "esc"),
@@ -55,6 +58,11 @@ func newKeymap() keymap {
 		Remove:      binding("remove", "d"),
 		Focus:       binding("focus", "tab"),
 		Accept:      binding("accept", "tab"),
+		Expand:      binding("columns", "space"),
+		Sidebar:     binding("tables", "ctrl+b"),
+		Zoom:        binding("zoom", "z"),
+		Cancel:      binding("cancel", "c"),
+		Terminate:   binding("close session", "x"),
 	}
 }
 
@@ -84,15 +92,16 @@ func (k keymap) withEnhancements(msg tea.KeyboardEnhancementsMsg) keymap {
 
 func (k keymap) ShortHelp() []key.Binding {
 	return []key.Binding{
-		k.Query, k.Schema, k.Health, k.Connections, k.Catalog, k.Palette, k.Help, k.Quit,
+		k.Query, k.Schema, k.Indexes, k.Connections, k.Catalog, k.Palette, k.Help, k.Quit,
 	}
 }
 
 func (k keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Query, k.Run, k.Focus},
-		{k.Schema, k.Indexes, k.Health, k.Reload},
+		{k.Schema, k.Indexes, k.Reload},
 		{k.Palette, k.Catalog, k.Connections, k.New, k.Remove},
+		{k.Focus, k.Cancel, k.Terminate},
 		{k.Up, k.Down, k.Choose, k.Home, k.Help, k.Quit},
 	}
 }
@@ -107,18 +116,24 @@ func (s screenKeys) FullHelp() [][]key.Binding { return [][]key.Binding{s} }
 
 // footer picks the keys worth naming on a screen. Everything else stays one
 // ctrl+k away.
-func (k keymap) footer(current view, completing bool) screenKeys {
+func (k keymap) footer(current view, completing, zoomed, running bool) screenKeys {
 	if completing {
 		return screenKeys{k.Accept, k.Up, k.Down, k.Back}
 	}
+	if zoomed {
+		return screenKeys{k.Zoom, k.Up, k.Down, k.Home, k.Leave}
+	}
 	switch current {
 	case viewQuery:
-		return screenKeys{k.Run, k.Focus, k.Palette, k.Connections, k.Home, k.Leave}
+		return screenKeys{k.Run, k.Focus, k.Sidebar, k.Palette, k.Home, k.Leave}
 	case viewSwitch:
 		return screenKeys{k.Up, k.Down, k.Choose, k.New, k.Remove, k.Home}
 	case viewCatalog:
 		return screenKeys{k.Up, k.Down, k.Choose, k.Home}
 	case viewDashboard:
+		if running {
+			return screenKeys{k.Up, k.Down, k.Cancel, k.Terminate, k.Focus, k.Quit}
+		}
 		return screenKeys(k.ShortHelp())
 	default:
 		return append(screenKeys{k.Home}, k.ShortHelp()...)

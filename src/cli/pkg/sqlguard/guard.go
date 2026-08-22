@@ -13,6 +13,7 @@ package sqlguard
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
 )
@@ -112,12 +113,70 @@ func (g Guard) Classify(sql string, mode Mode) Result {
 	}
 }
 
+// sideEffects are functions that change the server while parsing as a read.
+// A classifier that only looks at the statement kind would wave them through,
+// which would make READ ONLY a claim this program cannot keep.
+var sideEffects = []string{
+	"pg_terminate_backend",
+	"pg_cancel_backend",
+	"pg_reload_conf",
+	"pg_rotate_logfile",
+	"pg_switch_wal",
+	"pg_switch_xlog",
+	"pg_promote",
+	"pg_create_restore_point",
+	"pg_drop_replication_slot",
+	"pg_create_physical_replication_slot",
+	"pg_create_logical_replication_slot",
+	"pg_stat_reset",
+	"setval",
+	"nextval",
+	"lo_import",
+	"lo_export",
+	"lo_unlink",
+	"dblink_exec",
+}
+
+// sideEffect returns the function a statement calls that changes the server,
+// or an empty string when it calls none of them.
+func sideEffect(statement sqldialect.Statement) string {
+	text := strings.ToLower(statement.Text)
+	for _, name := range sideEffects {
+		if called(text, name) {
+			return name
+		}
+	}
+	return ""
+}
+
+// called looks for the name followed by its opening bracket. The text comes
+// from the parse tree with the whitespace and comments already gone, so the
+// bracket is what separates a call from a column that happens to share a name.
+func called(text, name string) bool {
+	for at := 0; ; {
+		found := strings.Index(text[at:], name)
+		if found < 0 {
+			return false
+		}
+		at = found + at + len(name)
+		if strings.HasPrefix(strings.TrimLeft(text[at:], " \t\n\r"), "(") {
+			return true
+		}
+	}
+}
+
 func decide(statement sqldialect.Statement, mode Mode) Result {
 	result := Result{Kind: statement.Kind}
 	switch {
 	case statement.Refusal != "":
 		result.Verdict = Block
 		result.Reason = statement.Refusal
+	case sideEffect(statement) != "" && !mode.Writable():
+		result.Verdict = Block
+		result.Reason = sideEffect(statement) + "() changes the server; this connection is READ ONLY"
+	case sideEffect(statement) != "":
+		result.Verdict = Warn
+		result.Reason = sideEffect(statement) + "() changes the server"
 	case statement.Reads():
 		result.Verdict = Allow
 		result.Reason = "reads only"

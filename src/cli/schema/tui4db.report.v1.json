@@ -52,6 +52,12 @@
           },
           "severity": { "enum": ["ok", "warn", "fail", "info", "n/a"] },
           "value": { "type": "string" },
+          "ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Where the measurement sits between nothing and everything. Absent when the check is a count, a size or a word."
+          },
           "note": { "type": "string" }
         }
       }

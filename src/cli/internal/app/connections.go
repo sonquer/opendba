@@ -6,7 +6,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
@@ -32,123 +31,46 @@ type removedMsg struct {
 }
 
 type connections struct {
-	theme    *ui.Theme
-	profiles []config.Connection
-	current  string
-	cursor   int
-	confirm  textinput.Model
-	deleting string
-	failure  string
+	picker
+	failure string
 }
 
 func newConnections(theme *ui.Theme) connections {
-	return connections{theme: theme, confirm: input(theme, "", false)}
+	return connections{picker: newPicker(theme, "no connections are configured")}
 }
 
-func (c connections) selected() (config.Connection, bool) {
-	if c.cursor < 0 || c.cursor >= len(c.profiles) {
-		return config.Connection{}, false
-	}
-	return c.profiles[c.cursor], true
-}
-
-func (c connections) withProfiles(msg profilesMsg) connections {
-	c.profiles = msg.profiles
-	c.current = msg.current
+func (c connections) withProfiles(msg profilesMsg, width int) connections {
 	if msg.err != nil {
 		c.failure = msg.err.Error()
-	}
-	if c.cursor >= len(c.profiles) {
-		c.cursor = max(0, len(c.profiles)-1)
-	}
-	return c
-}
-
-func (c connections) move(step int) connections {
-	if len(c.profiles) == 0 {
 		return c
 	}
-	c.cursor = (c.cursor + step + len(c.profiles)) % len(c.profiles)
-	return c
-}
-
-func (c connections) askToRemove() (connections, tea.Cmd) {
-	connection, ok := c.selected()
-	if !ok {
-		return c, nil
+	rows := make([]row, 0, len(msg.profiles))
+	for _, connection := range msg.profiles {
+		rows = append(rows, row{
+			key:   connection.Name,
+			label: connection.Name,
+			note: ui.Dotted(
+				connection.Driver,
+				strings.ToLower(connection.Mode.Label()),
+				cli.Target(connection),
+			),
+			current: connection.Name == msg.current,
+		})
 	}
-	c.deleting = connection.Name
-	c.failure = ""
-	c.confirm = input(c.theme, "", false)
-	return c, c.confirm.Focus()
-}
-
-func (c connections) cancel() connections {
-	c.deleting = ""
-	c.confirm.Blur()
+	c.picker = c.withRows(rows)
 	return c
 }
-
-func (c connections) clear() connections {
-	c.failure = ""
-	return c
-}
-
-func (c connections) confirmed() bool {
-	return c.deleting != "" && strings.TrimSpace(c.confirm.Value()) == c.deleting
-}
-
-func (c connections) editConfirmation(msg tea.KeyPressMsg) (connections, tea.Cmd) {
-	updated, cmd := c.confirm.Update(msg)
-	c.confirm = updated
-	return c, cmd
-}
-
-func (c connections) removing() bool { return c.deleting != "" }
-
-const connectionNameWidth = 22
 
 func (c connections) view(width int) string {
-	lines := make([]string, 0, len(c.profiles)+3)
-	if len(c.profiles) == 0 {
-		lines = append(lines, c.theme.Muted.Render("no connections are configured"))
-	}
-	for i, connection := range c.profiles {
-		lines = append(lines, c.row(connection, width, i == c.cursor, connection.Name == c.current))
-	}
-	if c.deleting != "" {
-		lines = append(lines, "",
-			c.theme.Severity(ui.SevCritical).Render("remove "+c.deleting+" and its password?"),
-			c.theme.Muted.Render("type the name to confirm")+"  "+c.confirm.View())
-	}
 	if c.failure != "" {
-		lines = append(lines, "", c.theme.Error.Render("✗ "+c.failure))
+		return c.theme.Error.Render("✗ "+c.failure) + "\n\n" + c.picker.view(width)
 	}
-	return strings.Join(lines, "\n")
-}
-
-func (c connections) row(connection config.Connection, width int, active, current bool) string {
-	marker := "  "
-	if active {
-		marker = c.theme.Accent.Render("▌ ")
-	}
-	label := ui.Pad(ui.Truncate(connection.Name, connectionNameWidth-2), connectionNameWidth)
-	name := c.theme.Value.Render(label)
-	if current {
-		name = c.theme.Accent.Render(ui.Pad(ui.Truncate(connection.Name, connectionNameWidth-4)+" ·", connectionNameWidth))
-	}
-	details := ui.Dotted(
-		connection.Driver,
-		strings.ToLower(connection.Mode.Label()),
-		cli.Target(connection),
-	)
-	return marker + c.theme.Env(ui.EnvColor(connection.Color)) + " " + name +
-		c.theme.Muted.Render(ui.Truncate(details, width-connectionNameWidth-4))
+	return c.picker.view(width)
 }
 
 func (m Model) browse() (tea.Model, tea.Cmd) {
 	m.view = viewSwitch
-	m.list = m.list.cancel().clear()
+	m.list.failure = ""
 	return m, m.profiles()
 }
 
@@ -167,46 +89,34 @@ func (m Model) profiles() tea.Cmd {
 }
 
 func (m Model) switchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if m.list.removing() {
-		return m.removalKey(msg)
-	}
 	switch {
 	case key.Matches(msg, m.keys.Quit):
-		m.quitting = true
-		return m, tea.Quit
+		return m.confirmQuit()
 	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Connections):
 		m.view = viewDashboard
 	case key.Matches(msg, m.keys.Up):
-		m.list = m.list.move(-1)
+		m.list.picker = m.list.move(-1)
 	case key.Matches(msg, m.keys.Down):
-		m.list = m.list.move(1)
+		m.list.picker = m.list.move(1)
 	case key.Matches(msg, m.keys.Choose):
 		return m.chosen()
 	case key.Matches(msg, m.keys.New):
 		return m.compose()
 	case key.Matches(msg, m.keys.Remove):
-		list, cmd := m.list.askToRemove()
-		m.list = list
-		return m, cmd
+		return m.askToRemove()
 	}
 	return m, nil
 }
 
-func (m Model) removalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Back):
-		m.list = m.list.cancel()
+func (m Model) askToRemove() (tea.Model, tea.Cmd) {
+	chosen, ok := m.list.selected()
+	if !ok {
 		return m, nil
-	case key.Matches(msg, m.keys.Choose):
-		if !m.list.confirmed() {
-			return m, nil
-		}
-		name := m.list.deleting
-		m.list = m.list.cancel()
-		return m, m.remove(name)
 	}
-	list, cmd := m.list.editConfirmation(msg)
-	m.list = list
+	dialog, cmd := askTyped(m.theme, "remove "+chosen.label+"?",
+		"its password goes with it; type the name to confirm",
+		chosen.label, removeMsg{name: chosen.label})
+	m.modal = dialog
 	return m, cmd
 }
 
@@ -216,12 +126,12 @@ func (m Model) chosen() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.view = viewDashboard
-	if connection.Name == m.session.Connection.Name {
+	if connection.label == m.session.Connection.Name {
 		return m, nil
 	}
 	m.loading = true
 	m.failure = ""
-	return m, tea.Batch(m.open(connection.Name), m.spinner.Tick)
+	return m, tea.Batch(m.open(connection.label), m.spinner.Tick)
 }
 
 func (m Model) compose() (tea.Model, tea.Cmd) {
@@ -257,16 +167,25 @@ func (m Model) switched(msg switchedMsg) (tea.Model, tea.Cmd) {
 		m.view = viewSwitch
 		return m, nil
 	}
+	m.list.failure = ""
 	m.release()
-	m.list = m.list.clear()
 	m.session, m.close = msg.session, msg.cleanup
 	m.theme = msg.session.Theme
 	m.results = results{}
-	m.resultsFocus = false
+	m.focus = focusEditor
 	m.offset = 0
 	m.loading = true
 	m.failure = ""
-	return m, tea.Batch(m.load(), m.spinner.Tick, m.notify("now on "+msg.session.Connection.Name))
+	return m, tea.Batch(m.load(), m.spinner.Tick,
+		m.remember(msg.session.Connection.Database, msg.session.Connection.DefaultSchema),
+		m.notify(m.place(msg.session)))
+}
+
+func (m Model) place(session cli.Session) string {
+	if session.Info.Database != "" && session.Connection.File == "" {
+		return "now on " + session.Connection.Name + " · " + session.Info.Database
+	}
+	return "now on " + session.Connection.Name
 }
 
 func (m Model) remove(name string) tea.Cmd {
@@ -281,6 +200,6 @@ func (m Model) removed(msg removedMsg) (tea.Model, tea.Cmd) {
 		m.list.failure = msg.err.Error()
 		return m, m.profiles()
 	}
-	m.list = m.list.clear()
+	m.list.failure = ""
 	return m, tea.Batch(m.profiles(), m.notify(msg.name+" is gone"))
 }

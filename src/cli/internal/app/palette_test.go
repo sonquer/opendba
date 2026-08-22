@@ -23,7 +23,7 @@ func opened(t *testing.T) Model {
 func TestThePaletteListsEveryCommand(t *testing.T) {
 	m := opened(t)
 	view := plain(m.content())
-	for _, want := range []string{"query editor", "tables", "health report", "connections", "quit"} {
+	for _, want := range []string{"query editor", "tables", "indexes", "connections", "quit"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the palette must offer %q:\n%s", want, view)
 		}

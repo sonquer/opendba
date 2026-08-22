@@ -197,29 +197,8 @@ func Count(value int64) string {
 	return strings.Join(append([]string{text}, parts...), ",")
 }
 
-func ByteSize(bytes int64) string {
-	if bytes < 0 {
-		return "n/a"
-	}
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	value, exponent := float64(bytes), 0
-	for value >= unit && exponent < 4 {
-		value /= unit
-		exponent++
-	}
-	return fmt.Sprintf("%.1f %ciB", value, "KMGT"[exponent-1])
-}
+// ByteSize writes a size the way a person reads one.
+func ByteSize(bytes int64) string { return driver.ByteSize(bytes) }
 
-func Duration(d time.Duration) string {
-	switch {
-	case d >= time.Minute:
-		return fmt.Sprintf("%.1fm", d.Minutes())
-	case d >= time.Second:
-		return fmt.Sprintf("%.2fs", d.Seconds())
-	default:
-		return fmt.Sprintf("%dms", d.Milliseconds())
-	}
-}
+// Duration writes a length of time at the precision that matters.
+func Duration(d time.Duration) string { return driver.Duration(d) }

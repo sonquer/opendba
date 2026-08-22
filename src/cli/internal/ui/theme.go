@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
 
 	"charm.land/lipgloss/v2"
@@ -107,14 +108,16 @@ var envSwatches = map[EnvColor]color.Color{
 	EnvGray:   lipgloss.Color("#6d6d6d"),
 }
 
+// envGlyphs separate at a glance rather than by shape family, with the heaviest
+// marks on the colours people give to production.
 var envGlyphs = map[EnvColor]string{
-	EnvRed:    "●",
-	EnvOrange: "◆",
-	EnvYellow: "▲",
-	EnvGreen:  "■",
-	EnvCyan:   "◇",
-	EnvBlue:   "▼",
-	EnvPurple: "★",
+	EnvRed:    "⬢",
+	EnvOrange: "⬣",
+	EnvYellow: "◈",
+	EnvGreen:  "⬤",
+	EnvCyan:   "◉",
+	EnvBlue:   "◍",
+	EnvPurple: "✦",
 	EnvGray:   "○",
 }
 
@@ -154,14 +157,18 @@ type Theme struct {
 	Separator   lipgloss.Style
 	SectionHead lipgloss.Style
 	Error       lipgloss.Style
+	Divider     lipgloss.Style
 	Panel       lipgloss.Style
 	TableHead   lipgloss.Style
+
+	severities map[Severity]lipgloss.Style
+	markdown   *Markdown
 }
 
 func NewTheme(p Palette) *Theme {
-	return &Theme{
+	theme := &Theme{
 		P:           p,
-		Base:        lipgloss.NewStyle().Foreground(p.Fg),
+		Base:        lipgloss.NewStyle().Foreground(p.Fg).Background(p.Bg),
 		Title:       lipgloss.NewStyle().Foreground(p.Fg).Bold(true),
 		Muted:       lipgloss.NewStyle().Foreground(p.Muted),
 		Subtle:      lipgloss.NewStyle().Foreground(p.Subtle),
@@ -175,26 +182,36 @@ func NewTheme(p Palette) *Theme {
 		Separator:   lipgloss.NewStyle().Foreground(p.Border),
 		SectionHead: lipgloss.NewStyle().Foreground(p.Info).Bold(true),
 		Error:       lipgloss.NewStyle().Foreground(p.Critical),
-		Panel:       lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(p.Border).Padding(0, 1),
-		TableHead:   lipgloss.NewStyle().Foreground(p.Muted),
+		Panel: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
+			BorderForeground(p.Border).BorderBackground(p.Bg).Background(p.Bg).Padding(0, 1),
+		TableHead: lipgloss.NewStyle().Foreground(p.Muted),
+		Divider:   lipgloss.NewStyle().Foreground(p.Border),
 	}
+	theme.severities = map[Severity]lipgloss.Style{
+		SevOK:       lipgloss.NewStyle().Foreground(p.OK),
+		SevWarn:     lipgloss.NewStyle().Foreground(p.Warn),
+		SevCritical: lipgloss.NewStyle().Foreground(p.Critical),
+		SevInfo:     lipgloss.NewStyle().Foreground(p.Info),
+		SevInactive: lipgloss.NewStyle().Foreground(p.Inactive),
+	}
+	return theme
 }
 
 func Default() *Theme { return NewTheme(DefaultPalette()) }
 
+// hex renders a colour the way Glamour wants it, as a string.
+func hex(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
+}
+
+// Severity returns the style of a severity. The styles are built once, because
+// this is called for every finding of every frame.
 func (t *Theme) Severity(s Severity) lipgloss.Style {
-	switch s {
-	case SevOK:
-		return lipgloss.NewStyle().Foreground(t.P.OK)
-	case SevWarn:
-		return lipgloss.NewStyle().Foreground(t.P.Warn)
-	case SevCritical:
-		return lipgloss.NewStyle().Foreground(t.P.Critical)
-	case SevInfo:
-		return lipgloss.NewStyle().Foreground(t.P.Info)
-	default:
-		return lipgloss.NewStyle().Foreground(t.P.Inactive)
+	if style, ok := t.severities[s]; ok {
+		return style
 	}
+	return t.severities[SevInactive]
 }
 
 func (t *Theme) Status(s Severity) string {

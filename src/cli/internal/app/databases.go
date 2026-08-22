@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -20,41 +19,34 @@ type catalogMsg struct {
 	err       error
 }
 
-type entryKind string
-
 const (
-	entryDatabase entryKind = "database"
-	entrySchema   entryKind = "schema"
+	sectionDatabases = "databases"
+	sectionSchemas   = "schemas"
 )
 
-type entry struct {
-	kind    entryKind
-	name    string
-	note    string
-	current bool
-}
-
 type catalog struct {
-	theme   *ui.Theme
-	entries []entry
-	cursor  int
+	picker
 	failure string
 }
 
-func newCatalog(theme *ui.Theme) catalog { return catalog{theme: theme} }
+func newCatalog(theme *ui.Theme) catalog {
+	return catalog{picker: newPicker(theme, "reading the server")}
+}
 
 func (c catalog) withCatalog(msg catalogMsg, schema string) catalog {
-	c.entries = nil
 	c.failure = ""
 	if msg.err != nil {
 		c.failure = msg.err.Error()
+		c.picker = c.withRows(nil)
 		return c
 	}
+	rows := make([]row, 0, len(msg.databases)+len(msg.schemas))
 	for _, database := range msg.databases {
-		c.entries = append(c.entries, entry{
-			kind:    entryDatabase,
-			name:    database.Name,
+		rows = append(rows, row{
+			key:     sectionDatabases + ":" + database.Name,
+			label:   database.Name,
 			note:    database.Comment,
+			section: sectionDatabases,
 			current: database.Current,
 		})
 	}
@@ -62,69 +54,23 @@ func (c catalog) withCatalog(msg catalogMsg, schema string) catalog {
 		if found.System {
 			continue
 		}
-		c.entries = append(c.entries, entry{
-			kind:    entrySchema,
-			name:    found.Name,
+		rows = append(rows, row{
+			key:     sectionSchemas + ":" + found.Name,
+			label:   found.Name,
 			note:    ui.Plural(found.Tables, "table", "tables"),
+			section: sectionSchemas,
 			current: found.Name == schema,
 		})
 	}
-	if c.cursor >= len(c.entries) {
-		c.cursor = max(0, len(c.entries)-1)
-	}
+	c.picker = c.withRows(rows)
 	return c
-}
-
-func (c catalog) move(step int) catalog {
-	if len(c.entries) == 0 {
-		return c
-	}
-	c.cursor = (c.cursor + step + len(c.entries)) % len(c.entries)
-	return c
-}
-
-func (c catalog) selected() (entry, bool) {
-	if c.cursor < 0 || c.cursor >= len(c.entries) {
-		return entry{}, false
-	}
-	return c.entries[c.cursor], true
 }
 
 func (c catalog) view(width int) string {
 	if c.failure != "" {
 		return c.theme.Error.Render("✗ " + c.failure)
 	}
-	if len(c.entries) == 0 {
-		return c.theme.Muted.Render("  reading the server")
-	}
-	lines := make([]string, 0, len(c.entries)+4)
-	kind := entryKind("")
-	for i, item := range c.entries {
-		if item.kind != kind {
-			kind = item.kind
-			if len(lines) > 0 {
-				lines = append(lines, "")
-			}
-			lines = append(lines, c.theme.Section(string(kind)+"s", "", width), "")
-		}
-		lines = append(lines, c.row(item, width, i == c.cursor))
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (c catalog) row(item entry, width int, active bool) string {
-	marker := "  "
-	name := c.theme.Value.Render(item.name)
-	if item.current {
-		name = c.theme.Accent.Render(item.name + " ·")
-	}
-	if active {
-		marker = c.theme.Accent.Render("▌ ")
-	}
-	if item.note == "" {
-		return marker + name
-	}
-	return ui.SplitLine(marker+name, c.theme.Muted.Render(ui.Truncate(item.note, width/2)), width)
+	return c.picker.view(width)
 }
 
 func (m Model) browseCatalog() (tea.Model, tea.Cmd) {
@@ -156,14 +102,13 @@ func (m Model) readCatalog() tea.Cmd {
 func (m Model) catalogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
-		m.quitting = true
-		return m, tea.Quit
+		return m.confirmQuit()
 	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Catalog):
 		m.view = viewDashboard
 	case key.Matches(msg, m.keys.Up):
-		m.catalog = m.catalog.move(-1)
+		m.catalog.picker = m.catalog.move(-1)
 	case key.Matches(msg, m.keys.Down):
-		m.catalog = m.catalog.move(1)
+		m.catalog.picker = m.catalog.move(1)
 	case key.Matches(msg, m.keys.Choose):
 		return m.enter()
 	}
@@ -179,12 +124,30 @@ func (m Model) enter() (tea.Model, tea.Cmd) {
 	m.view = viewDashboard
 	m.loading = true
 	m.failure = ""
-	if chosen.kind == entrySchema {
-		m.session.Connection.DefaultSchema = chosen.name
-		return m, tea.Batch(m.load(), m.spinner.Tick, m.notify("reading "+chosen.name))
+	if chosen.section == sectionSchemas {
+		m.session.Connection.DefaultSchema = chosen.label
+		return m, tea.Batch(m.load(), m.spinner.Tick,
+			m.remember(m.session.Connection.Database, chosen.label),
+			m.notify("reading "+chosen.label))
 	}
-	return m, tea.Batch(m.openDatabase(chosen.name), m.spinner.Tick)
+	return m, tea.Batch(m.openDatabase(chosen.label), m.spinner.Tick)
 }
+
+// remember writes the place you moved to back to the profile, so the next run
+// opens where you left off. Failing to write it is worth saying and nothing
+// more: the session is already there.
+func (m Model) remember(database, schema string) tea.Cmd {
+	workspace := m.workspace
+	name := m.session.Connection.Name
+	return func() tea.Msg {
+		if err := workspace.Remember(name, database, schema); err != nil {
+			return rememberedMsg{err: err}
+		}
+		return rememberedMsg{}
+	}
+}
+
+type rememberedMsg struct{ err error }
 
 func (m Model) openDatabase(database string) tea.Cmd {
 	workspace := m.workspace
