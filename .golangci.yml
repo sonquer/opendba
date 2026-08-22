@@ -1,0 +1,65 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - gosec
+    - bodyclose
+    - misspell
+    - nolintlint
+  settings:
+    errcheck:
+      # Writing to stdout, stderr or an already failing writer has no recovery
+      # path in a terminal program, and checking it would add noise to every
+      # rendering function.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*os.File).Close
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    staticcheck:
+      # ST1000 asks for a package comment on every package. Only the public
+      # packages under pkg/ carry one; internal packages are named well enough.
+      checks:
+        - all
+        - -ST1000
+    gosec:
+      excludes:
+        # G115 integer conversion overflow: too noisy for terminal geometry.
+        - G115
+        # G201 SQL string formatting: the sqlite driver builds PRAGMA statements,
+        # which cannot take bound parameters. Identifiers go through quoting.
+        - G201
+        # G204 subprocess with a variable: the command secret backend exists to
+        # run the password manager the user configured.
+        - G204
+        # G302 and G304: configuration and vault paths come from the user's own
+        # profile, and directory modes are checked against 0700 by config.Ensure.
+        - G302
+        - G304
+        # G301 and G306: the development tooling writes caches, generated parsers
+        # and coverage output, which are files other tools have to read.
+        - G301
+        - G306
+        # G703 path traversal: the development tooling walks the paths declared in
+        # go.work and in this repository, not paths from an untrusted source.
+        - G703
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, errcheck]
+      - path: internal/parser/generated/
+        linters: [errcheck, govet, staticcheck, unused, revive, gosec, misspell, ineffassign, nolintlint]
+
+formatters:
+  enable:
+    - gofmt

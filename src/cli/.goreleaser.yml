@@ -1,0 +1,51 @@
+version: 2
+
+project_name: tui4db
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: tui4db
+    main: ./cmd/tui4db
+    binary: tui4db
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - ../../README.md
+      - ../../LICENSE
+      - ../../LICENSE-MIT
+      - ../../LICENSE-APACHE
+      - ../../CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: false
+  prerelease: auto

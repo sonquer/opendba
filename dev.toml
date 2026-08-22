@@ -1,0 +1,22 @@
+[coverage]
+total = 95
+packages = 0
+exempt = [
+  "cli/internal/parser/generated",
+  "tools/cmd",
+  "cli/cmd",
+]
+
+[coverage.modules]
+cli = 95
+tools = 95
+
+# Per package floors. A package sits below the workspace gate only when the
+# remaining branches cannot be reached without writing fakes for failures that
+# the standard library cannot produce: encrypting to a buffer, or marshalling a
+# map of strings.
+[package]
+"cli/pkg/sqlguard" = 100
+"cli/pkg/sqldialect" = 95
+"cli/internal/config" = 95
+"cli/pkg/secretref" = 92

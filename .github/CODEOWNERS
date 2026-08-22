@@ -1,0 +1,6 @@
+* @sonquer
+
+/src/cli/pkg/sqlguard/   @sonquer
+/src/cli/pkg/sqldialect/ @sonquer
+/src/cli/pkg/secretref/  @sonquer
+/.github/                @sonquer

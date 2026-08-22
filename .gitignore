@@ -30,3 +30,16 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# tui4db
+/bin/
+/dist/
+
+# coverage output, never committed
+/coverage/
+cover.out
+/coverage.html
+
+# local development, never committed
+.env
+/.local/
