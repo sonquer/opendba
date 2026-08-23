@@ -35,6 +35,13 @@ type fakeConn struct {
 	sessions  []driver.Session
 	stopped   []string
 
+	// holdQuery keeps a read waiting until the test lets it go, which is how a
+	// statement that is still running is written down without sleeping.
+	holdQuery chan struct{}
+
+	// plan is what the server says it would do, when a test wants to say.
+	plan driver.Plan
+
 	// A batch runs its commands at once, so the counter is written from more
 	// than one goroutine and has to be held.
 	mu    sync.Mutex
@@ -112,15 +119,49 @@ func (f *fakeConn) Indexes(context.Context, string) ([]driver.Index, error) {
 	return f.indexes, f.fail("indexes")
 }
 
-func (f *fakeConn) Query(context.Context, string) (driver.ResultSet, error) {
+func (f *fakeConn) Query(ctx context.Context, _ string) (driver.ResultSet, error) {
 	if err := f.fail("query"); err != nil {
 		return nil, err
+	}
+	if f.holdQuery != nil {
+		select {
+		case <-f.holdQuery:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	return &fakeResult{columns: f.columns, rows: f.rows}, nil
 }
 
-func (f *fakeConn) Explain(context.Context, string, bool) (driver.Plan, error) {
-	return driver.Plan{}, f.fail("explain")
+func (f *fakeConn) Stream(ctx context.Context, statement string) (driver.ResultSet, error) {
+	if err := f.fail("stream"); err != nil {
+		return nil, err
+	}
+	return f.Query(ctx, statement)
+}
+
+func (f *fakeConn) Preview(schema, table string) string {
+	if schema == "" {
+		return `SELECT * FROM "` + table + `"`
+	}
+	return `SELECT * FROM "` + schema + `"."` + table + `"`
+}
+
+func (f *fakeConn) Explain(_ context.Context, _ string, analyze bool) (driver.Plan, error) {
+	if err := f.fail("explain"); err != nil {
+		return driver.Plan{}, err
+	}
+	if f.plan.Root.Name != "" {
+		return f.plan, nil
+	}
+	scan := driver.PlanNode{Name: "Seq Scan", Detail: "on users", Cost: 8, Rows: 2, Depth: 1}
+	if analyze {
+		scan.Duration = 3 * time.Millisecond
+	}
+	return driver.Plan{
+		Root:  driver.PlanNode{Name: "Limit", Cost: 10, Rows: 2, Children: []driver.PlanNode{scan}},
+		Total: 10,
+	}, nil
 }
 
 func (f *fakeConn) Health(context.Context) ([]driver.Finding, error) {
@@ -171,6 +212,7 @@ func session(conn driver.Conn) cli.Session {
 		Conn:         conn,
 		Info:         driver.ServerInfo{Driver: "sqlite", Version: "3.45"},
 		Guard:        sqlguard.New(sqldialect.SQLite()),
+		Dialect:      sqldialect.SQLite(),
 		Theme:        ui.Default(),
 	}
 }
@@ -314,6 +356,32 @@ func settle(t *testing.T, m Model, cmd tea.Cmd) Model {
 		out, _ = out.Update(msg)
 	}
 	return out.(Model)
+}
+
+// pump settles a command and everything the commands it produced produce, which
+// is what a running program does and what settle deliberately does not: settle
+// answers one round so a test can look at the model between rounds.
+func pump(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	for range 8 {
+		messages := runAll(t, cmd)
+		if len(messages) == 0 {
+			return m
+		}
+		var next []tea.Cmd
+		for _, msg := range messages {
+			updated, produced := m.Update(msg)
+			m = updated.(Model)
+			if produced != nil {
+				next = append(next, produced)
+			}
+		}
+		if len(next) == 0 {
+			return m
+		}
+		cmd = tea.Batch(next...)
+	}
+	return m
 }
 
 // runAll walks a batch and hands every message back, which is what a program
@@ -689,8 +757,8 @@ func TestQueryEditorRunsAllowedStatements(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("f5 must run the statement")
 	}
-	finished, _ := ran.Update(cmd())
-	content := plain(finished.(Model).content())
+	finished := settle(t, ran, cmd)
+	content := plain(finished.content())
 	for _, want := range []string{"a@example.com", "2 rows", "allowed"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("content missing %q:\n%s", want, content)
@@ -750,7 +818,8 @@ func TestAWriteAsksBeforeItRuns(t *testing.T) {
 		t.Fatal("enter answers it")
 	}
 	before := conn.counted()["query"]
-	settle(t, settle(t, answered, cmd), answered.run(editing.statement()))
+	_, running := answered.run(editing.statement())
+	settle(t, settle(t, answered, cmd), running)
 	if conn.counted()["query"] == before {
 		t.Error("and the statement reaches the server")
 	}
@@ -789,9 +858,9 @@ func TestQueryFailuresAreShown(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the statement must run")
 	}
-	finished, _ := ran.Update(cmd())
-	if !strings.Contains(plain(finished.(Model).content()), "query failed") {
-		t.Errorf("content = %s", plain(finished.(Model).content()))
+	finished := settle(t, ran, cmd)
+	if !strings.Contains(plain(finished.content()), "query failed") {
+		t.Errorf("content = %s", plain(finished.content()))
 	}
 }
 
@@ -884,8 +953,7 @@ func TestFocusWalksTheWorkbench(t *testing.T) {
 
 	editing = typeInto(t, editing, "SELECT 1")
 	ran, cmd := press(t, editing, "f5")
-	withResults, _ := ran.Update(cmd())
-	shown := withResults.(Model)
+	shown := settle(t, ran, cmd)
 	if shown.focus != focusEditor {
 		t.Fatal("a fresh result must leave the editor focused")
 	}
@@ -934,9 +1002,9 @@ func TestAnEmptyResultSaysSo(t *testing.T) {
 	editing, _ := press(t, m, "e")
 	editing = typeInto(t, editing, "SELECT 1")
 	ran, cmd := press(t, editing, "f5")
-	shown, _ := ran.Update(cmd())
-	if !strings.Contains(plain(shown.(Model).content()), "no rows") {
-		t.Errorf("content = %s", plain(shown.(Model).content()))
+	shown := settle(t, ran, cmd)
+	if !strings.Contains(plain(shown.content()), "no rows") {
+		t.Errorf("content = %s", plain(shown.content()))
 	}
 }
 
@@ -957,7 +1025,7 @@ func TestTheSpinnerTurnsWhileLoading(t *testing.T) {
 
 func TestColumnsFillThePane(t *testing.T) {
 	names := []string{"id", "email"}
-	rows := [][]string{{"1", "a@example.com"}}
+	rows := naturalWidths(names, [][]string{{"1", "a@example.com"}})
 
 	wide := columnsFor(names, rows, 80)
 	if width := tableWidth(wide, 80); width != 80 {
@@ -975,7 +1043,7 @@ func TestColumnsFillThePane(t *testing.T) {
 	}
 
 	long := columnsFor([]string{"definition"},
-		[][]string{{strings.Repeat("x", 200)}}, 120)
+		naturalWidths([]string{"definition"}, [][]string{{strings.Repeat("x", 200)}}), 120)
 	if long[0].Width <= 32 {
 		t.Errorf("a long value is no longer capped at 32, got %d", long[0].Width)
 	}
@@ -998,7 +1066,8 @@ func TestLaunchAndRunSetupAreThinWrappers(t *testing.T) {
 }
 
 func TestTableWidthFitsTheTerminal(t *testing.T) {
-	columns := columnsFor([]string{"a", "b"}, [][]string{{"1", "2"}}, 80)
+	columns := columnsFor([]string{"a", "b"},
+		naturalWidths([]string{"a", "b"}, [][]string{{"1", "2"}}), 80)
 	if got := tableWidth(columns, 0); got != 80 {
 		t.Errorf("without a limit the table keeps the width it was given: %d", got)
 	}
@@ -1007,15 +1076,21 @@ func TestTableWidthFitsTheTerminal(t *testing.T) {
 	}
 }
 
-func TestResultsIgnoreKeysWhenThereIsNothingToScroll(t *testing.T) {
-	empty := results{}
-	updated, cmd := empty.update(keyMsg("down"))
-	if cmd != nil || updated.present {
-		t.Error("an empty result has nothing to scroll")
-	}
-	failed := results{present: true, failure: "boom"}
-	if _, cmd := failed.update(keyMsg("down")); cmd != nil {
-		t.Error("a failed result has nothing to scroll")
+func TestResultsIgnoreMovementWhenThereIsNothingToScroll(t *testing.T) {
+	for _, want := range []struct {
+		name string
+		from results
+	}{
+		{"nothing has run", results{}},
+		{"it failed", results{present: true, failure: "boom"}},
+		{"no rows came back", results{present: true}},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if moved := want.from.move(1); moved.cursor != 0 || moved.first != 0 {
+				t.Errorf("cursor = %d first = %d, there is nothing to move through",
+					moved.cursor, moved.first)
+			}
+		})
 	}
 }
 
@@ -1150,5 +1225,80 @@ func TestTheCatalogueListsAreSorted(t *testing.T) {
 	indexes, _ := press(t, m, "i")
 	if indexes.lists[1].column != 2 || !indexes.lists[1].reversed {
 		t.Errorf("indexes start with the largest: %+v", indexes.lists[1])
+	}
+}
+
+// A statement that is still running says so and can be given up on.
+func TestARunningStatementIsVisibleAndCanBeStopped(t *testing.T) {
+	conn := healthy()
+	conn.holdQuery = make(chan struct{})
+	defer close(conn.holdQuery)
+
+	m := loaded(t, conn)
+	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "SELECT 1")
+	running, cmd := press(t, editing, "ctrl+r")
+	if !running.inflight || running.stopQuery == nil {
+		t.Fatalf("running the statement must record that it is out: %+v", running.inflight)
+	}
+	if cmd == nil {
+		t.Fatal("ctrl+r must run the statement")
+	}
+	if !running.spinning() {
+		t.Error("the spinner has to keep turning while a statement is out")
+	}
+
+	view := plain(running.content())
+	for _, want := range []string{"running", "cancel"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("a running statement must show %q:\n%s", want, view)
+		}
+	}
+
+	stopped, cmd := press(t, running, "esc")
+	if cmd != nil {
+		t.Error("esc gives up on the statement rather than leaving the screen")
+	}
+	if stopped.view != viewQuery {
+		t.Errorf("view = %v, esc must not leave the editor while a query is out", stopped.view)
+	}
+}
+
+// Esc with nothing running still goes back, which is what it means everywhere.
+func TestEscapeStillLeavesTheEditorWhenNothingIsRunning(t *testing.T) {
+	m := loaded(t, healthy())
+	editing, _ := press(t, m, "e")
+	if editing.inflight {
+		t.Fatal("nothing is running yet")
+	}
+	back, _ := press(t, editing, "esc")
+	if back.view != viewDashboard {
+		t.Errorf("view = %v", back.view)
+	}
+}
+
+// The answer to a statement that was given up on does not replace the answer to
+// the one asked after it.
+func TestAResultFromAStatementThatWasStoppedIsIgnored(t *testing.T) {
+	m := loaded(t, healthy())
+	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "SELECT 1")
+	running, _ := press(t, editing, "ctrl+r")
+
+	stale := queriedMsg{statement: "SELECT 1", columns: []string{"n"},
+		rows: [][]any{{"1"}}, token: running.token - 1}
+	after, _ := running.Update(stale)
+	if after.(Model).results.present {
+		t.Error("a result from a run that was left behind must not be drawn")
+	}
+	if !after.(Model).inflight {
+		t.Error("and it must not say the statement it belongs to has finished")
+	}
+
+	fresh := queriedMsg{statement: "SELECT 1", columns: []string{"n"},
+		rows: [][]any{{"1"}}, token: running.token}
+	arrived, _ := running.Update(fresh)
+	if !arrived.(Model).results.present || arrived.(Model).inflight {
+		t.Error("the result of the run being waited on is drawn, and ends the wait")
 	}
 }

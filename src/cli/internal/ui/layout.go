@@ -23,6 +23,11 @@ type Frame struct {
 	Height int
 	Env    EnvColor
 	Header string
+
+	// Tabs is a strip of tabs to sit between the header and the rule under it,
+	// with a blank row above so it is not up against the header. A screen with
+	// no tabs leaves it empty and keeps the blank row it has always had.
+	Tabs   string
 	Body   string
 	Footer string
 }
@@ -36,16 +41,20 @@ func (t *Theme) Chrome(f Frame) string {
 	if height < minChromeHeight {
 		height = minChromeHeight
 	}
-	rows := []string{
+	above := []string{t.Rule(inner), ""}
+	if f.Tabs != "" {
+		above = []string{"", strings.TrimRight(f.Tabs, "\n"), t.Rule(inner)}
+	}
+	rows := append([]string{
 		t.EnvLine(f.Env, inner),
 		strings.TrimRight(f.Header, "\n"),
-		t.Rule(inner),
-		"",
+	}, above...)
+	rows = append(rows,
 		Fit(f.Body, BodyHeight(height)),
 		"",
 		t.Rule(inner),
 		strings.TrimRight(f.Footer, "\n"),
-	}
+	)
 	return lipgloss.NewStyle().Padding(1, gutter).Render(strings.Join(rows, "\n"))
 }
 
@@ -169,6 +178,31 @@ func At(background, content string, x, y int) string {
 
 // Gutter is the padding Chrome keeps on each side.
 const Gutter = gutter
+
+// TabTop, TabRows and the rows the body starts on are where Chrome draws
+// things, counted from the top of the window. They are constants rather than
+// something worked out from a rendered frame because the mouse has to know
+// where a click landed before the frame it landed on is drawn again.
+const (
+	TabTop  = 4
+	TabRows = 1
+
+	bodyBelowRule = 5
+	bodyBelowTabs = 6
+)
+
+// BodyTop is the row the body starts on, which is further down on the one
+// screen that has tabs above it.
+func BodyTop(tabbed bool) int {
+	if tabbed {
+		return bodyBelowTabs
+	}
+	return bodyBelowRule
+}
+
+// TabStripRows is what a tab strip costs a screen: the blank row that keeps it
+// off the header, and the rows of the tabs themselves.
+const TabStripRows = 1 + TabRows
 
 func compose(background, content string, x, y int) string {
 	return lipgloss.NewCompositor(

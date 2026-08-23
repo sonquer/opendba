@@ -89,8 +89,8 @@ func TestARecordIsReadableWithoutWalkingSideways(t *testing.T) {
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT * FROM users")
 	ran, cmd := press(t, typed, "ctrl+r")
-	shown, _ := ran.Update(cmd())
-	onResults, _ := press(t, shown.(Model), "tab")
+	shown := settle(t, ran, cmd)
+	onResults, _ := press(t, shown, "tab")
 	if onResults.focus != focusResults {
 		t.Fatalf("focus = %v", onResults.focus)
 	}
@@ -120,8 +120,8 @@ func TestAWideResultWalksSideways(t *testing.T) {
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT * FROM wide")
 	ran, cmd := press(t, typed, "ctrl+r")
-	shown, _ := ran.Update(cmd())
-	onResults, _ := press(t, shown.(Model), "tab")
+	shown := settle(t, ran, cmd)
+	onResults, _ := press(t, shown, "tab")
 
 	view := plain(onResults.content())
 	if !strings.Contains(view, "column 1 of 20") {
@@ -181,14 +181,17 @@ func TestTheStatementIsHighlightedOnceTheCursorLeaves(t *testing.T) {
 	m.width, m.height = 110, 32
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT 1")
-	if strings.Contains(plain(typed.statementView(80)), "SELECT 1") &&
-		typed.statementView(80) == m.theme.Markdown(80).SQL("SELECT 1") {
-		t.Error("the editor stays plain while it is being typed into")
+	drawn := typed.statementView(80)
+	if !strings.Contains(plain(drawn), "SELECT 1") {
+		t.Errorf("the statement must be on screen as it is typed:\n%s", plain(drawn))
+	}
+	if !strings.Contains(drawn, m.theme.Highlight("SELECT")) {
+		t.Error("and coloured while it is being typed rather than only afterwards")
 	}
 	blurred := typed
 	blurred.focus = focusResults
-	if blurred.statementView(80) != m.theme.Markdown(80).SQL("SELECT 1") {
-		t.Error("a blurred editor shows the statement highlighted")
+	if plain(blurred.statementView(80)) != plain(drawn) {
+		t.Error("a statement reads the same whether or not the cursor is in it")
 	}
 	fresh := loadedWith(t, healthy(), workspaceWith(t))
 	quiet, _ := press(t, fresh, "e")

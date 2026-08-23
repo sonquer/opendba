@@ -112,32 +112,27 @@ func talking(t *testing.T, talk *scripted) Model {
 // back, which is what the program does.
 func converse(t *testing.T, m Model, cmd tea.Cmd) Model {
 	t.Helper()
-	for range 64 {
-		if cmd == nil {
+	pending := []tea.Cmd{cmd}
+	for range 256 {
+		if len(pending) == 0 {
 			return m
 		}
-		msg := cmd()
-		if batch, ok := msg.(tea.BatchMsg); ok {
-			var next tea.Cmd
-			for _, sub := range batch {
-				if sub == nil {
-					continue
-				}
-				produced := sub()
-				if produced == nil {
-					continue
-				}
-				updated, one := m.Update(produced)
-				m = updated.(Model)
-				if one != nil && next == nil {
-					next = one
-				}
-			}
-			cmd = next
+		next := pending[0]
+		pending = pending[1:]
+		if next == nil {
 			continue
 		}
-		updated, next := m.Update(msg)
-		m, cmd = updated.(Model), next
+		msg := next()
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			pending = append(pending, batch...)
+			continue
+		}
+		if msg == nil {
+			continue
+		}
+		updated, produced := m.Update(msg)
+		m = updated.(Model)
+		pending = append(pending, produced)
 	}
 	t.Fatal("the conversation did not settle")
 	return m
@@ -1344,4 +1339,81 @@ func TestTheAnswerDoesNotTouchTheBox(t *testing.T) {
 	if strings.TrimSpace(lines[box-1]) != "" {
 		t.Fatalf("the answer runs into the box: %q", lines[box-1])
 	}
+}
+
+// TestTheModelIsReadInOnTheFirstQuestion is the bargain: opening the
+// conversation to read what was said before costs nothing, and the wait for a
+// model happens when there is something to ask it.
+func TestTheModelIsReadInOnTheFirstQuestion(t *testing.T) {
+	talk := &scripted{events: []agent.Event{{Kind: agent.EventText, Text: "four"}, {Kind: agent.EventDone}}}
+	m := configured(t)
+	m.width, m.height = 100, 32
+	m.talk.instance = "here"
+	m.build = func(allowed permission) (conversation, error) {
+		talk.consent, talk.allowed = allowed, allowed
+		return talk, nil
+	}
+
+	opened, _ := m.show(viewAsk)
+	waiting := opened.(Model)
+	if waiting.talk.loading || waiting.assistant != nil {
+		t.Fatal("opening the conversation read a model into memory")
+	}
+
+	waiting = typeInto(t, waiting, "how many tables?")
+	asking, cmd := press(t, waiting, "enter")
+	if !asking.talk.loading {
+		t.Fatal("asking did not start reading the model in")
+	}
+	if asking.talk.waiting != "how many tables?" {
+		t.Fatalf("waiting = %q, want the question kept", asking.talk.waiting)
+	}
+	if len(asking.talk.exchanges) != 0 {
+		t.Fatal("the turn started before there was anything to ask")
+	}
+	if !strings.Contains(plain(asking.askBody()), "how many tables?") {
+		t.Fatalf("the question is not on screen while the model is read in:\n%s", plain(asking.askBody()))
+	}
+
+	done := converse(t, asking, cmd)
+	if done.talk.loading || done.talk.waiting != "" {
+		t.Fatalf("the screen is still waiting: %+v", done.talk.waiting)
+	}
+	if len(talk.asked) != 1 || talk.asked[0] != "how many tables?" {
+		t.Fatalf("asked = %v, want the question that was waiting", talk.asked)
+	}
+	if !strings.Contains(said(t, done), "four") {
+		t.Fatalf("body = %q, want the answer", said(t, done))
+	}
+	if done.talk.prompt.Value() != "" {
+		t.Fatalf("the box still holds %q", done.talk.prompt.Value())
+	}
+}
+
+// TestAQuestionSurvivesAModelThatWillNotLoad keeps somebody's words: a model
+// that would not open is a reason to try something else, not to lose what was
+// typed.
+func TestAQuestionSurvivesAModelThatWillNotLoad(t *testing.T) {
+	m := configured(t)
+	m.width, m.height = 100, 32
+	m.talk.instance = "here"
+	m.build = func(permission) (conversation, error) {
+		return nil, errors.New("the file is not a model")
+	}
+	m = typeInto(t, m.show4Test(viewAsk), "how many tables?")
+	asking, cmd := press(t, m, "enter")
+	done := converse(t, asking, cmd)
+	if !strings.Contains(done.talk.trouble, "not a model") {
+		t.Fatalf("trouble = %q", done.talk.trouble)
+	}
+	if done.talk.prompt.Value() != "how many tables?" {
+		t.Fatalf("the box holds %q, want the question still there", done.talk.prompt.Value())
+	}
+}
+
+// show4Test opens a screen and throws away the command, which a test that is
+// about something else does not need.
+func (m Model) show4Test(target view) Model {
+	opened, _ := m.show(target)
+	return opened.(Model)
 }

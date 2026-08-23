@@ -26,7 +26,23 @@ type AppearanceSettings struct {
 	// the font's business and a terminal program cannot choose the font it is
 	// rendered in, so this is a choice rather than a constant.
 	Bar string `toml:"bar,omitempty"`
+
+	// Mouse is whether the program asks the terminal to report the mouse. It is
+	// a choice because a terminal that is reporting the mouse to a program is a
+	// terminal that is not selecting text with it, and copying a value out of a
+	// result matters more to some people than clicking a tab does. "on" is the
+	// default; "off" gives the mouse back to the terminal.
+	Mouse string `toml:"mouse,omitempty"`
 }
+
+// MouseWanted reports whether the terminal should be asked for the mouse.
+func (a AppearanceSettings) MouseWanted() bool { return a.Mouse != MouseOff }
+
+// The two answers to whether the program takes the mouse.
+const (
+	MouseOn  = "on"
+	MouseOff = "off"
+)
 
 type HistorySettings struct {
 	Enabled  bool `toml:"enabled"`
@@ -83,7 +99,9 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
-		Appearance: AppearanceSettings{Theme: "dark", Accent: "cyan", Bar: "pipes"},
+		Appearance: AppearanceSettings{
+			Theme: "dark", Accent: "cyan", Bar: "pipes", Mouse: MouseOn,
+		},
 		Safety: SafetySettings{
 			DefaultMode:    ReadOnly,
 			ConfirmQueries: true,

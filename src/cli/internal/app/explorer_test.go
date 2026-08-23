@@ -67,34 +67,35 @@ func TestTheSidebarTakesTheCursorPastTheSchema(t *testing.T) {
 	}
 }
 
-func TestATableExplainsItself(t *testing.T) {
+// Enter on a table in the tree opens its rows in a tab of their own, with the
+// statement that read them written into it rather than sent behind it.
+func TestATableOpensInATabOfItsOwn(t *testing.T) {
 	m := workbench(t)
 	side, _ := press(t, m, "tab")
-	shown, cmd := press(t, side, "enter")
-	if shown.page == nil {
-		t.Fatal("enter on a table must show what it is")
+	opened, cmd := press(t, side, "enter")
+	if len(opened.sheets) != 2 || opened.sheet != 1 {
+		t.Fatalf("enter on a table must open a tab: %d tabs, on %d", len(opened.sheets), opened.sheet)
 	}
-	if cmd != nil {
-		answered, _ := shown.Update(runFirst(t, cmd))
-		shown = answered.(Model)
+	if opened.kind != sheetTable || opened.title != "users" {
+		t.Errorf("the tab must know what it is: %v %q", opened.kind, opened.title)
 	}
+	if opened.statement() != `SELECT * FROM "app"."users"` {
+		t.Errorf("statement = %q, it must be the one the driver quotes", opened.statement())
+	}
+	shown := settle(t, opened, cmd)
 	view := plain(shown.content())
-	for _, want := range []string{"app.users", "rows", "INDEXES"} {
+	for _, want := range []string{"query 1", "users", `SELECT * FROM "app"."users"`} {
 		if !strings.Contains(view, want) {
-			t.Errorf("the page must show %q:\n%s", want, view)
+			t.Errorf("the screen must show %q:\n%s", want, view)
 		}
-	}
-	closed, _ := press(t, shown, "esc")
-	if closed.page != nil {
-		t.Error("esc must close the page")
 	}
 }
 
 func TestATableGoesIntoTheStatement(t *testing.T) {
 	m := workbench(t)
 	side, _ := press(t, m, "tab")
-	inserted, cmd := press(t, side, "i")
-	if cmd == nil {
+	inserted, _ := press(t, side, "i")
+	if inserted.focus != focusEditor || !inserted.editor.Focused() {
 		t.Fatal("inserting must give the editor its focus back")
 	}
 	if inserted.statement() != "app.users" {
@@ -151,8 +152,8 @@ func TestTheSidebarCanBePutAway(t *testing.T) {
 	}
 
 	onSide, _ := press(t, m, "tab")
-	away, cmd := press(t, onSide, "ctrl+b")
-	if cmd == nil || away.focus != focusEditor {
+	away, _ := press(t, onSide, "ctrl+b")
+	if away.focus != focusEditor || !away.editor.Focused() {
 		t.Error("hiding the pane the cursor is in must move the cursor")
 	}
 }
@@ -160,8 +161,8 @@ func TestTheSidebarCanBePutAway(t *testing.T) {
 func TestZoomGivesTheResultTheWindow(t *testing.T) {
 	m := typeInto(t, workbench(t), "SELECT 1")
 	ran, cmd := press(t, m, "ctrl+r")
-	shown, _ := ran.Update(cmd())
-	onResults, _ := press(t, shown.(Model), "tab")
+	shown := settle(t, ran, cmd)
+	onResults, _ := press(t, shown, "tab")
 	if onResults.focus != focusResults {
 		t.Fatalf("focus = %v", onResults.focus)
 	}
@@ -326,5 +327,69 @@ func TestTheSidebarKeepsAFloorAndACeiling(t *testing.T) {
 	side.hidden = true
 	if got := side.width(400); got != 0 {
 		t.Errorf("a hidden sidebar takes no room, got %d", got)
+	}
+}
+
+// A qualified name comes apart the same way whether or not it has a schema on
+// the front of it.
+func TestAQualifiedNameComesApart(t *testing.T) {
+	for _, want := range []struct {
+		name          string
+		qualified     string
+		schema, table string
+	}{
+		{"with a schema", "app.users", "app", "users"},
+		{"without one", "users", "", "users"},
+		{"more than one dot", "a.b.c", "a.b", "c"},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			schema, table := split(want.qualified)
+			if schema != want.schema || table != want.table {
+				t.Errorf("split(%q) = %q, %q; want %q, %q",
+					want.qualified, schema, table, want.schema, want.table)
+			}
+		})
+	}
+}
+
+// The wheel stops at the ends of the schema rather than wrapping, and a schema
+// with nothing in it does not move at all.
+func TestTheSchemaStopsAtItsEnds(t *testing.T) {
+	m := workbench(t)
+	m.sidebar = m.sidebar.withTables(m.tables, m.fields)
+	if empty := newExplorer(ui.Default()).roll(3); empty.cursor != 0 {
+		t.Error("a schema with nothing in it has nowhere to go")
+	}
+	far := m.sidebar
+	for range 20 {
+		far = far.roll(3)
+	}
+	if far.cursor != len(m.sidebar.rows)-1 {
+		t.Errorf("cursor = %d, it must stop at the last row", far.cursor)
+	}
+	back := far
+	for range 20 {
+		back = back.roll(-3)
+	}
+	if back.cursor != 0 {
+		t.Errorf("cursor = %d, and at the first", back.cursor)
+	}
+}
+
+// The schema is only scrolled when there is more of it than there is room for.
+func TestTheSchemaScrollsOnlyWhenItHasTo(t *testing.T) {
+	m := workbench(t)
+	m.sidebar = m.sidebar.withTables(m.tables, m.fields)
+	lines := m.sidebar.paint(24, false)
+	if at := m.sidebar.offset(lines, len(lines)+10); at != 0 {
+		t.Errorf("offset = %d, a schema that fits is not scrolled", at)
+	}
+	if at := m.sidebar.offset(lines, 0); at != 0 {
+		t.Errorf("offset = %d, a pane with no room shows the top", at)
+	}
+	far := m.sidebar
+	far.cursor = len(far.rows) - 1
+	if at := far.offset(lines, 2); at == 0 {
+		t.Error("a cursor at the end must have scrolled the schema")
 	}
 }

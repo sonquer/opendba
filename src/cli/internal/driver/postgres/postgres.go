@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
@@ -71,7 +72,8 @@ func poolConfig(config driver.Config) (*pgxpool.Config, error) {
 		return nil, fmt.Errorf("read the connection settings: %w", err)
 	}
 	settings.ConnConfig.Password = string(config.Password)
-	settings.MaxConns = 2
+	settings.MaxConns = maxConns
+	settings.ConnConfig.BuildContextWatcherHandler = cancelRequests
 	if timeout := config.Timeouts.Connect; timeout > 0 {
 		settings.ConnConfig.ConnectTimeout = timeout
 	}
@@ -85,6 +87,27 @@ func poolConfig(config driver.Config) (*pgxpool.Config, error) {
 	}
 	return settings, nil
 }
+
+// maxConns is how many connections one session opens. Three rather than two,
+// because a read that streams a whole table to a file holds one for as long as
+// it takes, and the dashboard still has to be able to ask the server what it is
+// doing while that happens.
+const maxConns = 3
+
+// cancelRequests makes a cancelled context reach the server. The default
+// handler only sets a deadline on the socket and throws the connection away,
+// which leaves the query running on the server after the person who asked for
+// it has said to stop.
+func cancelRequests(conn *pgconn.PgConn) ctxwatch.Handler {
+	return &pgconn.CancelRequestContextWatcherHandler{
+		Conn:          conn,
+		DeadlineDelay: cancelDeadline,
+	}
+}
+
+// cancelDeadline is how long the socket is given to answer a cancel request
+// before it is torn down anyway.
+const cancelDeadline = 5 * time.Second
 
 func DSN(config driver.Config) string {
 	target := &url.URL{

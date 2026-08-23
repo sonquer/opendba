@@ -6,17 +6,14 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
 const (
-	completionRows  = 6
-	completionWidth = 34
-	editorGutter    = 6
-	headerRows      = 5
+	completionRows = 6
+	editorGutter   = 6
 )
 
 var keywords = []string{
@@ -60,19 +57,37 @@ func (c completion) selected() (suggestion, bool) {
 	return c.items[c.cursor], true
 }
 
-func (c completion) view() string {
-	lines := make([]string, 0, len(c.items))
-	for i, item := range c.items {
-		marker := "  "
-		text := c.theme.Value.Render(item.text)
-		if i == c.cursor {
-			marker = c.theme.Accent.Render("▌ ")
-			text = c.theme.Accent.Render(item.text)
-		}
-		lines = append(lines, ui.SplitLine(
-			marker+text, c.theme.Subtle.Render(item.kind), completionWidth))
+// ghost is the rest of the word the chosen suggestion would finish, which is
+// what gets drawn after the cursor in the grey of something that is not there
+// yet. A suggestion that does not carry on from what has been typed has no
+// ghost: showing one would mean drawing text the tab key is not going to leave
+// behind.
+func (c completion) ghost() string {
+	item, ok := c.selected()
+	if !ok || c.prefix == "" {
+		return ""
 	}
-	return c.theme.Panel.Render(strings.Join(lines, "\n"))
+	if !strings.HasPrefix(strings.ToLower(item.text), strings.ToLower(c.prefix)) {
+		return ""
+	}
+	return item.text[len(c.prefix):]
+}
+
+// count is how many other things the word could be, which is what says there is
+// a list worth walking with the arrows.
+func (c completion) count() int { return len(c.items) }
+
+// hint is what the screen says while a word is being finished: that tab takes
+// what is drawn after the cursor, and how many other things it could be.
+func (c completion) hint(theme *ui.Theme) string {
+	if !c.active() {
+		return ""
+	}
+	if c.count() == 1 {
+		return theme.Subtle.Render("tab to accept")
+	}
+	return theme.Subtle.Render("tab to accept · ↑↓ for " +
+		ui.Plural(c.count(), "other way", "other ways") + " to finish it")
 }
 
 // resuggest reads the word the cursor sits on and offers what could finish it.
@@ -283,25 +298,6 @@ func (m Model) accept() (tea.Model, tea.Cmd) {
 	m.editor.InsertString(chosen.text)
 	m.suggest.items = nil
 	return m, nil
-}
-
-// suggestionAt puts the list under the word being typed, never over it.
-func (m Model) suggestionAt() (int, int) {
-	info := m.editor.LineInfo()
-	x := ui.Gutter + editorGutter + info.ColumnOffset - len([]rune(m.suggest.prefix))
-	if !m.sidebar.hidden && !m.zoomed {
-		x += m.sidebar.width(ui.FrameWidth(m.width)) + 2
-	}
-	y := headerRows + m.editor.Line() + info.RowOffset + 1
-	return x, y
-}
-
-func (m Model) withSuggestions(screen string) string {
-	dialog := m.suggest.view()
-	x, y := m.suggestionAt()
-	x = clamp(x, 0, m.width-lipgloss.Width(dialog)-ui.Gutter)
-	y = clamp(y, 0, m.height-lipgloss.Height(dialog)-3)
-	return ui.At(screen, dialog, x, y)
 }
 
 func clamp(value, low, high int) int {

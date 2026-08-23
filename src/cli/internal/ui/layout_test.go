@@ -161,3 +161,48 @@ func TestCornerDrawsInTheBottomRight(t *testing.T) {
 		}
 	}
 }
+
+// The rows the mouse counts on have to be the rows Chrome actually draws, so
+// they are checked against a frame rather than trusted.
+func TestTheRowsTheMouseCountsOnAreTheRowsChromeDraws(t *testing.T) {
+	theme := Default()
+	frame := theme.Chrome(Frame{
+		Width: 60, Height: 24,
+		Header: "header-here", Tabs: "tabs-here",
+		Body: "body-here", Footer: "footer-here",
+	})
+	rows := strings.Split(frame, "\n")
+	for _, want := range []struct {
+		row  int
+		text string
+	}{
+		{TabTop, "tabs-here"},
+		{TabTop + TabRows - 1, "tabs-here"},
+		{BodyTop(true), "body-here"},
+	} {
+		if want.row >= len(rows) || !strings.Contains(rows[want.row], want.text) {
+			t.Errorf("row %d must hold %q, frame:\n%s", want.row, want.text, frame)
+		}
+	}
+	if rows[TabTop-1] != strings.TrimRight(rows[TabTop-1], " ") {
+		return
+	}
+	if strings.TrimSpace(rows[TabTop-1]) != "" {
+		t.Errorf("the strip must not be up against the header:\n%s", frame)
+	}
+}
+
+// A screen with no tabs keeps the blank row it has always had, so nothing else
+// moves when tabs arrive.
+func TestAScreenWithoutTabsIsDrawnWhereItAlwaysWas(t *testing.T) {
+	theme := Default()
+	frame := theme.Chrome(Frame{
+		Width: 60, Height: 24,
+		Header: "header-here", Body: "body-here", Footer: "footer-here",
+	})
+	rows := strings.Split(frame, "\n")
+	at := BodyTop(false)
+	if at >= len(rows) || !strings.Contains(rows[at], "body-here") {
+		t.Errorf("the body must stay on row %d, frame:\n%s", at, frame)
+	}
+}

@@ -104,7 +104,7 @@ func (r *resultSet) Truncated() bool { return r.truncated }
 func (r *resultSet) Duration() time.Duration { return r.duration }
 
 func (r *resultSet) Next() bool {
-	if r.err != nil || r.seen >= r.limit {
+	if r.err != nil || (r.limit > 0 && r.seen >= r.limit) {
 		r.truncated = r.truncated || (r.err == nil && r.rows.Next())
 		return false
 	}
@@ -138,6 +138,19 @@ func (r *resultSet) Close() error {
 }
 
 func (c *connection) Query(ctx context.Context, statement string) (driver.ResultSet, error) {
+	return c.open(ctx, statement, rowLimit(c.config.RowLimit))
+}
+
+// Stream reads every row. The cap Query applies is a cap on what is worth
+// drawing, and nothing about what is worth writing to a file.
+func (c *connection) Stream(ctx context.Context, statement string) (driver.ResultSet, error) {
+	return c.open(ctx, statement, unlimited)
+}
+
+// unlimited is the row cap that is not one.
+const unlimited = 0
+
+func (c *connection) open(ctx context.Context, statement string, limit int) (driver.ResultSet, error) {
 	started := time.Now()
 	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: c.config.ReadOnly()})
 	if err != nil {
@@ -158,7 +171,7 @@ func (c *connection) Query(ctx context.Context, statement string) (driver.Result
 		rows:     rows,
 		tx:       tx,
 		columns:  columns,
-		limit:    rowLimit(c.config.RowLimit),
+		limit:    limit,
 		duration: time.Since(started),
 	}, nil
 }
@@ -207,4 +220,19 @@ func planName(detail string) string {
 		return detail[:index]
 	}
 	return detail
+}
+
+// Preview reads a table. SQLite has one namespace per attached database, so the
+// schema is the attachment name and is quoted the same way.
+func (c *connection) Preview(schema, table string) string {
+	if schema == "" {
+		return "SELECT * FROM " + Quote(table)
+	}
+	return "SELECT * FROM " + Quote(schema) + "." + Quote(table)
+}
+
+// Quote writes an identifier the way SQLite reads one back: in double quotes,
+// with any quote inside it doubled.
+func Quote(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }

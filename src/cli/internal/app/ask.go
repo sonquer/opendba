@@ -163,6 +163,11 @@ type chat struct {
 	// something there is any point offering.
 	loaded bool
 
+	// waiting is a question asked while the model it is for is still being
+	// read into memory. It is kept rather than sent, because there is nothing
+	// to send it to yet.
+	waiting string
+
 	// bottom is where the end of the conversation was the last time it was
 	// looked at, which is how following it is told apart from having been left
 	// there. Somebody who has walked back is not dragged to the end every time
@@ -220,13 +225,13 @@ type readyMsg struct {
 	err  error
 }
 
-// loading builds the conversation and makes it ready, which for a model that
+// load4Talk builds the conversation and makes it ready, which for a model that
 // runs here is the whole of reading it off the disk.
 //
-// It happens when a model is chosen and when the screen is opened, not when the
-// first question is asked: the wait is the same either way, and this is the one
-// place where it is something visibly happening rather than a program that has
-// stopped answering.
+// It happens when the first question is asked, and not before. Opening the
+// conversation to read what was said yesterday should not put four gigabytes
+// into memory, and choosing a model is saying which one to use rather than
+// asking for it now.
 func (m Model) load4Talk() (Model, tea.Cmd) {
 	if m.build == nil || m.assistant != nil || m.talk.loading || !m.local4Talk() {
 		return m, nil
@@ -259,19 +264,24 @@ func (m Model) local4Talk() bool {
 	return ok && ai.Kind(instance.Kind) == ai.KindLocal
 }
 
-// ready takes the back-end that was made ready, and hands the box back.
+// ready takes the back-end that was made ready, and asks it what was waiting.
 func (m Model) ready(msg readyMsg) (tea.Model, tea.Cmd) {
 	m.talk.loading = false
 	m.stopLoad = nil
+	waiting := m.talk.waiting
+	m.talk.waiting = ""
 	if msg.err != nil {
-		if errors.Is(msg.err, context.Canceled) {
-			return m, m.talk.prompt.Focus()
+		if !errors.Is(msg.err, context.Canceled) {
+			m.talk.trouble = msg.err.Error()
 		}
-		m.talk.trouble = msg.err.Error()
 		return m, m.talk.prompt.Focus()
 	}
 	m.assistant = msg.talk
 	m.talk.loaded = true
+	if waiting != "" {
+		asked, cmd := m.started(waiting)
+		return asked, tea.Batch(cmd, asked.talk.prompt.Focus())
+	}
 	return m, m.talk.prompt.Focus()
 }
 
@@ -298,10 +308,20 @@ func (m Model) released() (Model, tea.Cmd) {
 }
 
 // started opens a turn and returns the command that reads it.
+//
+// A model that runs here is read into memory first, with the question kept
+// where it was typed until there is something to ask it.
 func (m Model) started(question string) (Model, tea.Cmd) {
 	if m.build == nil {
 		chosen, cmd := m.choosing()
 		return chosen, cmd
+	}
+	if m.assistant == nil && m.local4Talk() {
+		loading, cmd := m.load4Talk()
+		if cmd != nil {
+			loading.talk.waiting = question
+			return loading, cmd
+		}
 	}
 	if m.assistant == nil {
 		built, err := m.build(gate{asks: m.talk.asks})

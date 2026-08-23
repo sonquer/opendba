@@ -109,6 +109,8 @@ func (m Model) crashed(msg crashedMsg) (tea.Model, tea.Cmd) {
 	m.talk.busy, m.talk.loading = false, false
 	m.ai.busy = ""
 	m.stopAsk, m.stopFetch, m.stopLoad = nil, nil, nil
+	m.stopQuery, m.inflight = nil, false
+	m.stopExport, m.exporter, m.plan = nil, nil, nil
 	said := "something went wrong while " + msg.doing + ": " + msg.cause
 	if msg.where != "" {
 		said += "; what happened is written in " + msg.where

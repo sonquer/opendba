@@ -141,6 +141,14 @@ func (e explorer) width(available int) int {
 	}
 }
 
+// painted is one drawn line of the schema and the row it belongs to. A
+// heading, a blank line and the connectors the tree drew of its own accord
+// belong to no row, and say so with a row of minus one.
+type painted struct {
+	text string
+	row  int
+}
+
 // view draws the schema with lipgloss/tree, which owns the connectors, while
 // the cursor stays ours.
 func (e explorer) view(width, height int, focused bool) string {
@@ -148,21 +156,32 @@ func (e explorer) view(width, height int, focused bool) string {
 	if len(e.rows) == 0 {
 		return head + "\n\n" + e.theme.Muted.Render("nothing here")
 	}
-	lines := []string{head, ""}
-	var branch *tree.Tree
-	var table *tree.Tree
+	return head + "\n\n" + e.window(e.paint(width, focused), height-2)
+}
+
+// paint draws every line of the schema and says which row each one came from.
+// The picture and the mapping are built together on purpose: when they were
+// two functions, the one that found the cursor did it by searching the drawn
+// text for the marker that only appears while the pane has the focus, so the
+// schema silently stopped scrolling whenever the cursor was somewhere else.
+func (e explorer) paint(width int, focused bool) []painted {
+	lines := make([]painted, 0, len(e.rows))
+	var branch, table *tree.Tree
+	var members []int
 	flush := func() {
-		if branch != nil {
-			lines = append(lines, branch.String(), "")
+		if branch == nil {
+			return
 		}
-		branch, table = nil, nil
+		lines = append(lines, zip(branch.String(), members)...)
+		lines = append(lines, painted{row: -1})
+		branch, table, members = nil, nil, nil
 	}
 	for i, item := range e.rows {
 		label := e.label(item, width, i == e.cursor, focused)
 		switch item.depth {
 		case 0:
 			flush()
-			lines = append(lines, e.theme.Label.Render(label))
+			lines = append(lines, painted{text: e.theme.Label.Render(label), row: i})
 			branch = e.branch()
 		case 1:
 			if branch == nil {
@@ -170,38 +189,99 @@ func (e explorer) view(width, height int, focused bool) string {
 			}
 			table = e.branch().Root(label)
 			branch.Child(table)
+			members = append(members, i)
 		default:
-			if table != nil {
-				table.Child(label)
+			if table == nil {
+				continue
 			}
+			table.Child(label)
+			members = append(members, i)
 		}
 	}
 	flush()
-	return head + "\n\n" + e.window(strings.Join(lines[2:], "\n"), height-2)
+	return lines
+}
+
+// zip pairs the lines a tree drew with the rows they were built from. A tree
+// draws one line per node, so the two lists are the same length; when they are
+// not, the block is drawn without belonging to anything rather than pointing at
+// the wrong table, because a click that opens the wrong thing is worse than a
+// click that does nothing.
+func zip(drawn string, rows []int) []painted {
+	texts := strings.Split(strings.TrimRight(drawn, "\n"), "\n")
+	lines := make([]painted, 0, len(texts))
+	for i, text := range texts {
+		row := -1
+		if len(texts) == len(rows) {
+			row = rows[i]
+		}
+		lines = append(lines, painted{text: text, row: row})
+	}
+	return lines
 }
 
 // window keeps the row under the cursor on screen when the schema is longer
 // than the pane.
-func (e explorer) window(drawn string, height int) string {
-	rows := strings.Split(strings.TrimRight(drawn, "\n"), "\n")
-	if len(rows) <= height {
-		return ui.Fit(drawn, height)
+func (e explorer) window(lines []painted, height int) string {
+	if height < 1 {
+		height = 1
 	}
-	at := e.line(rows)
-	offset := clamp(at-height/2, 0, len(rows)-height)
-	view := strings.Join(rows[offset:offset+height], "\n")
-	if offset+height < len(rows) {
-		view = strings.Join(strings.Split(view, "\n")[:height-1], "\n") + "\n" +
-			e.theme.Subtle.Render("  ↓ "+ui.Plural(len(rows)-offset-height+1, "more", "more"))
+	if len(lines) <= height {
+		return ui.Fit(text4Lines(lines), height)
 	}
-	return view
+	offset := clamp(e.lineOf(lines)-height/2, 0, len(lines)-height)
+	shown := lines[offset : offset+height]
+	if offset+height < len(lines) {
+		shown = append([]painted(nil), shown[:height-1]...)
+		shown = append(shown, painted{row: -1, text: e.theme.Subtle.Render(
+			"  ↓ " + ui.Plural(len(lines)-offset-height+1, "more", "more"))})
+	}
+	return text4Lines(shown)
 }
 
-// line finds the drawn row the cursor sits on, which is not its index in the
+// offset is the first line of the schema on screen, which is what a click has
+// to be counted from.
+func (e explorer) offset(lines []painted, height int) int {
+	if height < 1 {
+		height = 1
+	}
+	if len(lines) <= height {
+		return 0
+	}
+	return clamp(e.lineOf(lines)-height/2, 0, len(lines)-height)
+}
+
+// rowAt says which row of the schema a line of the pane is showing.
+func (e explorer) rowAt(width, height, line int, focused bool) (int, bool) {
+	lines := e.paint(width, focused)
+	room := height - 2
+	at := e.offset(lines, room) + line - treeTop
+	if line < treeTop || at < 0 || at >= len(lines) {
+		return 0, false
+	}
+	if lines[at].row < 0 {
+		return 0, false
+	}
+	return lines[at].row, true
+}
+
+// treeTop is what the pane spends above the schema: the word TABLES, and the
+// blank line under it.
+const treeTop = 2
+
+func text4Lines(lines []painted) string {
+	texts := make([]string, 0, len(lines))
+	for _, line := range lines {
+		texts = append(texts, line.text)
+	}
+	return strings.Join(texts, "\n")
+}
+
+// lineOf finds the drawn line the cursor sits on, which is not its place in the
 // list once the tree has added its connectors and headings.
-func (e explorer) line(rows []string) int {
-	for i, drawn := range rows {
-		if strings.Contains(drawn, "▌") {
+func (e explorer) lineOf(lines []painted) int {
+	for i, line := range lines {
+		if line.row == e.cursor {
 			return i
 		}
 	}
@@ -246,35 +326,33 @@ func (m Model) explorerKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openTable shows the page of whatever the tree has the cursor on, which is the
-// same page the list of tables opens.
+// openTable opens the rows of whatever the tree has the cursor on, in a tab of
+// its own. The statement it runs is written into that tab rather than sent
+// behind it: a tab that read a table without showing how would be the one place
+// in this program where something reaches the server unseen, and it is also the
+// statement somebody will want to add a WHERE to.
 func (m Model) openTable() (tea.Model, tea.Cmd) {
 	name, ok := m.sidebar.table()
 	if !ok {
 		return m, nil
 	}
-	page, cmd := m.definition(name)
-	page.ask = m.build != nil
-	m.page = &page
-	return m, cmd
+	schema, bare := split(name)
+	sheet := newWorksheet(m.theme, sheetTable, bare)
+	sheet.editor.SetValue(m.session.Conn.Preview(schema, bare))
+	opened := m.openSheet(sheet)
+	opened.focus = focusEditor
+	return opened.attempt()
 }
 
-func (m Model) definition(qualified string) (details, tea.Cmd) {
-	bare := qualified
-	if cut := strings.LastIndex(bare, "."); cut >= 0 {
-		bare = bare[cut+1:]
+// split takes a qualified name apart. A name with nothing in front of the dot
+// belongs to whatever the server considers the default schema, which the driver
+// decides rather than this.
+func split(qualified string) (schema, table string) {
+	cut := strings.LastIndex(qualified, ".")
+	if cut < 0 {
+		return "", qualified
 	}
-	for _, table := range m.tables {
-		if table.Qualified() == qualified {
-			return m.tablePage(table), m.readOneColumn(bare)
-		}
-	}
-	page := details{theme: m.theme, title: qualified}
-	for _, column := range m.fields[bare] {
-		page.pairs = append(page.pairs, pair{key: column.Name, value: describe(column)})
-	}
-	page.prose = m.indexesOf(bare)
-	return page, m.readOneColumn(bare)
+	return qualified[:cut], qualified[cut+1:]
 }
 
 func describe(column driver.Column) string {
@@ -340,7 +418,7 @@ func (m Model) refreshSidebar() (tea.Model, tea.Cmd) {
 
 func (m Model) workbench() string {
 	width := ui.FrameWidth(m.width)
-	height := ui.BodyHeight(m.height)
+	height := m.workbenchHeight()
 	if m.zoomed {
 		return m.zoomBody()
 	}
@@ -357,4 +435,15 @@ func (m Model) workbench() string {
 		lipgloss.NewStyle().Width(width-side-1).Height(height).MaxHeight(height).
 			PaddingLeft(1).Render(right),
 	)
+}
+
+// roll moves the cursor by a notch of the wheel. It stops at the ends rather
+// than wrapping the way the arrow keys do, because a list that jumps back to
+// the top when a wheel runs off the bottom reads as a list that lost its place.
+func (e explorer) roll(step int) explorer {
+	if len(e.rows) == 0 {
+		return e
+	}
+	e.cursor = clamp(e.cursor+step, 0, len(e.rows)-1)
+	return e
 }

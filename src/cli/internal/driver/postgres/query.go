@@ -38,7 +38,7 @@ func (r *resultSet) Truncated() bool { return r.truncated }
 func (r *resultSet) Duration() time.Duration { return r.duration }
 
 func (r *resultSet) Next() bool {
-	if r.err != nil || r.seen >= r.limit {
+	if r.err != nil || (r.limit > 0 && r.seen >= r.limit) {
 		r.truncated = r.truncated || (r.err == nil && r.rows.Next())
 		return false
 	}
@@ -69,10 +69,36 @@ func (r *resultSet) Close() error {
 // repetition: the session is already set that way, and this holds whether or
 // not that setting took.
 func (c *connection) Query(ctx context.Context, statement string) (driver.ResultSet, error) {
+	return c.open(ctx, statement, rowLimit(c.config.RowLimit), false)
+}
+
+// Stream reads every row, and lifts the statement timeout for the length of its
+// transaction. The session sets that timeout for the sake of a screen nobody
+// wants to watch hang; a file being written is watched, is counted, and is
+// stopped by whoever asked for it.
+func (c *connection) Stream(ctx context.Context, statement string) (driver.ResultSet, error) {
+	return c.open(ctx, statement, unlimited, true)
+}
+
+// unlimited is the row cap that is not one.
+const unlimited = 0
+
+// NoStatementTimeout lifts the session timeout for the rest of a transaction.
+// It is LOCAL, so it is given back when the transaction ends whatever happens
+// to the connection afterwards.
+const NoStatementTimeout = "SET LOCAL statement_timeout = 0"
+
+func (c *connection) open(ctx context.Context, statement string, limit int, patient bool) (driver.ResultSet, error) {
 	started := time.Now()
 	tx, err := c.db.BeginTx(ctx, c.access())
 	if err != nil {
 		return nil, fmt.Errorf("start a read-only transaction: %w", err)
+	}
+	if patient {
+		if _, err := tx.Exec(ctx, NoStatementTimeout); err != nil {
+			_ = tx.Rollback(ctx)
+			return nil, fmt.Errorf("lift the statement timeout: %w", err)
+		}
 	}
 	rows, err := tx.Query(ctx, statement)
 	if err != nil {
@@ -88,7 +114,7 @@ func (c *connection) Query(ctx context.Context, statement string) (driver.Result
 		tx:       tx,
 		ctx:      ctx,
 		columns:  columns,
-		limit:    rowLimit(c.config.RowLimit),
+		limit:    limit,
 		duration: time.Since(started),
 	}, nil
 }
@@ -199,4 +225,16 @@ func (c *connection) access() pgx.TxOptions {
 		return pgx.TxOptions{AccessMode: pgx.ReadOnly}
 	}
 	return pgx.TxOptions{}
+}
+
+// Preview reads a table. PostgreSQL folds an unquoted name to lower case, so a
+// table created as "Orders" is only reachable quoted.
+func (c *connection) Preview(schema, table string) string {
+	return "SELECT * FROM " + Quote(schema) + "." + Quote(table)
+}
+
+// Quote writes an identifier the way PostgreSQL reads one back: in double
+// quotes, with any quote inside it doubled.
+func Quote(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }

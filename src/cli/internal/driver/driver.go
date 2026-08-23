@@ -400,6 +400,17 @@ type Conn interface {
 	Sessions(ctx context.Context) ([]Session, error)
 	Stop(ctx context.Context, id string, terminate bool) error
 	Query(ctx context.Context, sql string) (ResultSet, error)
+
+	// Stream runs a statement with no row cap and no deadline of the client's,
+	// for a caller writing every row to a file rather than drawing it. A file
+	// that stops at the thousandth row is a file nobody asked for.
+	Stream(ctx context.Context, sql string) (ResultSet, error)
+
+	// Preview is the statement that reads a table, written the way this server
+	// quotes a name. It is a statement rather than a result because what a tab
+	// runs is shown and can be edited, and because quoting is the server's
+	// business and not the screen's.
+	Preview(schema, table string) string
 	Explain(ctx context.Context, sql string, analyze bool) (Plan, error)
 	Health(ctx context.Context) ([]Finding, error)
 	Close() error

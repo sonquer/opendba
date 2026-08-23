@@ -83,6 +83,10 @@ func verdictWord(severity Severity) string {
 	}
 }
 
+// Section names a block inside a screen. It is drawn quietly on purpose: a
+// heading is a label for what is under it rather than something to read, and a
+// screen where the labels are the brightest thing on it is a screen where the
+// eye goes to the wrong place.
 func (t *Theme) Section(title, tag string, width int) string {
 	return SplitLine(t.SectionHead.Render(strings.ToUpper(title)), tag, width)
 }

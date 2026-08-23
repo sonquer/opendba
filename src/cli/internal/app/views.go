@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -233,20 +234,89 @@ func (m Model) editorPane(width, height int) string {
 		m.theme.Rule(width),
 	}
 	if verdict := m.verdict(width); verdict != "" {
+		if hint := m.suggest.hint(m.theme); hint != "" {
+			room := width - lipgloss.Width(hint) - 2
+			verdict = ui.SplitLine(ui.Clip(verdict, room), hint, width)
+		}
 		sections = append(sections, verdict, m.theme.Rule(width))
 	}
 	sections = append(sections, m.results.render(m.theme, m.focus == focusResults))
 	return ui.Fit(strings.Join(sections, "\n"), height)
 }
 
-// statementView keeps the editor plain while it is being typed into, because a
-// textarea has no way to colour what is inside it, and shows the statement
-// highlighted the moment the cursor is somewhere else.
-func (m Model) statementView(width int) string {
-	if m.focus == focusEditor || strings.TrimSpace(m.statement()) == "" {
+// statementView colours the statement as it is typed. The textarea cannot
+// colour what is inside it, so what it draws is taken apart instead: the gutter
+// it drew is kept exactly as it is, and the text after it, which the textarea
+// leaves plain, is coloured a line at a time.
+//
+// The cursor is the terminal's own rather than one the textarea draws, which is
+// what makes this possible: a drawn cursor is a styled cell in the middle of
+// the text, and colouring around it would mean taking the text apart again.
+func (m Model) statementView(int) string {
+	if strings.TrimSpace(m.statement()) == "" {
 		return m.editor.View()
 	}
-	return m.theme.Markdown(width).SQL(m.statement())
+	drawn := strings.Split(m.editor.View(), "\n")
+	for i, line := range drawn {
+		drawn[i] = ansi.Truncate(line, editorGutter, "") +
+			m.theme.Highlight(ansi.Strip(ansi.TruncateLeft(line, editorGutter, "")))
+	}
+	return strings.Join(m.withGhost(drawn), "\n")
+}
+
+// withGhost writes the rest of the word being suggested after the cursor, in
+// the grey of something that has not been typed. It is drawn over the blank
+// the editor pads its lines with, so nothing already written is covered, and
+// only when there is nothing after the cursor to cover in the first place.
+func (m Model) withGhost(drawn []string) []string {
+	ghost := m.suggest.ghost()
+	at := m.editor.Cursor()
+	if ghost == "" || at == nil || m.focus != focusEditor {
+		return drawn
+	}
+	row, column := at.Y, at.X
+	if row < 0 || row >= len(drawn) {
+		return drawn
+	}
+	after := ansi.TruncateLeft(drawn[row], column, "")
+	if strings.TrimSpace(ansi.Strip(after)) != "" {
+		return drawn
+	}
+	written := m.theme.Subtle.Render(ghost)
+	drawn[row] = ansi.Truncate(drawn[row], column, "") + written +
+		ansi.TruncateLeft(drawn[row], column+lipgloss.Width(ghost), "")
+	return drawn
+}
+
+// caret is where the terminal should put its cursor, which is inside the
+// editor when that is what is being typed into and nowhere otherwise.
+func (m Model) caret() *tea.Cursor {
+	if m.view != viewQuery || m.focus != focusEditor || m.zoomed {
+		return nil
+	}
+	if m.page != nil || m.modal != nil || m.chooser != nil ||
+		m.palette != nil || m.exporter != nil || m.wizard != nil {
+		return nil
+	}
+	at := m.editor.Cursor()
+	if at == nil {
+		return nil
+	}
+	x, y := m.editorOrigin()
+	at.X += x
+	at.Y += y
+	at.Color = m.theme.P.Accent
+	return at
+}
+
+// editorOrigin is where the editor pane starts on the screen, which is what a
+// cursor inside it has to be moved by to land where it belongs.
+func (m Model) editorOrigin() (x, y int) {
+	x = ui.Gutter
+	if !m.sidebar.hidden {
+		x += m.sidebar.width(ui.FrameWidth(m.width)) + 2
+	}
+	return x, ui.BodyTop(true)
 }
 
 // zoomBody gives the result the whole window, with the statement that produced
@@ -321,6 +391,9 @@ func (m Model) where() string {
 // someone who is still typing it. An empty editor has nothing to classify, and
 // the empty result underneath already says there is nothing here yet.
 func (m Model) verdict(width int) string {
+	if m.inflight {
+		return m.elapsed()
+	}
 	if strings.TrimSpace(m.statement()) == "" {
 		return ""
 	}
@@ -328,7 +401,12 @@ func (m Model) verdict(width int) string {
 	if unfinished(result) {
 		return m.theme.Subtle.Render("… the statement is not finished")
 	}
-	return m.theme.Verdict(result, width)
+	drawn := m.theme.Verdict(result, width)
+	if place := m.script().place(); place != "" {
+		room := width - lipgloss.Width(place) - 2
+		drawn = ui.SplitLine(ui.Clip(drawn, room), m.theme.Subtle.Render(place), width)
+	}
+	return drawn
 }
 
 func unfinished(result sqlguard.Result) bool {

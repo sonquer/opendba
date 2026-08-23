@@ -583,3 +583,28 @@ func TestTheBarStyleIsASetting(t *testing.T) {
 		t.Errorf("bar = %q", loaded.Appearance.Bar)
 	}
 }
+
+// The mouse is taken unless the settings say otherwise, and "off" is the only
+// answer that gives it back.
+func TestMouseIsWantedUnlessItIsTurnedOff(t *testing.T) {
+	for _, want := range []struct {
+		name    string
+		setting string
+		wanted  bool
+	}{
+		{"nothing said", "", true},
+		{"on", MouseOn, true},
+		{"off", MouseOff, false},
+		{"something else", "yes", true},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			appearance := AppearanceSettings{Mouse: want.setting}
+			if appearance.MouseWanted() != want.wanted {
+				t.Errorf("MouseWanted = %v, want %v", appearance.MouseWanted(), want.wanted)
+			}
+		})
+	}
+	if DefaultSettings().Appearance.Mouse != MouseOn {
+		t.Error("the default is to take the mouse")
+	}
+}

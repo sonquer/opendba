@@ -10,11 +10,37 @@ transaction around every statement.
 
 ## The editor
 
-The schema of the current database sits beside the editor. `enter` on a table
-writes its qualified name into the statement, `space` opens its columns.
+The editor has tabs. Each one holds its own statement, its own result and its
+own split. `ctrl+1` to `ctrl+9` reach a tab by its place, `ctrl+n` opens one and
+`ctrl+w` closes it after asking. Every tab is in this list by name as well.
 
-Typing offers what could finish the word: tables, the columns of the tables the
-statement already names, and SQL keywords.
+The schema of the current database sits beside the editor. `enter` on a table
+opens its rows in a tab of its own, with the statement that read them written
+into it. `i` writes a name into the statement, `space` opens a table's columns.
+
+The statement is coloured as you type it. What could finish the word is drawn
+after the cursor in grey: tables, the columns of the tables the statement
+already names, and SQL keywords. `tab` takes it, `↑↓` walk the other ways to
+finish it.
+
+A buffer holding several statements separated by semicolons is a script: what
+runs is the one the cursor is in, and the line under the editor says which. `f6`
+asks what the server would do with it instead of doing it.
+
+`ctrl+g` opens what you have run. `enter` there puts a statement back in a tab
+of its own, `space` keeps one, and typing searches.
+
+`ctrl+e` writes the result to a file as CSV, XLSX, JSON, XML or markdown. It
+writes everything the statement returns rather than the rows on screen, which
+means running the statement again; the dialog says so and asks. A statement that
+changes data is never run twice.
+
+`y` copies the value under the cursor and `Y` the row. Dragging over a result
+selects rows and letting go copies them. Copying uses OSC 52, which tmux ignores
+unless `set -g set-clipboard on`.
+
+While the program is reading the mouse your terminal cannot select text with it.
+"mouse on or off" in this list hands it back.
 
 ## Asking
 
@@ -49,8 +75,10 @@ What is answering is written under the box you type in. `pgup`, `pgdown` and the
 mouse wheel walk back through a long conversation, and `ctrl+t` opens out the working a model
 showed before its answer.
 
-A model that runs here is read into memory when you choose it, and the box is
-dimmed while that happens, as it is while an answer is arriving. `esc` stops
+A model that runs here is read into memory when you ask your first question, not
+before: opening this screen to read what was said earlier costs nothing. The box
+is dimmed while that happens, as it is while an answer is arriving, and the
+question waits where you typed it. `esc` stops
 either one. "release the model" in the command list gives that memory
 back, as does `r` on its row in `ctrl+o`; the next question reads it in again.
 

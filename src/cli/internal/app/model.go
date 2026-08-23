@@ -9,13 +9,13 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
 	"github.com/sonquer/tui4db/src/cli/internal/config"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/tui4db/src/cli/internal/export"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
 )
@@ -32,6 +32,7 @@ const (
 	viewSwitch    view = "connections"
 	viewAsk       view = "ask"
 	viewAI        view = "ai"
+	viewHistory   view = "history"
 )
 
 // part is which of the two reads a message belongs to, so a refresh that asked
@@ -55,10 +56,15 @@ type loadedMsg struct {
 type queriedMsg struct {
 	statement string
 	columns   []string
-	rows      [][]string
+	rows      [][]any
 	duration  time.Duration
 	truncated bool
 	err       error
+
+	// token says which run this result belongs to. A statement that was
+	// cancelled still answers, eventually, and the answer to a question nobody
+	// is waiting for must not replace the answer to the one they asked next.
+	token int
 }
 
 type Model struct {
@@ -80,10 +86,10 @@ type Model struct {
 	palette *palette
 	modal   *modal
 	page    *details
+	plan    *plan
 	reading int
 	listing int
 	lists   [2]browse
-	suggest completion
 	fields  map[string][]driver.Column
 	keys    keymap
 	help    help.Model
@@ -93,27 +99,49 @@ type Model struct {
 	tables   []driver.Table
 	indexes  []driver.Index
 
-	editor     textarea.Model
-	results    results
+	// worksheet is the tab being worked in, and sheets is every tab there is.
+	// The entry in sheets for the active tab is stale while it is active: stow
+	// is what makes it true again, and every path that changes which tab is
+	// active goes through it.
+	worksheet
+	sheets []worksheet
+	sheet  int
+
+	// mouse is whether the terminal has been asked to report the mouse. A
+	// terminal reporting the mouse to a program is a terminal that is not
+	// selecting text with it, so this is something to turn off rather than
+	// something to decide once.
+	mouse bool
+
+	// dragging is whether the line between the statement and its result is
+	// being carried by the pointer, which is the one drag that is not a
+	// selection.
+	dragging bool
+
+	// runs stamps every statement sent, so a result can say which tab asked for
+	// it and a result nobody is waiting for can be told from one they are.
+	runs int
+
 	sidebar    explorer
+	recall     recall
 	running    activity
 	onSessions bool
 	generation int
 	beat       int
 	focus      pane
-	zoomed     bool
-	split      int
 	spinner    spinner.Model
 
-	assistant conversation
-	build     Talk
-	talk      chat
-	ai        aiSettings
-	chooser   *chooser
-	pending   string
-	stopFetch context.CancelFunc
-	stopAsk   context.CancelFunc
-	stopLoad  context.CancelFunc
+	assistant  conversation
+	build      Talk
+	talk       chat
+	ai         aiSettings
+	chooser    *chooser
+	pending    string
+	stopFetch  context.CancelFunc
+	stopAsk    context.CancelFunc
+	stopLoad   context.CancelFunc
+	stopExport context.CancelFunc
+	exporter   *exporter
 }
 
 // Talk builds a conversation once it has been told how to ask for permission.
@@ -151,6 +179,7 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 	hints.Styles = helpStyles(theme)
 	hints.ShortSeparator = "  "
 	hints.FullSeparator = "   "
+	first := newWorksheet(theme, sheetQuery, "")
 	return Model{
 		keys:      newKeymap(),
 		help:      hints,
@@ -161,13 +190,15 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 		width:     96,
 		height:    32,
 		loading:   true,
-		editor:    newEditor(theme),
+		mouse:     session.Settings.Appearance.MouseWanted(),
+		worksheet: first,
+		sheets:    []worksheet{first},
 		spinner:   loader,
 		list:      newConnections(theme),
 		catalog:   newCatalog(theme),
 		lists:     [2]browse{newBrowse(theme, 0, false), newBrowse(theme, 2, true)},
-		suggest:   completion{theme: theme},
 		sidebar:   newExplorer(theme),
+		recall:    newRecall(theme),
 		talk:      newChat(theme, ""),
 		ai:        newAISettings(theme),
 		running:   newActivity(theme, session.Settings.Safety),
@@ -297,27 +328,54 @@ func scoped[T any](items []T, keep func(string) bool, of func(T) string) []T {
 	return kept
 }
 
-func (m Model) run(statement string) tea.Cmd {
+// run sends a statement and keeps hold of the way to stop it. There is no
+// deadline of its own: the server is already holding the profile's statement
+// timeout, and a minute picked here would be a second, quieter timeout that
+// nobody configured.
+func (m Model) run(statement string) (Model, tea.Cmd) {
 	conn := m.session.Conn
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-
+	ctx, stop := context.WithCancel(context.Background())
+	m.stopQuery = stop
+	m.began = time.Now()
+	m.inflight = true
+	m.runs++
+	m.token = m.runs
+	token := m.runs
+	query := func() tea.Msg {
 		result, err := conn.Query(ctx, statement)
 		if err != nil {
-			return queriedMsg{statement: statement, err: err}
+			return queriedMsg{statement: statement, err: err, token: token}
 		}
 		defer func() { _ = result.Close() }()
 
-		message := queriedMsg{statement: statement, columns: result.Columns()}
+		message := queriedMsg{statement: statement, columns: result.Columns(), token: token}
 		for result.Next() {
-			message.rows = append(message.rows, ui.Strings(result.Values()))
+			message.rows = append(message.rows, result.Values())
 		}
 		message.err = result.Err()
 		message.duration = result.Duration()
 		message.truncated = result.Truncated()
 		return message
 	}
+	return m, tea.Batch(query, m.spinner.Tick)
+}
+
+// halt gives up on the statement that is running. The result that arrives is
+// the error the driver reports for a cancelled context, which is what says the
+// query was stopped rather than that it returned nothing.
+func (m Model) halt() Model {
+	if m.stopQuery != nil {
+		m.stopQuery()
+	}
+	return m
+}
+
+// elapsed is how long the statement that is running has been running, drawn
+// beside the spinner so that a slow query reads as slow rather than as broken.
+func (m Model) elapsed() string {
+	return m.spinner.View() + m.theme.Muted.Render(" running "+
+		driver.Duration(time.Since(m.began))) + "  " +
+		m.theme.Subtle.Render(m.keys.Halt().Help().Key+" cancel")
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -358,9 +416,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loadedMsg:
 		return m.loaded(msg)
 	case queriedMsg:
-		m.results = newResults(m.theme, msg, m.paneWidth(), m.resultsHeight())
-		m.focus = focusEditor
-		return m, nil
+		return m.returned(msg)
+	case recalledMsg:
+		return m.recalled(msg)
 	case toastMsg:
 		m.expire(msg)
 		return m, nil
@@ -406,9 +464,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		return m, tea.Batch(m.load(), m.spinner.Tick)
 	case runMsg:
-		return m, m.run(msg.statement)
+		return m.run(msg.statement)
 	case newConnectionMsg:
 		return m.compose()
+	case explainMsg:
+		return m.explain(msg)
+	case explainedMsg:
+		return m.explained(msg)
+	case exportMsg:
+		return m.export4Result()
+	case writeExportMsg:
+		if m.exporter == nil {
+			return m, nil
+		}
+		return m.startExport()
+	case exportProgressMsg:
+		return m.exporting(msg)
+	case exportEndedMsg:
+		return m.exported(msg)
+	case mouseMsg:
+		return m.tookMouse()
+	case newSheetMsg:
+		opened, cmd := focused(m.openSheet(newWorksheet(m.theme, sheetQuery, "")))
+		return opened.(Model).show4Tabs(cmd)
+	case closeSheetMsg:
+		closed, cmd := focused(m.closeSheet(m.sheet))
+		return closed.(Model).show4Tabs(cmd)
+	case askCloseMsg:
+		return m.confirmClose()
+	case walkSheetMsg:
+		walked, cmd := focused(m.walkSheets(msg.step))
+		return walked.(Model).show4Tabs(cmd)
+	case gotoSheetMsg:
+		gone, cmd := focused(m.onSheet(msg.index))
+		return gone.(Model).show4Tabs(cmd)
 	case warmedMsg:
 		return m.warmed(msg)
 	case readyMsg:
@@ -426,6 +515,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case tea.MouseWheelMsg:
 		return m.wheeled(msg)
+	case tea.MouseClickMsg:
+		return m.clicked(msg)
+	case tea.MouseMotionMsg:
+		return m.dragged(msg)
+	case tea.MouseReleaseMsg:
+		return m.dropped(msg)
+	case copyMsg:
+		return m.copied(msg)
 	case tea.KeyPressMsg:
 		return m.key(msg)
 	}
@@ -454,7 +551,7 @@ func (m Model) toWizard(msg tea.Msg) (tea.Model, tea.Cmd) {
 // spinner for good: a screen that draws one and is not named here draws a still
 // picture of one.
 func (m Model) spinning() bool {
-	return m.loading || m.ai.busy != "" || m.talk.busy || m.talk.loading
+	return m.loading || m.inflight || m.ai.busy != "" || m.talk.busy || m.talk.loading
 }
 
 func (m Model) statement() string { return m.editor.Value() }
@@ -465,17 +562,17 @@ func (m Model) resultsHeight() int {
 	if m.zoomed {
 		return ui.BodyHeight(m.height) - 4
 	}
-	return max(ui.BodyHeight(m.height)-m.editorRows()-5, minResultsRows)
+	return max(m.workbenchHeight()-m.editorRows()-5, minResultsRows)
 }
 
 // editorRows is half the pane unless it has been resized, which is the split
 // someone writing a statement against a result actually wants.
 func (m Model) editorRows() int {
-	half := (ui.BodyHeight(m.height) - 4) / 2
+	half := (m.workbenchHeight() - 4) / 2
 	if m.split > 0 {
 		half = m.split
 	}
-	return min(max(half, minEditorRows), max(ui.BodyHeight(m.height)-6, minEditorRows))
+	return min(max(half, minEditorRows), max(m.workbenchHeight()-6, minEditorRows))
 }
 
 func (m Model) resizeEditor(step int) (tea.Model, tea.Cmd) {
@@ -501,8 +598,14 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.page != nil {
 		return m.pageKey(msg)
 	}
+	if m.plan != nil {
+		return m.planKey(msg)
+	}
 	if m.modal != nil {
 		return m.modalKey(msg)
+	}
+	if m.exporter != nil {
+		return m.exportKey(msg)
 	}
 	if m.chooser != nil {
 		return m.chooserKey(msg)
@@ -524,6 +627,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.view == viewAI {
 		return m.aiKey(msg)
+	}
+	if m.view == viewHistory {
+		return m.historyKey(msg)
 	}
 	if m.view == viewDashboard && m.onSessions && m.dashboardOwnsKey(msg) {
 		return m.activityKey(msg)
@@ -564,6 +670,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.confirmQuit()
 	case key.Matches(msg, m.keys.Back):
 		return m.show(viewDashboard)
+	case key.Matches(msg, m.keys.History):
+		return m.show(viewHistory)
 	case key.Matches(msg, m.keys.Schema):
 		return m.show(viewSchema)
 	case key.Matches(msg, m.keys.Indexes):
@@ -693,10 +801,13 @@ func (m Model) show(target view) (tea.Model, tea.Cmd) {
 	}
 	if target == viewAsk {
 		warmed, warming := m.warming()
-		loading, load := warmed.load4Talk()
-		return loading, tea.Batch(loading.talk.prompt.Focus(), warming, load)
+		return warmed, tea.Batch(warmed.talk.prompt.Focus(), warming)
 	}
 	m.editor.Blur()
+	if target == viewHistory {
+		m.recall.loading = true
+		return m, m.readHistory()
+	}
 	if target == viewCatalog {
 		return m.browseCatalog()
 	}
@@ -738,6 +849,9 @@ func (m Model) scrolled(step int) Model {
 // ignores the wheel is a terminal program people scroll with their hand off the
 // keyboard and nothing happens, which reads as a program that has frozen.
 func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	if !m.mouse {
+		return m, nil
+	}
 	step := wheelRows
 	switch msg.Button {
 	case tea.MouseWheelUp:
@@ -749,6 +863,9 @@ func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	if m.view == viewAsk && m.chooser == nil && m.modal == nil && m.page == nil {
 		return m.rolled4Ask(step), nil
 	}
+	if m.view == viewQuery && m.chooser == nil && m.modal == nil && m.page == nil {
+		return m.rolled4Query(msg.Mouse().X, step), nil
+	}
 	return m.scrolled(step), nil
 }
 
@@ -758,7 +875,7 @@ func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 const wheelRows = 3
 
 func (m Model) openPalette() (tea.Model, tea.Cmd) {
-	opened := newPalette(m.theme, m.keys)
+	opened := newPalette(m.theme, m.keys).withTabs(m.commands())
 	m.palette = &opened
 	return m, opened.filter.Focus()
 }
@@ -812,6 +929,9 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Leave):
 		return m.confirmQuit()
 	case key.Matches(msg, m.keys.Back):
+		if m.inflight {
+			return m.halt(), nil
+		}
 		if m.zoomed {
 			m.zoomed = false
 			return m, nil
@@ -828,6 +948,23 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.browse()
 	case key.Matches(msg, m.keys.Run):
 		return m.attempt()
+	case key.Matches(msg, m.keys.Export):
+		return m.export4Result()
+	case key.Matches(msg, m.keys.Explain):
+		return m.explain(explainMsg{})
+	case key.Matches(msg, m.keys.History):
+		m.editor.Blur()
+		return m.show(viewHistory)
+	case key.Matches(msg, m.keys.Jump):
+		return focused(m.onSheet(jumped(msg)))
+	case key.Matches(msg, m.keys.NewTab):
+		return focused(m.openSheet(newWorksheet(m.theme, sheetQuery, "")))
+	case key.Matches(msg, m.keys.CloseTab):
+		return m.confirmClose()
+	case key.Matches(msg, m.keys.PrevTab):
+		return focused(m.walkSheets(-1))
+	case key.Matches(msg, m.keys.NextTab):
+		return focused(m.walkSheets(1))
 	case key.Matches(msg, m.keys.Sidebar):
 		return m.toggleSidebar()
 	case key.Matches(msg, m.keys.Grow):
@@ -854,10 +991,30 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Choose):
 			return m.recordPage()
+		case key.Matches(msg, m.keys.Copy):
+			return m.copiedCell()
+		case key.Matches(msg, m.keys.CopyRow):
+			return m.copied(copyMsg{format: export.FormatCSV})
+		case key.Matches(msg, m.keys.Up):
+			m.results = m.results.move(-1)
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			m.results = m.results.move(1)
+			return m, nil
+		case msg.String() == "pgup":
+			m.results = m.results.move(-m.results.visible())
+			return m, nil
+		case msg.String() == "pgdown":
+			m.results = m.results.move(m.results.visible())
+			return m, nil
+		case msg.String() == "home":
+			m.results = m.results.move(-len(m.results.rows))
+			return m, nil
+		case msg.String() == "end":
+			m.results = m.results.move(len(m.results.rows))
+			return m, nil
 		}
-		updated, cmd := m.results.update(msg)
-		m.results = updated
-		return m, cmd
+		return m, nil
 	}
 	updated, cmd := m.editor.Update(msg)
 	m.editor = updated
@@ -908,8 +1065,8 @@ func (m Model) toggleSidebar() (tea.Model, tea.Cmd) {
 // is a broken key. A statement that changes data is asked about, once, unless
 // the profile has said not to ask.
 func (m Model) attempt() (tea.Model, tea.Cmd) {
-	statement := m.statement()
-	verdict := m.Verdict()
+	statement := m.script().chosen()
+	verdict := m.session.Guard.Classify(statement, cli.Mode(m.session.Connection.Mode))
 	switch {
 	case verdict.Blocked():
 		return m, m.notify(ui.Reason(verdict.Reason))
@@ -917,7 +1074,7 @@ func (m Model) attempt() (tea.Model, tea.Cmd) {
 		m.modal = m.confirmRun(statement, verdict)
 		return m, nil
 	}
-	return m, m.run(statement)
+	return m.run(statement)
 }
 
 // confirmRun is the dialog a write raises. It shows the statement it is about
@@ -934,17 +1091,36 @@ func (m Model) confirmRun(statement string, verdict sqlguard.Result) *modal {
 
 type runMsg struct{ statement string }
 
+// Verdict is what the guard makes of the statement that would run, which in a
+// buffer holding a script is the one the cursor is in rather than all of them.
 func (m Model) Verdict() sqlguard.Result {
-	return m.session.Guard.Classify(m.statement(), cli.Mode(m.session.Connection.Mode))
+	return m.session.Guard.Classify(m.script().chosen(),
+		cli.Mode(m.session.Connection.Mode))
+}
+
+// Settled returns a model that starts no work of its own in the background.
+//
+// It is for the renderer that takes the pictures of these screens. A picture is
+// worth having only if it is the same picture every time, and unpacking a
+// library or asking the hardware how much memory it has finishes when it
+// finishes: a run that waited long enough and a run that did not would disagree
+// about what the screen says, and the disagreement would be committed.
+func (m Model) Settled() Model {
+	m.ai.warmed = true
+	return m
 }
 
 func (m Model) View() tea.View {
 	var v tea.View
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	v.MouseMode = tea.MouseModeNone
+	if m.mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	v.BackgroundColor = m.theme.P.Bg
 	v.ForegroundColor = m.theme.P.Fg
 	v.WindowTitle = "tui4db, " + m.session.Connection.Name
+	v.Cursor = m.caret()
 	v.SetContent(m.theme.Base.Render(m.content()))
 	return v
 }
@@ -959,14 +1135,21 @@ func (m Model) content() string {
 		Height: m.height,
 		Env:    ui.EnvColor(m.session.Connection.Color),
 		Header: m.header(),
+		Tabs:   m.strip(),
 		Body:   body,
 		Footer: m.footer(more),
 	})
 	if m.page != nil {
 		return ui.Overlay(screen, m.page.view(m.width, m.height), m.width, m.height)
 	}
+	if m.plan != nil {
+		return ui.Overlay(screen, m.plan.view(m.width, m.height), m.width, m.height)
+	}
 	if m.modal != nil {
 		return ui.Overlay(screen, m.modal.view(m.width), m.width, m.height)
+	}
+	if m.exporter != nil {
+		return ui.Overlay(screen, m.exporter.view(m.width, m.height), m.width, m.height)
 	}
 	if m.chooser != nil {
 		return ui.Overlay(screen, m.chooserView(m.width, m.height), m.width, m.height)
@@ -974,9 +1157,7 @@ func (m Model) content() string {
 	if m.palette != nil {
 		return ui.Overlay(screen, m.palette.view(m.width, m.height), m.width, m.height)
 	}
-	if m.view == viewQuery && m.suggest.active() {
-		return m.withSuggestions(screen)
-	}
+
 	if toast := m.render(m.theme); toast != "" {
 		return ui.Corner(screen, toast, m.width, m.height)
 	}
@@ -1043,6 +1224,8 @@ func (m Model) body() string {
 		return m.askBody()
 	case viewAI:
 		return m.aiBody()
+	case viewHistory:
+		return m.historyBody()
 	case viewSwitch:
 		return m.list.view(ui.FrameWidth(m.width))
 	case viewCatalog:
@@ -1053,7 +1236,8 @@ func (m Model) body() string {
 }
 
 func (m Model) footer(more int) string {
-	left := m.help.View(m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions, m.lists[m.which()].typing))
+	left := m.help.View(m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions,
+		m.lists[m.which()].typing, m.inflight))
 	return ui.SplitLine(left, m.theme.Subtle.Render(scrollHint(more)), ui.FrameWidth(m.width))
 }
 

@@ -805,3 +805,51 @@ func TestEachStopsAtTheFirstFailure(t *testing.T) {
 		t.Errorf("the walk must stop at the first failure, saw %d rows", seen)
 	}
 }
+
+// A name is quoted the way SQLite reads one back, or a table with a capital in
+// it is a table the interface cannot open.
+func TestPreviewQuotesTheName(t *testing.T) {
+	conn := &connection{}
+	for _, want := range []struct {
+		name          string
+		schema, table string
+		statement     string
+	}{
+		{"a plain name", "main", "users", `SELECT * FROM "main"."users"`},
+		{"no schema", "", "users", `SELECT * FROM "users"`},
+		{"a capital", "main", "Orders", `SELECT * FROM "main"."Orders"`},
+		{"a quote in it", "main", `we"ird`, `SELECT * FROM "main"."we""ird"`},
+		{"a dot in it", "main", "a.b", `SELECT * FROM "main"."a.b"`},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if got := conn.Preview(want.schema, want.table); got != want.statement {
+				t.Errorf("Preview = %q, want %q", got, want.statement)
+			}
+		})
+	}
+}
+
+// A stream reads past the cap a drawn result stops at.
+func TestStreamIgnoresTheRowLimit(t *testing.T) {
+	config := seeded(t)
+	config.RowLimit = 1
+	conn := open(t, config)
+
+	result, err := conn.Stream(context.Background(), "SELECT id FROM users ORDER BY id")
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	rows := 0
+	for result.Next() {
+		rows++
+	}
+	if rows <= config.RowLimit {
+		t.Fatalf("rows = %d, a stream reads past the cap of %d", rows, config.RowLimit)
+	}
+	if result.Truncated() {
+		t.Error("and nothing was left behind to be truncated")
+	}
+	if err := result.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}

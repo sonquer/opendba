@@ -16,6 +16,10 @@ import (
 
 const redactedStatement = "(not recorded)"
 
+// Redacted is what stands in for a statement when the settings say to record
+// that something ran without recording what it was.
+func Redacted() string { return redactedStatement }
+
 const schema = `
 CREATE TABLE IF NOT EXISTS queries (
 	id integer PRIMARY KEY AUTOINCREMENT,

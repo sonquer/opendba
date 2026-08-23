@@ -567,3 +567,55 @@ func TestAWritableProfileOpensAPlainTransaction(t *testing.T) {
 		t.Fatalf("Query: %v", err)
 	}
 }
+
+// A stream reads past the cap a drawn result stops at, and lifts the statement
+// timeout the session pinned, or an export of a large table dies partway
+// through for a reason nobody watching would understand.
+func TestStreamLiftsTheRowLimitAndTheStatementTimeout(t *testing.T) {
+	config := readOnlyConfig()
+	config.RowLimit = 1
+	conn, pool := mocked(t, config)
+	pool.ExpectBeginTx(pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	pool.ExpectExec(NoStatementTimeout).WillReturnResult(pgxmock.NewResult("SET", 0))
+	pool.ExpectQuery("SELECT").WillReturnRows(
+		pgxmock.NewRows([]string{"id"}).
+			AddRow(int64(1)).AddRow(int64(2)).AddRow(int64(3)))
+	pool.ExpectRollback()
+
+	result, err := conn.Stream(context.Background(), "SELECT id FROM users")
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	rows := 0
+	for result.Next() {
+		rows++
+	}
+	if rows != 3 {
+		t.Fatalf("rows = %d, a stream reads every one of them", rows)
+	}
+	if result.Truncated() {
+		t.Error("and nothing was left behind to be truncated")
+	}
+	if err := result.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := pool.ExpectationsWereMet(); err != nil {
+		t.Errorf("the timeout must actually be lifted: %v", err)
+	}
+}
+
+// A server that refuses to lift the timeout is a server the export cannot run
+// against, and the transaction is given back rather than left open.
+func TestStreamGivesUpWhenTheTimeoutWillNotLift(t *testing.T) {
+	conn, pool := mocked(t, readOnlyConfig())
+	pool.ExpectBeginTx(pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	pool.ExpectExec(NoStatementTimeout).WillReturnError(errors.New("permission denied"))
+	pool.ExpectRollback()
+
+	if _, err := conn.Stream(context.Background(), "SELECT 1"); err == nil {
+		t.Fatal("want an error")
+	}
+	if err := pool.ExpectationsWereMet(); err != nil {
+		t.Errorf("the transaction must be given back: %v", err)
+	}
+}

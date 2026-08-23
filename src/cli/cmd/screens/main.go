@@ -75,7 +75,7 @@ func run(opts options) error {
 	}
 	defer closer()
 
-	model := tea.Model(app.NewModel(session, workspace))
+	model := tea.Model(app.NewModel(session, workspace).Settled())
 	model = settled(model, model.Init())
 	model, _ = model.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	model = settled(model, nil)

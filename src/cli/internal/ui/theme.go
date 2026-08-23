@@ -191,10 +191,29 @@ type Theme struct {
 	Panel       lipgloss.Style
 	TableHead   lipgloss.Style
 
+	// Tab and TabIdle are the two states of a tab, and TabKey is the cap the
+	// key that reaches one is printed on. The tab being worked in is a block of
+	// colour and the rest are not, which is the only way a terminal can draw
+	// the front sheet of a stack without corners to draw it with.
+	Tab     lipgloss.Style
+	TabIdle lipgloss.Style
+	TabKey  lipgloss.Style
+
+	sql        sqlStyles
 	severities map[Severity]lipgloss.Style
 	bars       map[Severity]lipgloss.Style
 	style      BarStyle
 	markdown   *Markdown
+}
+
+// sqlStyles is the colour of each part of a statement in the editor.
+type sqlStyles struct {
+	plain       lipgloss.Style
+	keyword     lipgloss.Style
+	text        lipgloss.Style
+	number      lipgloss.Style
+	comment     lipgloss.Style
+	punctuation lipgloss.Style
 }
 
 func NewTheme(p Palette) *Theme {
@@ -212,7 +231,7 @@ func NewTheme(p Palette) *Theme {
 		KeyHint:     lipgloss.NewStyle().Foreground(p.Muted),
 		KeyCap:      lipgloss.NewStyle().Foreground(p.Accent),
 		Separator:   lipgloss.NewStyle().Foreground(p.Border),
-		SectionHead: lipgloss.NewStyle().Foreground(p.Info).Bold(true),
+		SectionHead: lipgloss.NewStyle().Foreground(p.Muted),
 		Error:       lipgloss.NewStyle().Foreground(p.Critical),
 		Panel: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
 			BorderForeground(p.Border).BorderBackground(p.Bg).Background(p.Bg).Padding(0, 1),
@@ -222,6 +241,17 @@ func NewTheme(p Palette) *Theme {
 		KeycapStyle: lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap).Padding(0, 1),
 		BadgeStyle: lipgloss.NewStyle().Foreground(p.OnBadge).Background(p.Badge).
 			Bold(true).Padding(0, 1),
+		Tab:     lipgloss.NewStyle().Foreground(p.Accent).Background(p.Selection).Bold(true),
+		TabIdle: lipgloss.NewStyle().Foreground(p.Muted),
+		TabKey:  lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap),
+	}
+	theme.sql = sqlStyles{
+		plain:       lipgloss.NewStyle().Foreground(p.Fg),
+		keyword:     lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
+		text:        lipgloss.NewStyle().Foreground(p.OK),
+		number:      lipgloss.NewStyle().Foreground(p.Warn),
+		comment:     lipgloss.NewStyle().Foreground(p.Subtle).Italic(true),
+		punctuation: lipgloss.NewStyle().Foreground(p.Muted),
 	}
 	theme.severities = map[Severity]lipgloss.Style{
 		SevOK:       lipgloss.NewStyle().Foreground(p.OK),

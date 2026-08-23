@@ -12,7 +12,7 @@ import (
 func opened(t *testing.T) Model {
 	t.Helper()
 	m := loaded(t, healthy())
-	m.width, m.height = 100, 32
+	m.width, m.height = 100, 44
 	shown, cmd := press(t, m, "/")
 	if cmd == nil || shown.palette == nil {
 		t.Fatal("/ must open the commands")

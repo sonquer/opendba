@@ -345,7 +345,11 @@ func TestAISettingsGoesBack(t *testing.T) {
 func TestAISettingsInThePalette(t *testing.T) {
 	m := loaded(t, healthy())
 	opened, _ := press(t, m, "/")
-	if !strings.Contains(plain(opened.content()), "ai settings") {
+	typed := opened
+	for _, key := range []string{"a", "i"} {
+		typed, _ = press(t, typed, key)
+	}
+	if !strings.Contains(plain(typed.content()), "ai settings") {
 		t.Fatal("the palette does not offer the settings")
 	}
 }

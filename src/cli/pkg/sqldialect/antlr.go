@@ -104,8 +104,31 @@ func (w *statementWalker) ExitEveryRule(ctx antlr.ParserRuleContext) {
 	if w.ruleName(ctx) != w.grammar.statementRule || !w.open {
 		return
 	}
+	w.close(ctx)
 	w.finish()
 	w.open = false
+}
+
+// close records where the statement ended, which is where the last token it
+// holds ends.
+func (w *statementWalker) close(ctx antlr.ParserRuleContext) {
+	current := &w.statements[len(w.statements)-1]
+	stop := ctx.GetStop()
+	if stop == nil {
+		return
+	}
+	if end := stop.GetStop(); end >= current.Start {
+		current.Stop = end
+	}
+}
+
+// at is where a token begins, or nought when the parser has no token to point
+// at.
+func at(token antlr.Token) int {
+	if token == nil {
+		return 0
+	}
+	return token.GetStart()
 }
 
 func (w *statementWalker) ruleName(ctx antlr.ParserRuleContext) string {
@@ -125,6 +148,8 @@ func (w *statementWalker) begin(ctx antlr.ParserRuleContext) {
 		Kind:    KindUnknown,
 		Refusal: "statement was not recognised",
 		Text:    text,
+		Start:   at(ctx.GetStart()),
+		Stop:    at(ctx.GetStart()),
 	}
 	w.explained = w.startsWithExplain(ctx)
 	if w.explained {

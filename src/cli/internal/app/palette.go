@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/sonquer/tui4db/src/cli/internal/export"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
@@ -47,6 +48,20 @@ func newPalette(theme *ui.Theme, keys keymap) palette {
 			{title: "dashboard", hint: keys.Home.Help().Key, msg: gotoMsg{view: viewDashboard}},
 			{title: "ask", hint: keys.Ask.Help().Key, msg: gotoMsg{view: viewAsk}},
 			{title: "query editor", hint: keys.Query.Help().Key, msg: gotoMsg{view: viewQuery}},
+			{title: "explain the statement", hint: keys.Explain.Help().Key, msg: explainMsg{}},
+			{title: "history", hint: keys.History.Help().Key, msg: gotoMsg{view: viewHistory}},
+			{title: "export the result", hint: keys.Export.Help().Key, msg: exportMsg{}},
+			{title: "mouse on or off", hint: "off lets the terminal select text", msg: mouseMsg{}},
+			{title: "copy the result as csv", hint: keys.CopyRow.Help().Key,
+				msg: copyMsg{whole: true, format: export.FormatCSV}},
+			{title: "copy the result as json", hint: "the whole result",
+				msg: copyMsg{whole: true, format: export.FormatJSON}},
+			{title: "copy the result as markdown", hint: "the whole result",
+				msg: copyMsg{whole: true, format: export.FormatMarkdown}},
+			{title: "new tab", hint: keys.NewTab.Help().Key, msg: newSheetMsg{}},
+			{title: "close this tab", hint: keys.CloseTab.Help().Key, msg: askCloseMsg{}},
+			{title: "next tab", hint: keys.NextTab.Help().Key, msg: walkSheetMsg{step: 1}},
+			{title: "previous tab", hint: keys.PrevTab.Help().Key, msg: walkSheetMsg{step: -1}},
 			{title: "tables", hint: keys.Schema.Help().Key, msg: gotoMsg{view: viewSchema}},
 			{title: "indexes", hint: keys.Indexes.Help().Key, msg: gotoMsg{view: viewIndexes}},
 			{title: "reload everything", hint: keys.Reload.Help().Key, msg: reloadMsg{}},
@@ -59,6 +74,15 @@ func newPalette(theme *ui.Theme, keys keymap) palette {
 			{title: "quit", hint: keys.Quit.Help().Key, msg: quitMsg{}},
 		},
 	}
+}
+
+// withTabs adds the tabs to the command list. They are commands rather than
+// only keys because the tabs of the editor are the one part of this program
+// where what is on screen is a list that grows, and a list that grows is a list
+// worth being able to search rather than count along.
+func (p palette) withTabs(tabs []command) palette {
+	p.items = append(append([]command{}, p.items...), tabs...)
+	return p
 }
 
 func (p palette) matches() []command {

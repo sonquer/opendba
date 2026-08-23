@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v5"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
@@ -576,5 +577,50 @@ func TestScanFailuresAreReported(t *testing.T) {
 		pgxmock.NewRows([]string{"name"}).AddRow("public"))
 	if _, err := conn.Schemas(context.Background()); err == nil {
 		t.Fatal("a result that does not match must be reported")
+	}
+}
+
+// A cancelled context has to reach the server, or giving up on a statement only
+// hides it.
+func TestThePoolAsksTheServerToCancel(t *testing.T) {
+	settings, err := poolConfig(driver.Config{Host: "localhost", Database: "app", User: "app"})
+	if err != nil {
+		t.Fatalf("poolConfig: %v", err)
+	}
+	if settings.MaxConns < 3 {
+		t.Errorf("MaxConns = %d, a stream holds one for as long as it runs", settings.MaxConns)
+	}
+	if settings.ConnConfig.BuildContextWatcherHandler == nil {
+		t.Fatal("the pool must build a handler of its own")
+	}
+	handler := settings.ConnConfig.BuildContextWatcherHandler(nil)
+	asking, ok := handler.(*pgconn.CancelRequestContextWatcherHandler)
+	if !ok {
+		t.Fatalf("handler = %T, a deadline on the socket leaves the query running", handler)
+	}
+	if asking.DeadlineDelay <= 0 {
+		t.Error("the socket still needs a deadline to fall back on")
+	}
+}
+
+// PostgreSQL folds an unquoted name to lower case, so a table created as
+// "Orders" is only reachable quoted.
+func TestPreviewQuotesTheName(t *testing.T) {
+	conn := &connection{}
+	for _, want := range []struct {
+		name          string
+		schema, table string
+		statement     string
+	}{
+		{"a plain name", "public", "users", `SELECT * FROM "public"."users"`},
+		{"a capital", "public", "Orders", `SELECT * FROM "public"."Orders"`},
+		{"a quote in it", "public", `we"ird`, `SELECT * FROM "public"."we""ird"`},
+		{"a reserved word", "public", "order", `SELECT * FROM "public"."order"`},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if got := conn.Preview(want.schema, want.table); got != want.statement {
+				t.Errorf("Preview = %q, want %q", got, want.statement)
+			}
+		})
 	}
 }

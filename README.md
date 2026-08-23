@@ -119,18 +119,69 @@ words saying what those numbers mean.
 ```
 
 The schema on the left, the statement and its result on the right. `tab` walks
-the three panes, `enter` on a table opens its definition, `i` writes its name
-into the statement, `ctrl+b` puts the schema away. `ctrl+up` and `ctrl+down`
-resize the editor, `z` gives a result the whole window.
+the three panes, `enter` on a table opens its rows in a tab of its own, `i`
+writes its name into the statement, `ctrl+b` puts the schema away. `ctrl+up` and
+`ctrl+down` resize the editor, `z` gives a result the whole window.
 
-Typing offers what could finish the word: the tables of this database, the
-columns of the tables the statement already names, and SQL keywords. A dot is
-part of the grammar, so `catalog.` offers that schema's tables and `products.`
-offers that table's columns. `tab` accepts, `↑↓` picks, `esc` closes the list.
+Tabs sit above both panes. Each holds its own statement, result and split, and
+the one in front is a block of colour with the key that reaches it printed on
+it. `ctrl+1` to `ctrl+9` reach a tab by its place,
+`ctrl+n` opens one, `ctrl+w` closes it, `ctrl+pgup` and `ctrl+pgdown` walk.
+Every tab is in the command palette by name as well, which is the way there when
+there are more of them than digits.
 
-`ctrl+r` runs the statement. A wide result moves sideways with `←→` and `enter`
-opens one row as a list of keys and values, which is the only readable way to
-look at a table with thirty columns.
+The statement is coloured as it is typed. Typing also offers what could finish
+the word, drawn after the cursor in grey the way an editor suggests something:
+the tables of this database, the columns of the tables the statement already
+names, and SQL keywords. A dot is part of the grammar, so `catalog.` offers that
+schema's tables and `products.` offers that table's columns. `tab` accepts,
+`↑↓` picks another way to finish it, `esc` drops it.
+
+`ctrl+r` runs the statement. A buffer holding several statements separated by
+semicolons is a script, and what runs is the one the cursor is in; the line
+under the editor says which of how many. While a statement is out, the editor
+says how long it has been running and `esc` gives up on it, on the server as
+well as on the screen. `f6` asks what the server would do with it instead of
+doing it, and `enter` on that plan times it, which means running it, and asks. A
+wide result moves sideways with `←→` and `enter` opens one row as a list of keys
+and values, which is the only readable way to look at a table with thirty
+columns.
+
+## What you have run
+
+`ctrl+g` opens the history: the statement, when it ran, how many rows it
+returned and how long it took. Typing searches it, `enter` puts a statement back
+in a tab of its own so nothing you are writing is lost, and `space` keeps one
+past the point the rest are trimmed away.
+
+It is kept in `history.db` under `$XDG_STATE_HOME/tui4db/`. `history.enabled`
+in `settings.toml` turns it off, `store_sql = false` keeps that a statement ran
+without keeping what it was, and `limit` is how many are kept.
+
+## Taking a result with you
+
+`ctrl+e` writes the result to a file: CSV, XLSX, JSON, XML or markdown. The
+dialog asks for the format, where to put it and how much of the result, and
+says what it is about to do before it does it.
+
+The default is everything the statement returns, not the thousand rows on
+screen: the statement runs again with the row cap lifted, and the rows go to the
+file as they arrive rather than into memory first. A statement that changes data
+is never run a second time — the dialog says so and writes what was already
+read. Nothing is ever written over a file that is already there.
+
+Values go out as the server gave them. What is on screen has been folded onto
+one line and cut to the width of a column, which is right for reading and wrong
+for a file.
+
+`y` copies the value under the cursor and `Y` the row; the command list copies
+the whole result as CSV, JSON or markdown. Dragging over a result selects rows
+and letting go copies them. This goes out over OSC 52, which tmux refuses unless
+`set -g set-clipboard on` says otherwise.
+
+The mouse can be given back to the terminal, from the command list or with
+`mouse = "off"` under `[appearance]`, since a terminal reporting the mouse
+cannot select text with it.
 
 ## The safety model
 
@@ -184,9 +235,17 @@ single shortcut. `ctrl+k` does the same and is the one to use while typing.
 | `ctrl+d` | databases and schemas of the connection in use |
 | `ctrl+b` | show or hide the schema beside the editor |
 | `ctrl+r` | run the statement |
+| `ctrl+e` | write the result to a file |
+| `f6` | what the server would do with the statement |
+| `ctrl+g` | what you have run |
+| `y` `Y` | copy the value, copy the row |
 | `ctrl+up` `ctrl+down` | resize the editor |
 | `z` | zoom a result to the whole window |
 | `f` `o` `O` | search a list, sort it, turn the sort round |
+| `ctrl+n` `ctrl+w` | open a tab, close it |
+| `ctrl+1`…`ctrl+9` | the tab in that place |
+| `ctrl+pgup` `ctrl+pgdown` | the tab beside this one |
+| `esc` | give up on the statement that is running |
 | `c` `x` | cancel a session, close it |
 | `/` `ctrl+k` | commands |
 | `?` | keys and the safety rule |
@@ -433,7 +492,15 @@ font it is drawn in:
   # bar = "ascii"    # #- for terminals with no block glyphs at all
 ```
 
-To see them in your own font before choosing:
+The other setting there is whether the program takes the mouse:
+
+```toml
+[appearance]
+  mouse = "on"       # tabs and rows answer to clicks, the wheel scrolls
+  # mouse = "off"    # the terminal keeps it, and can select text with it
+```
+
+To see the bars in your own font before choosing:
 
 ```bash
 go run ./src/cli/cmd/screens --bars
@@ -443,10 +510,8 @@ go run ./src/cli/cmd/screens --bars
 
 Named here rather than left to be discovered:
 
-- **Relations and EXPLAIN** are on the driver interface and both drivers
-  implement them, but nothing calls either yet.
-- **Query history** has a package, a file path and a schema, and is not wired
-  into the program. `history.db` is never written.
+- **Relations** are on the driver interface and both drivers implement them, but
+  nothing calls them yet.
 - **There is no settings screen for anything but the assistant**, so the rest of
   `settings.toml` is edited by hand.
 - **MySQL, MariaDB and SQL Server** are planned behind the same driver

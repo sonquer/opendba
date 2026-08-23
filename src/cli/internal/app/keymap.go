@@ -1,6 +1,9 @@
 package app
 
 import (
+	"strconv"
+	"strings"
+
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
@@ -54,6 +57,37 @@ type keymap struct {
 	Find     key.Binding
 	Order    key.Binding
 	Reverse  key.Binding
+
+	// NewTab, CloseTab, PrevTab and NextTab are the tabs of the editor. They
+	// take the control keys the textarea uses for moving a line and deleting a
+	// word, which the arrows and alt+backspace still do, because a tab is worth
+	// a key somebody can find and a second way to press down is not.
+	NewTab   key.Binding
+	CloseTab key.Binding
+	PrevTab  key.Binding
+	NextTab  key.Binding
+
+	// Jump is the digits, which reach a tab by its place rather than by walking
+	// to it. A terminal that cannot send ctrl and a digit together sends alt
+	// and a digit instead, and both are accepted.
+	Jump key.Binding
+
+	// Export writes the result to a file. It takes the control key the textarea
+	// uses for the end of a line, which the end key still does.
+	Export key.Binding
+
+	// Copy and CopyRow put a value or a whole row on the clipboard, which is
+	// what a mouse is otherwise reached for.
+	Copy    key.Binding
+	CopyRow key.Binding
+
+	// History opens what has been run. Not ctrl+h: terminals send that as
+	// backspace, and the editor would eat it.
+	History key.Binding
+
+	// Explain asks the server what it would do with a statement rather than
+	// doing it.
+	Explain  key.Binding
 	enhanced bool
 }
 
@@ -102,6 +136,16 @@ func newKeymap() keymap {
 		Find:        binding("find", "f"),
 		Order:       binding("sort", "o"),
 		Reverse:     binding("reverse", "O"),
+		NewTab:      binding("new tab", "ctrl+n"),
+		CloseTab:    binding("close tab", "ctrl+w"),
+		PrevTab:     tabBinding(false, -1),
+		NextTab:     tabBinding(false, 1),
+		Jump:        jumpBinding(),
+		Export:      binding("export", "ctrl+e"),
+		Copy:        binding("copy", "y"),
+		CopyRow:     binding("copy the row", "Y"),
+		History:     binding("history", "ctrl+g"),
+		Explain:     binding("explain", "f6"),
 	}
 }
 
@@ -126,6 +170,11 @@ func (k keymap) Send() key.Binding { return relabel(k.Choose, "send") }
 
 func (k keymap) Stop() key.Binding { return relabel(k.Back, "stop or back") }
 
+// Halt is esc once more, in the words of a statement that is still running. It
+// is only ever drawn while one is, so the key that goes back and the key that
+// gives up are never offered at the same time.
+func (k keymap) Halt() key.Binding { return relabel(k.Back, "cancel the query") }
+
 func relabel(from key.Binding, help string) key.Binding {
 	return key.NewBinding(key.WithKeys(from.Keys()...),
 		key.WithHelp(from.Help().Key, help))
@@ -149,9 +198,59 @@ func runBinding(enhanced bool) key.Binding {
 	)
 }
 
+// jumpBinding is every way a terminal can say a digit with a modifier on it.
+// Both are taken because ctrl and a digit is what the strip prints and what a
+// terminal speaking the Kitty protocol sends, while everything else sends alt
+// and a digit or nothing at all.
+func jumpBinding() key.Binding {
+	keys := make([]string, 0, 2*maxJumpTabs)
+	for i := 1; i <= maxJumpTabs; i++ {
+		keys = append(keys, "ctrl+"+strconv.Itoa(i), "alt+"+strconv.Itoa(i))
+	}
+	return key.NewBinding(key.WithKeys(keys...),
+		key.WithHelp(ui.Keystroke("ctrl+1"), "tab by number"))
+}
+
+// jumped is the tab a digit reaches, counting from nought, or minus one when
+// the key was not a digit with a modifier on it.
+func jumped(msg tea.KeyPressMsg) int {
+	name := msg.String()
+	for _, prefix := range []string{"ctrl+", "alt+"} {
+		digit, found := strings.CutPrefix(name, prefix)
+		if !found || len(digit) != 1 || digit < "1" || digit > "9" {
+			continue
+		}
+		return int(digit[0] - '1')
+	}
+	return -1
+}
+
+// tabBinding accepts both ways a terminal can say "the tab beside this one".
+// Only a terminal with keyboard enhancements can send ctrl+tab at all, so the
+// page keys are what gets advertised until it says it can.
+func tabBinding(enhanced bool, step int) key.Binding {
+	keys, label := []string{"ctrl+pgup"}, ui.Keystroke("ctrl+pgup")
+	help := "previous tab"
+	if step > 0 {
+		keys, label = []string{"ctrl+pgdown"}, ui.Keystroke("ctrl+pgdown")
+		help = "next tab"
+	}
+	if enhanced && step > 0 {
+		keys = append(keys, "ctrl+tab")
+		label = ui.Keystroke("ctrl+tab")
+	}
+	if enhanced && step < 0 {
+		keys = append(keys, "ctrl+shift+tab")
+		label = ui.Keystroke("ctrl+shift+tab")
+	}
+	return key.NewBinding(key.WithKeys(keys...), key.WithHelp(label, help))
+}
+
 func (k keymap) withEnhancements(msg tea.KeyboardEnhancementsMsg) keymap {
 	k.enhanced = msg.SupportsKeyDisambiguation()
 	k.Run = runBinding(k.enhanced)
+	k.PrevTab = tabBinding(k.enhanced, -1)
+	k.NextTab = tabBinding(k.enhanced, 1)
 	return k
 }
 
@@ -181,7 +280,7 @@ func (s screenKeys) FullHelp() [][]key.Binding { return [][]key.Binding{s} }
 
 // footer picks the keys worth naming on a screen. Everything else stays one
 // ctrl+k away.
-func (k keymap) footer(current view, completing, zoomed, running, filtering bool) screenKeys {
+func (k keymap) footer(current view, completing, zoomed, running, filtering, inflight bool) screenKeys {
 	if completing {
 		return screenKeys{k.Accept, k.Above, k.Below, k.Back}
 	}
@@ -190,7 +289,12 @@ func (k keymap) footer(current view, completing, zoomed, running, filtering bool
 	}
 	switch current {
 	case viewQuery:
-		return screenKeys{k.Run, k.Focus, k.Sidebar, k.Palette, k.Home, k.Leave}
+		if inflight {
+			return screenKeys{k.Halt(), k.Focus, k.Sidebar, k.Commands, k.Leave}
+		}
+		return screenKeys{
+			k.Run, k.NewTab, k.CloseTab, k.Commands, k.Focus, k.Sidebar, k.Home, k.Leave,
+		}
 	case viewSwitch:
 		return screenKeys{k.Up, k.Down, k.Choose, k.Edit, k.New, k.Remove, k.Home}
 	case viewCatalog:
@@ -204,6 +308,8 @@ func (k keymap) footer(current view, completing, zoomed, running, filtering bool
 		return screenKeys{k.Send(), k.Stop(), k.Page, k.Thinking, k.Switch, k.Commands}
 	case viewAI:
 		return screenKeys{k.Up, k.Down, k.Focus, k.Choose, k.Remove, k.Home}
+	case viewHistory:
+		return screenKeys{k.Above, k.Below, k.Choose, k.Pick, k.Home, k.Leave}
 	case viewDashboard:
 		if running {
 			return screenKeys{k.Up, k.Down, k.Cancel, k.Terminate, k.Focus, k.Quit}

@@ -88,7 +88,8 @@ func (a activity) rebuild() activity {
 	}
 	at := a.cursor
 	a.table = table.New(
-		table.WithColumns(columnsFor(activityHeaders, a.rows(), a.width)),
+		table.WithColumns(columnsFor(activityHeaders,
+			naturalWidths(activityHeaders, a.rows()), a.width)),
 		table.WithRows(rowsFor(a.rows())),
 		table.WithHeight(min(activityRows, max(len(a.sessions), 1))),
 		table.WithWidth(a.width),

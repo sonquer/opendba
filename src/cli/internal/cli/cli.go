@@ -12,6 +12,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/internal/driver/postgres"
 	"github.com/sonquer/tui4db/src/cli/internal/driver/sqlite"
+	"github.com/sonquer/tui4db/src/cli/internal/history"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 	"github.com/sonquer/tui4db/src/cli/pkg/secretref"
 	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
@@ -69,6 +70,19 @@ type Session struct {
 	Info         driver.ServerInfo
 	Guard        sqlguard.Guard
 	Theme        *ui.Theme
+
+	// History is where the statements that have been run are kept, or nil when
+	// the settings say not to keep them or the file could not be opened. It is
+	// nil rather than an error because a history that cannot be written is a
+	// reason to say so, not a reason to refuse to open a database.
+	History *history.Store
+
+	// Dialect is what parses a statement into its parts. The guard has one of
+	// its own and keeps it to itself, which is right for a guard; the editor
+	// needs the same parse to know which statement of a script the cursor is
+	// in, and asking the guard to hand its own out would widen the one API in
+	// this program that is deliberately narrow.
+	Dialect sqldialect.Dialect
 }
 
 func Registry() *driver.Registry {
@@ -304,8 +318,10 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		_ = conn.Close()
 		return Session{}, nil, err
 	}
+	recorder, warning := a.history(settings)
 	session := Session{
 		Version:      a.Version,
+		Warning:      warning,
 		AI:           NewAssistant(ctx, a.Store.Paths, settings, a.Secrets),
 		Capabilities: target.Capabilities(),
 		Connection:   connection,
@@ -313,9 +329,31 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		Conn:         conn,
 		Info:         info,
 		Guard:        sqlguard.New(dialect),
+		Dialect:      dialect,
+		History:      recorder,
 		Theme:        appearance(settings),
 	}
-	return session, func() { _ = conn.Close() }, nil
+	return session, func() {
+		if recorder != nil {
+			_ = recorder.Close()
+		}
+		_ = conn.Close()
+	}, nil
+}
+
+// history opens the store the statements you have run are kept in. A store that
+// will not open is worth a sentence on the screen and nothing more: the
+// database is what somebody came here for, and a read-only state directory is
+// not a reason to be turned away from it.
+func (a App) history(settings config.Settings) (*history.Store, string) {
+	if !settings.History.Enabled {
+		return nil, ""
+	}
+	store, err := history.Open(a.Store.Paths.HistoryFile(), settings.History)
+	if err != nil {
+		return nil, "the history is not being kept: " + err.Error()
+	}
+	return store, ""
 }
 
 func pick(profiles config.Profiles, name string) (config.Connection, error) {

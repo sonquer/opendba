@@ -201,3 +201,87 @@ func TestAGrammarWithoutRuleNamesIsInert(t *testing.T) {
 		t.Fatalf("without rule names nothing can be classified: %+v", analysis.Statements)
 	}
 }
+
+// A statement knows where it was written, which is what lets one of several be
+// sent on its own.
+func TestAStatementKnowsWhereItWasWritten(t *testing.T) {
+	for _, want := range []struct {
+		name   string
+		sql    string
+		slices []string
+	}{
+		{"one statement", "SELECT 1", []string{"SELECT 1"}},
+		{"leading space", "   SELECT 1", []string{"SELECT 1"}},
+		{"two of them", "SELECT 1; SELECT 2", []string{"SELECT 1", "SELECT 2"}},
+		{
+			name:   "over several lines",
+			sql:    "SELECT 1;\nSELECT\n  2",
+			slices: []string{"SELECT 1", "SELECT\n  2"},
+		},
+		{
+			name:   "a comment in front",
+			sql:    "-- why\nSELECT 1",
+			slices: []string{"SELECT 1"},
+		},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			analysis := PostgreSQL().Analyze(want.sql)
+			if len(analysis.Statements) != len(want.slices) {
+				t.Fatalf("statements = %d, want %d", len(analysis.Statements), len(want.slices))
+			}
+			for i, statement := range analysis.Statements {
+				if got := statement.Slice(want.sql); got != want.slices[i] {
+					t.Errorf("statement %d = %q, want %q", i, got, want.slices[i])
+				}
+			}
+		})
+	}
+}
+
+// A slice that is asked for outside the request it came from is nothing rather
+// than a panic.
+func TestASliceOutsideTheRequestIsNothing(t *testing.T) {
+	for _, statement := range []Statement{
+		{Start: -1, Stop: 2},
+		{Start: 4, Stop: 2},
+		{Start: 0, Stop: 40},
+	} {
+		if got := statement.Slice("SELECT 1"); got != "" {
+			t.Errorf("Slice = %q, want nothing", got)
+		}
+	}
+}
+
+// The statement a position falls in is the one being worked on, and a position
+// in the space after one still belongs to it.
+func TestTheStatementAPositionFallsIn(t *testing.T) {
+	sql := "SELECT 1;\n\nSELECT 2;\n"
+	analysis := PostgreSQL().Analyze(sql)
+	if len(analysis.Statements) != 2 {
+		t.Fatalf("statements = %d", len(analysis.Statements))
+	}
+	for _, want := range []struct {
+		name  string
+		at    int
+		slice string
+	}{
+		{"the first character", 0, "SELECT 1"},
+		{"inside the first", 3, "SELECT 1"},
+		{"the blank line after it", 10, "SELECT 1"},
+		{"inside the second", 13, "SELECT 2"},
+		{"past the end", 100, "SELECT 2"},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			statement, ok := analysis.At(want.at)
+			if !ok {
+				t.Fatal("there is a statement there")
+			}
+			if got := statement.Slice(sql); got != want.slice {
+				t.Errorf("At(%d) = %q, want %q", want.at, got, want.slice)
+			}
+		})
+	}
+	if _, ok := (Analysis{}).At(0); ok {
+		t.Error("a request with no statements has none at any position")
+	}
+}

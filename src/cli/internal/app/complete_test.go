@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sonquer/tui4db/src/cli/internal/ui"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
@@ -27,15 +29,57 @@ func withColumns(t *testing.T) Model {
 
 func TestTablesAreOffered(t *testing.T) {
 	m := typeInto(t, withColumns(t), "SELECT * FROM us")
+	m.width, m.height = 110, 34
 	if !m.suggest.active() {
 		t.Fatal("a table prefix must be offered")
 	}
+	if ghost := m.suggest.ghost(); ghost != "ers" {
+		t.Errorf("ghost = %q, what is drawn after the cursor is the rest of the word", ghost)
+	}
 	view := plain(m.content())
-	if !strings.Contains(view, "users") || !strings.Contains(view, "table") {
-		t.Errorf("the suggestion must name the table and what it is:\n%s", view)
+	if !strings.Contains(view, "SELECT * FROM users") {
+		t.Errorf("the rest of the word must be drawn where it would be typed:\n%s", view)
+	}
+	if !strings.Contains(view, "tab to accept") {
+		t.Errorf("and the screen must say how to take it:\n%s", view)
 	}
 	if !strings.Contains(plain(m.footer(0)), "accept") {
 		t.Errorf("footer = %s", plain(m.footer(0)))
+	}
+}
+
+// A suggestion that does not carry on from what was typed is not drawn after
+// the cursor, because tab would not leave that text behind.
+func TestOnlySomethingThatCarriesOnIsDrawn(t *testing.T) {
+	m := typeInto(t, withColumns(t), "SELECT * FROM us")
+	elsewhere := m
+	elsewhere.suggest.items = []suggestion{{text: "orders", kind: "table"}}
+	if ghost := elsewhere.suggest.ghost(); ghost != "" {
+		t.Errorf("ghost = %q", ghost)
+	}
+	none := m
+	none.suggest.items = nil
+	if ghost := none.suggest.ghost(); ghost != "" {
+		t.Errorf("ghost = %q, nothing is being suggested", ghost)
+	}
+	if hint := none.suggest.hint(none.theme); hint != "" {
+		t.Errorf("hint = %q", hint)
+	}
+}
+
+// Text already written is never covered by a suggestion.
+func TestASuggestionNeverCoversWhatIsWritten(t *testing.T) {
+	m := typeInto(t, withColumns(t), "SELECT * FROM us WHERE 1")
+	for range 8 {
+		m, _ = press(t, m, "left")
+	}
+	m, _ = m.resuggest()
+	if !m.suggest.active() {
+		t.Skip("nothing is being suggested there")
+	}
+	drawn := m.withGhost(strings.Split(m.editor.View(), "\n"))
+	if strings.Contains(plain(strings.Join(drawn, "\n")), "usersers") {
+		t.Error("the suggestion was written over what was already there")
 	}
 }
 
@@ -299,5 +343,39 @@ func TestALetterTypedAtASuggestionListIsALetter(t *testing.T) {
 	typed := suggesting()
 	if walked, _ := press(t, typed, "down"); walked.suggest.cursor == typed.suggest.cursor {
 		t.Error("the arrows still walk the list")
+	}
+}
+
+// The screen says how to take a suggestion, and how many other ways there are
+// to finish the word.
+func TestTheScreenSaysHowToTakeASuggestion(t *testing.T) {
+	theme := ui.Default()
+	one := completion{items: []suggestion{{text: "users"}}, prefix: "us"}
+	if hint := one.hint(theme); !strings.Contains(plain(hint), "tab to accept") {
+		t.Errorf("hint = %q", plain(hint))
+	}
+	if strings.Contains(plain(one.hint(theme)), "other way") {
+		t.Error("there is only one way to finish it")
+	}
+	several := completion{
+		items:  []suggestion{{text: "users"}, {text: "usage"}},
+		prefix: "us",
+	}
+	if hint := plain(several.hint(theme)); !strings.Contains(hint, "other ways") {
+		t.Errorf("hint = %q, the arrows must be offered", hint)
+	}
+}
+
+// Nothing is drawn after the cursor when there is no cursor to draw after.
+func TestNothingIsDrawnAfterACursorThatIsNotThere(t *testing.T) {
+	m := typeInto(t, withColumns(t), "SELECT * FROM us")
+	lines := strings.Split(m.editor.View(), "\n")
+	elsewhere := m
+	elsewhere.focus = focusResults
+	if got := elsewhere.withGhost(lines); len(got) != len(lines) || got[0] != lines[0] {
+		t.Error("a suggestion belongs to the editor, and only while it has the cursor")
+	}
+	if got := m.withGhost(nil); got != nil {
+		t.Error("there is no line to draw it on")
 	}
 }

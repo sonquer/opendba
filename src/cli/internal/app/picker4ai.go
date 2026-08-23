@@ -870,7 +870,6 @@ func (m Model) answering(settings config.Settings, name string) (tea.Model, tea.
 	m.talk.trouble = ""
 	m.talk.loaded = false
 	read := m.read4AI()
-	loading, load := read.load4Talk()
-	return loading, tea.Batch(loading.talk.prompt.Focus(),
-		loading.notify(name+" will answer from now on"), load)
+	return read, tea.Batch(read.talk.prompt.Focus(),
+		read.notify(name+" will answer from now on"))
 }
