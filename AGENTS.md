@@ -107,6 +107,25 @@ thresholds are pure functions, and everything touching the wire goes through a
 narrow interface that tests fake. Tests that genuinely need a live PostgreSQL
 read `TUI4DB_TEST_DSN` and **skip** when it is unset. They never start a server.
 
+### The one exception, and why it is written down
+
+`src/cli/internal/ai/local/llama` binds llama.cpp through `purego`, which reaches
+libffi. On macOS and Windows the libffi binding writes a copy of libffi into the
+user's cache directory the first time any binary that links it starts, including
+a test binary. That is a write outside `t.TempDir()`, and it is the only one in
+the repository.
+
+It is allowed because the alternative is worse: the binding is what makes local
+inference work without cgo, and hiding it behind a build tag would mean the
+shipped program and the tested program are not the same program. The write is
+idempotent, it needs nothing installed, and no test depends on it.
+
+The same package is the only entry in `dev.toml`'s exempt list that is ours
+rather than generated. Every statement in it is a call across a foreign function
+interface: covering it needs the native library and a model file, which a test
+suite is not allowed to want. Everything the adapter *decides* rather than
+delegates lives one directory up, in `cli/internal/ai/local`, and is measured.
+
 ## Rule 4: No Makefile, no shell scripts
 
 All tooling is Go, in `src/tools`, and it has a terminal interface.

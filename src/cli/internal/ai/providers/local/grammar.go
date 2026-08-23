@@ -1,0 +1,86 @@
+package local
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/sonquer/tui4db/src/cli/internal/ai"
+)
+
+// CallOpen and CallClose bracket a tool call in a local model's output. They
+// are the shape the grammar enforces and the shape the parser looks for, so the
+// two can never drift apart.
+const (
+	CallOpen  = "<tool_call>"
+	CallClose = "</tool_call>"
+)
+
+const grammarBody = `
+call ::= "{" ws "\"name\"" ws ":" ws name ws "," ws "\"arguments\"" ws ":" ws object ws "}"
+object ::= "{" ws ( member ( ws "," ws member )* )? ws "}"
+member ::= string ws ":" ws value
+array ::= "[" ws ( value ( ws "," ws value )* )? ws "]"
+value ::= object | array | string | number | "true" | "false" | "null"
+string ::= "\"" char* "\""
+char ::= [^"\\] | "\\" escape
+escape ::= ["\\/bfnrt] | "u" hex hex hex hex
+hex ::= [0-9a-fA-F]
+number ::= "-"? int frac? exp?
+int ::= "0" | [1-9] [0-9]*
+frac ::= "." [0-9]+
+exp ::= [eE] [-+]? [0-9]+
+ws ::= [ \t\n]*
+`
+
+// Grammar returns a GBNF grammar that a tool call has to match. A small model
+// is not asked to be careful about its JSON; it is prevented from getting it
+// wrong, and from naming a tool that does not exist.
+//
+// Argument names and types are deliberately left to plain JSON rather than
+// spelled out per tool: the grammar for every combination of optional fields is
+// large enough to be worth getting wrong, and an argument that is missing or of
+// the wrong type is something the model can be told about and can fix, whereas
+// malformed JSON is not.
+func Grammar(tools []ai.Tool) (string, error) {
+	if len(tools) == 0 {
+		return "", fmt.Errorf("a grammar needs at least one tool")
+	}
+	names := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if err := validName(tool.Name); err != nil {
+			return "", err
+		}
+		names = append(names, tool.Name)
+	}
+	root := fmt.Sprintf("root ::= %q ws call ws %q", CallOpen, CallClose)
+	name := "name ::= " + strings.Join(quoted(names), " | ")
+	return root + "\n" + name + grammarBody, nil
+}
+
+// TriggerPatterns is what turns the grammar on. Until the model writes the
+// opening tag it is free to write prose, and from that point it can only write
+// a well formed call.
+func TriggerPatterns() []string { return []string{"^.*?" + CallOpen} }
+
+func quoted(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, fmt.Sprintf("%q", name))
+	}
+	return out
+}
+
+func validName(name string) error {
+	if name == "" {
+		return fmt.Errorf("a tool needs a name")
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r == '_':
+		case r >= '0' && r <= '9' && i > 0:
+		default:
+			return fmt.Errorf("tool name %q may only hold lowercase letters, digits and underscores", name)
+		}
+	}
+	return nil
+}

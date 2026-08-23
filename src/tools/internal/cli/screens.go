@@ -22,6 +22,9 @@ type script struct {
 var scripts = []script{
 	{"dashboard", "shot:dashboard"},
 	{"editor", "e,shot:editor"},
+	{"ask", "a,shot:ask"},
+	{"chooser", "a,enter,shot:chooser"},
+	{"ai", "ctrl+k,ai settings,enter,shot:ai"},
 	{"tables", "s,shot:tables"},
 	{"indexes", "i,shot:indexes"},
 	{"tree", "e,tab,space,shot:tree"},

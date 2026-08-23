@@ -2,6 +2,7 @@ package app
 
 import (
 	"embed"
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -51,6 +52,29 @@ type details struct {
 	prose  string
 	code   string
 	offset int
+
+	// ask says whether there is an assistant to carry the page into a
+	// conversation. A key that is drawn and does nothing is worse than one that
+	// is not drawn.
+	ask bool
+}
+
+// subject turns the page into something to ask about: what it is, what it
+// currently reads, and the code the program knows it by.
+func (d details) subject() string {
+	written := []string{fmt.Sprintf("About %q", d.title)}
+	if d.meter != nil && d.meter.Value != "" {
+		written = append(written, "which currently reads "+d.meter.Value)
+	}
+	if d.code != "" {
+		written = append(written, "for the statement below")
+	}
+	question := strings.Join(written, ", ") +
+		": what does it mean here, and is there anything worth doing about it?"
+	if d.code != "" {
+		question += "\n\n" + d.code
+	}
+	return question
 }
 
 func (d details) scroll(step int) details {
@@ -77,6 +101,9 @@ func (d details) view(width, height int) string {
 	shown, more := ui.Window(strings.Join(body, "\n"), d.offset, rows)
 	head := ui.SplitLine(d.theme.Title.Render(ui.Truncate(d.title, inner-12)), d.tag, inner)
 	foot := ui.Dotted(ui.Keystroke("esc")+" back", "↑↓ scroll")
+	if d.ask {
+		foot = ui.Dotted(ui.Keystroke("esc")+" back", ui.Keystroke("a")+" ask about this", "↑↓ scroll")
+	}
 	if more > 0 {
 		foot = ui.Dotted(foot, ui.Plural(more, "more line", "more lines"))
 	}
@@ -113,6 +140,11 @@ func (m Model) pageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Choose):
 		m.page = nil
+	case key.Matches(msg, m.keys.Ask):
+		if !m.page.ask {
+			return m, nil
+		}
+		return m.askAbout(m.page.subject())
 	case key.Matches(msg, m.keys.Up):
 		scrolled := m.page.scroll(-1)
 		m.page = &scrolled
@@ -148,6 +180,7 @@ func (m Model) readingPage() (tea.Model, tea.Cmd) {
 		page.meter = nil
 		page.pairs = []pair{{key: "reading", value: chosen.Value}}
 	}
+	page.ask = m.build != nil
 	m.page = &page
 	return m, nil
 }
@@ -173,6 +206,7 @@ func (m Model) sessionPage() (tea.Model, tea.Cmd) {
 		},
 		code: chosen.Statement,
 	}
+	page.ask = m.build != nil
 	m.page = &page
 	return m, nil
 }

@@ -57,7 +57,7 @@ func TestTheKeymapIsTheOnlySourceOfHelp(t *testing.T) {
 			}
 		}
 	}
-	for _, screen := range []view{viewDashboard, viewQuery, viewSwitch, viewCatalog, viewHelp, viewSchema} {
+	for _, screen := range []view{viewDashboard, viewQuery, viewAsk, viewAI, viewSwitch, viewCatalog, viewHelp, viewSchema} {
 		footer := keys.footer(screen, false, false, false, false)
 		if len(footer) == 0 {
 			t.Errorf("%s has no footer", screen)
@@ -121,5 +121,41 @@ func TestTheModelTakesTheTerminalsWord(t *testing.T) {
 	editing, _ := press(t, shown, "e")
 	if !strings.Contains(plain(editing.content()), ui.Keystroke("ctrl+enter")) {
 		t.Errorf("the footer must follow the terminal:\n%s", plain(editing.content()))
+	}
+}
+
+// TestNoTwoKeysClaimTheSameThing is the guard on the footer. Two entries
+// reading "connections" beside two different keys is a footer that lies about
+// one of them, and it is the kind of thing that survives a review of the
+// keymap, where the labels are a column apart, and is obvious on the screen,
+// where they are side by side.
+func TestNoTwoKeysClaimTheSameThing(t *testing.T) {
+	claimed := map[string]string{}
+	for _, binding := range newKeymap().ShortHelp() {
+		help := binding.Help()
+		if taken, ok := claimed[help.Desc]; ok {
+			t.Errorf("%s and %s both say %q; one of them opens something else",
+				taken, help.Key, help.Desc)
+		}
+		claimed[help.Desc] = help.Key
+	}
+}
+
+// TestTheTwoBrowsingKeysGoToDifferentScreens presses them rather than reading
+// the labels, because the bug this is about was a label that told the truth
+// about a key that did something else.
+func TestTheTwoBrowsingKeysGoToDifferentScreens(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 100, 32
+	databases, _ := press(t, m, "ctrl+d")
+	connections, _ := press(t, m, "ctrl+p")
+	if databases.view == connections.view {
+		t.Fatalf("ctrl+d and ctrl+p both open %s", databases.view)
+	}
+	if databases.view != viewCatalog {
+		t.Fatalf("ctrl+d opens %s, and the footer says databases", databases.view)
+	}
+	if connections.view != viewSwitch {
+		t.Fatalf("ctrl+p opens %s, and the footer says connections", connections.view)
 	}
 }

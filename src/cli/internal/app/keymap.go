@@ -13,6 +13,11 @@ type keymap struct {
 	Connections key.Binding
 	Catalog     key.Binding
 	Query       key.Binding
+	Ask         key.Binding
+	Switch      key.Binding
+	Release     key.Binding
+	Thinking    key.Binding
+	Page        key.Binding
 	Schema      key.Binding
 	Indexes     key.Binding
 	Reload      key.Binding
@@ -39,14 +44,17 @@ type keymap struct {
 	Right       key.Binding
 	Terminate   key.Binding
 	Pick        key.Binding
-	Commands    key.Binding
-	Above       key.Binding
-	Below       key.Binding
-	Edit        key.Binding
-	Find        key.Binding
-	Order       key.Binding
-	Reverse     key.Binding
-	enhanced    bool
+	// Commands carries a label as well as its key, because a screen where text
+	// is typed cannot offer the slash and its footer has to name the alias that
+	// does work there.
+	Commands key.Binding
+	Above    key.Binding
+	Below    key.Binding
+	Edit     key.Binding
+	Find     key.Binding
+	Order    key.Binding
+	Reverse  key.Binding
+	enhanced bool
 }
 
 func newKeymap() keymap {
@@ -54,8 +62,13 @@ func newKeymap() keymap {
 		Run:         runBinding(false),
 		Palette:     binding("commands", "/"),
 		Connections: binding("connections", "ctrl+p"),
-		Catalog:     binding("connections", "ctrl+d"),
+		Catalog:     binding("databases", "ctrl+d"),
 		Query:       binding("query", "e"),
+		Ask:         binding("ask", "a"),
+		Switch:      binding("change what answers", "ctrl+o"),
+		Release:     binding("release the model", "u"),
+		Thinking:    binding("thinking", "ctrl+t"),
+		Page:        binding("scroll", "pgup", "pgdown"),
 		Schema:      binding("tables", "s"),
 		Indexes:     binding("indexes", "i"),
 		Reload:      binding("reload", "r"),
@@ -82,7 +95,7 @@ func newKeymap() keymap {
 		Right:       binding("right", "right", "l"),
 		Terminate:   binding("close session", "x"),
 		Pick:        binding("pick", "space"),
-		Commands:    key.NewBinding(key.WithKeys("ctrl+k")),
+		Commands:    key.NewBinding(key.WithKeys("ctrl+k"), key.WithHelp(ui.Keystroke("ctrl+k"), "commands")),
 		Above:       binding("up", "up"),
 		Below:       binding("down", "down"),
 		Edit:        binding("edit", "e"),
@@ -106,6 +119,12 @@ func (k keymap) opensPalette(msg tea.KeyPressMsg, typing bool) bool {
 func (k keymap) Save() key.Binding { return relabel(k.Choose, "save") }
 
 func (k keymap) Discard() key.Binding { return relabel(k.Back, "cancel") }
+
+// Send and Stop are the same two keys again, in the words of a conversation.
+// Esc stops an answer that is arriving and goes back when none is.
+func (k keymap) Send() key.Binding { return relabel(k.Choose, "send") }
+
+func (k keymap) Stop() key.Binding { return relabel(k.Back, "stop or back") }
 
 func relabel(from key.Binding, help string) key.Binding {
 	return key.NewBinding(key.WithKeys(from.Keys()...),
@@ -138,13 +157,13 @@ func (k keymap) withEnhancements(msg tea.KeyboardEnhancementsMsg) keymap {
 
 func (k keymap) ShortHelp() []key.Binding {
 	return []key.Binding{
-		k.Query, k.Schema, k.Indexes, k.Connections, k.Catalog, k.Palette, k.Help, k.Quit,
+		k.Query, k.Ask, k.Schema, k.Indexes, k.Connections, k.Catalog, k.Palette, k.Help, k.Quit,
 	}
 }
 
 func (k keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Query, k.Run, k.Focus},
+		{k.Query, k.Ask, k.Run, k.Focus},
 		{k.Schema, k.Indexes, k.Reload},
 		{k.Palette, k.Catalog, k.Connections, k.New, k.Remove},
 		{k.Focus, k.Cancel, k.Terminate},
@@ -181,6 +200,10 @@ func (k keymap) footer(current view, completing, zoomed, running, filtering bool
 			return screenKeys{k.Above, k.Below, k.Save(), k.Discard()}
 		}
 		return screenKeys{k.Up, k.Down, k.Choose, k.Find, k.Order, k.Reverse, k.Home}
+	case viewAsk:
+		return screenKeys{k.Send(), k.Stop(), k.Page, k.Thinking, k.Switch, k.Commands}
+	case viewAI:
+		return screenKeys{k.Up, k.Down, k.Focus, k.Choose, k.Remove, k.Home}
 	case viewDashboard:
 		if running {
 			return screenKeys{k.Up, k.Down, k.Cancel, k.Terminate, k.Focus, k.Quit}

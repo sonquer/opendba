@@ -175,9 +175,14 @@ single shortcut. `ctrl+k` does the same and is the one to use while typing.
 | key | does |
 |---|---|
 | `e` | query editor |
+| `a` | ask, and on any page: ask about what is on it |
+| `ctrl+o` | change what answers |
+| `ctrl+t` | show the working a model did before answering |
+| `u` | give back the memory a local model is loaded into |
 | `s` `i` | tables, indexes |
 | `r` | read everything again |
-| `ctrl+p` `ctrl+d` | connections |
+| `ctrl+p` | connections |
+| `ctrl+d` | databases and schemas of the connection in use |
 | `ctrl+b` | show or hide the schema beside the editor |
 | `ctrl+r` | run the statement |
 | `ctrl+up` `ctrl+down` | resize the editor |
@@ -199,8 +204,8 @@ drawn the way the keyboard prints them, and every named key is spelled out:
 
 ## Connections
 
-`ctrl+p` and `ctrl+d` open the same screen, because there is one place where
-connections live:
+`ctrl+p` is where connections live. `ctrl+d` goes one level in, to the databases
+and schemas of the one you are on:
 
 ```text
   ▌ localhost ·                    postgres · read only · localhost:5432/bullet
@@ -216,6 +221,155 @@ No schema ticked means every schema.
 `e` opens the profile in the form that made it, so a host, a port or an access
 mode can be changed without removing the connection and starting again. The
 password field left empty keeps the one that is stored.
+
+## Ask
+
+`a` opens a conversation about the database in front of you. It has tools and
+uses them: it reads the schema before describing it, and the readings before
+saying what they mean.
+
+```text
+  ASK                                                    claude · working
+
+    you
+    which table is the biggest, and why is it slow?
+
+    claude
+    · list_tables(schema: main)
+    · describe_table(schema: main, table: orders)
+
+    orders, at 4 MiB. It has no index on `customer`, which is what the
+    dashboard is calling a sequential scan.
+  ─────────────────────────────────────────────────────────────────────
+  ┃ ask about this database
+```
+
+Every statement it wants to run goes through the same classifier a statement you
+type goes through, in the same access mode. It cannot write in any mode, and a
+refusal comes back to it as a fact to report rather than an obstacle to word
+differently. Everything a tool hands back is data: table names and column
+comments are never instructions, however they are worded.
+
+`enter` sends and `esc` stops an answer that is arriving, which stops a local
+model computing rather than leaving it to finish something nobody will read. A
+line ending in `\` is continued rather than sent.
+
+On any page opened with `enter` — a reading, a table, an index, a row — `a`
+carries it into the conversation. The question is put in the box, not sent, so
+you read what would leave before it does.
+
+### Setting it up
+
+There is nothing to set up before pressing `a`. The first time, it opens a list
+of everything that could answer, and every row in it leads somewhere:
+
+```text
+  › _
+
+  ON THIS MACHINE                                library b10587 · included
+    Gemma 4 E4B                       3.9 GiB · Apache-2.0 · fits
+    Gemma 4 E2B                       2.4 GiB · Apache-2.0 · fits
+    Gemma 4 12B                       6.3 GiB · Apache-2.0 · 8 GB short
+
+  ANTHROPIC                                                    needs a key
+    add a key
+
+  OLLAMA                                                  not running here
+    use this daemon
+```
+
+Choosing a model downloads it and starts answering with it. While it arrives the
+list gives way to the download: what is coming, a bar, and how far it has got.
+Trying to leave asks first, and what has arrived is kept, so choosing the same
+model again carries on from where it stopped. Choosing a hosted provider asks for a key, keeps it in your
+keychain, and writes only a reference to it in `settings.toml`. A key already in
+`ANTHROPIC_API_KEY` or its siblings is offered as it stands, with nothing to
+type and nothing copied anywhere.
+
+`ctrl+o` opens the same list again from inside a conversation, so switching is
+one key. Typing filters it. What is answering is written under the box you type
+in, which is where you are already looking.
+
+Nothing here asks you to edit a file. `settings.toml` is where the choices end
+up, and it can be written by hand, but it does not have to be.
+
+### Where it runs
+
+Six back-ends, all reachable from that list:
+
+| kind | what it is |
+|---|---|
+| `local` | a model running inside this process, through llama.cpp |
+| `anthropic` `openai` `gemini` | the hosted ones |
+| `ollama` | a daemon you already run |
+| `compatible` | anything that answers chat completions, at an address you give |
+
+```toml
+[ai]
+  enabled = true
+  active  = "here"
+
+[[ai.instance]]
+  name  = "here"
+  kind  = "local"
+  model = "gemma-4-e4b-qat"
+
+[[ai.instance]]
+  name  = "claude"
+  kind  = "anthropic"
+  model = "claude-sonnet-5"
+  key   = "keyring:ai-claude"
+```
+
+A key is a reference to a secret, exactly as a database password is. A key
+written into the file is refused when the file is read, because a secret that
+has been on disk in the clear cannot be untold. The keychain is the only place
+the interface will put one: the encrypted vault needs a passphrase, and asking
+for one from inside a full screen program would mean drawing over it and reading
+keys it is already reading. A machine with no keychain is told so and pointed at
+an environment variable.
+
+### Nothing leaves without you saying so
+
+Before the first request of a turn that would go to somebody else's machine, the
+screen says what would be sent, by class rather than by byte: your question, the
+shape of the database, rows out of the tables. `enter` sends it, `esc` does not.
+A class you have already allowed is not asked about again in the same
+conversation; one that has not appeared before stops the turn and asks.
+
+A model running on this machine sends nothing anywhere and is not asked about.
+
+### Models
+
+Everything offered is Apache-2.0 or MIT and needs no account:
+
+| model | size | fits |
+|---|---|---|
+| Gemma 4 E2B | 2.4 GiB | about 4 GB of memory |
+| Gemma 4 E4B | 3.9 GiB | about 6 GB — the one to start with |
+| Gemma 4 12B | 6.3 GiB | about 8 GB |
+| GPT-OSS 20B | 11.3 GiB | about 16 GB |
+| GPT-OSS 120B | 59.0 GiB | a workstation |
+
+They are quantisation-aware trained, so there is one file each rather than a
+ladder of precisions to pick from. Weights are downloaded to
+`$XDG_DATA_HOME/tui4db/models`, resumed if interrupted, and checked against the
+checksum the Hub reports before they are given a name.
+
+llama.cpp itself is not downloaded at all: this program carries the build it was
+written against, for all six platforms it is published for, and writes it out
+the first time you open the conversation. purego opens a library by path and
+cannot open one out of memory, which is the only reason the bytes reach the disk
+at all. Nothing about it is fetched, so a release replaced under the tag it was
+published on, a machine with no network, and an air-gapped one are all the same
+here.
+
+```toml
+[ai]
+  token = "env:HF_TOKEN"   # for repositories that want one
+```
+
+Set `YZMA_LIB` to use a build of your own instead.
 
 ## Without the interface
 
@@ -244,8 +398,12 @@ what makes it usable as a check in CI.
 ```text
 $XDG_CONFIG_HOME/tui4db/      (or ~/.config/tui4db/)
   profiles.toml     0600   connection metadata, never a password
-  settings.toml     0600   theme, bar style, safety defaults
+  settings.toml     0600   theme, bar style, safety defaults, assistants
   secrets.age       0600   only when the encrypted vault is used
+
+$XDG_DATA_HOME/tui4db/       (or ~/.local/share/tui4db/)
+  models/                  weights, and a manifest saying what they are
+  lib/                     llama.cpp, written out of this program
 ```
 
 Both files are refused if another user can read them, and the directory is
@@ -255,8 +413,8 @@ A password is never in `profiles.toml`, in `--json`, or on any screen. The
 profile holds a reference to it: the keyring, an age encrypted vault, an
 environment variable, a command to run, `~/.pgpass`, or a prompt.
 
-`settings.toml` is read and never written, because there is no settings screen
-yet. The setting worth knowing about is the shape of a bar, since how well a
+`settings.toml` is written only when the assistant screen changes which instance
+answers. The setting worth knowing about is the shape of a bar, since how well a
 glyph draws is the font's business and a terminal program cannot choose the
 font it is drawn in:
 
@@ -285,9 +443,8 @@ Named here rather than left to be discovered:
   implement them, but nothing calls either yet.
 - **Query history** has a package, a file path and a schema, and is not wired
   into the program. `history.db` is never written.
-- **The `[ai]` section** of `settings.toml` is parsed and has no code behind
-  it.
-- **There is no settings screen**, so `settings.toml` is edited by hand.
+- **There is no settings screen for anything but the assistant**, so the rest of
+  `settings.toml` is edited by hand.
 - **MySQL, MariaDB and SQL Server** are planned behind the same driver
   interface. Only PostgreSQL and SQLite exist.
 

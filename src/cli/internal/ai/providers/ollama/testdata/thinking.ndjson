@@ -1,0 +1,3 @@
+{"model":"qwen3.5:9b","message":{"role":"assistant","thinking":"they mean the largest","content":""},"done":false}
+{"model":"qwen3.5:9b","message":{"role":"assistant","content":"orders"},"done":false}
+{"model":"qwen3.5:9b","message":{"role":"assistant","content":""},"done":true,"done_reason":"length"}

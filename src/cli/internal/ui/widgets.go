@@ -212,6 +212,20 @@ func (t *Theme) KV(label string, labelWidth int, value string) string {
 
 func Dotted(parts ...string) string { return join(" · ", parts) }
 
+// Hint is one key and what pressing it does.
+type Hint struct{ Key, Does string }
+
+// Hints is the row of keys a dialog offers, each on the same grey cap the
+// footer of every screen puts them on. A bare letter beside a word does not
+// read as something to press, and a dialog has no footer to learn that from.
+func (t *Theme) Hints(hints ...Hint) string {
+	parts := make([]string, 0, len(hints))
+	for _, hint := range hints {
+		parts = append(parts, t.KeycapStyle.Render(Keystroke(hint.Key))+t.Muted.Render(" "+hint.Does))
+	}
+	return strings.Join(parts, t.Subtle.Render(" · "))
+}
+
 func join(separator string, parts []string) string {
 	kept := parts[:0]
 	for _, p := range parts {

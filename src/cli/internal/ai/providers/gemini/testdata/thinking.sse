@@ -1,0 +1,4 @@
+data: {"candidates":[{"content":{"parts":[{"text":"they mean the largest","thought":true}],"role":"model"}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"orders"}],"role":"model"},"finishReason":"MAX_TOKENS"}]}
+

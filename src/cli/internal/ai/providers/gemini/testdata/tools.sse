@@ -1,0 +1,4 @@
+data: {"candidates":[{"content":{"parts":[{"text":"let me look"}],"role":"model"}}]}
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"describe_table","args":{"schema":"main","table":"orders"}}}],"role":"model"},"finishReason":"STOP"}]}
+

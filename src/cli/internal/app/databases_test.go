@@ -9,21 +9,17 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// The database and its schemas are a level inside the connection they belong
-// to, so they are reached through the list of connections: ctrl+d opens that,
-// and enter on the connection already in use goes in.
+// The database and its schemas belong to the connection in use, and ctrl+d is
+// the way to them. It is not the way to the list of connections: that is
+// ctrl+p, and two keys for one screen is one key wasted and one footer entry
+// that lies about what it opens.
 func browsingCatalog(t *testing.T, conn *fakeConn) Model {
 	t.Helper()
 	m := loadedWith(t, conn, workspaceWith(t))
 	m.width, m.height = 100, 32
-	list, cmd := press(t, m, "ctrl+d")
-	if list.view != viewSwitch {
-		t.Fatalf("ctrl+d must open the connections, got %s", list.view)
-	}
-	listed, _ := list.Update(runFirst(t, cmd))
-	opened, cmd := press(t, listed.(Model), "enter")
+	opened, cmd := press(t, m, "ctrl+d")
 	if cmd == nil || opened.view != viewCatalog {
-		t.Fatalf("enter on the connection in use must go in, got %s", opened.view)
+		t.Fatalf("ctrl+d must open the databases of the connection in use, got %s", opened.view)
 	}
 	read, _ := opened.Update(cmd())
 	return read.(Model)

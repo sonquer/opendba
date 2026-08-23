@@ -5,6 +5,7 @@ exempt = [
   "cli/internal/parser/generated",
   "tools/cmd",
   "cli/cmd",
+  "cli/internal/ai/providers/local/llama",
 ]
 
 [coverage.modules]

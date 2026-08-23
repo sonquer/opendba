@@ -40,6 +40,11 @@ type modal struct {
 	// drawn everywhere else: highlighted, with the line numbers a person points
 	// at when they talk about it.
 	code string
+
+	// chart is a picture of the numbers the question turns on, drawn above the
+	// sentence rather than instead of it. A share of a machine is something you
+	// see at a glance and read twice as a sentence.
+	chart string
 }
 
 func ask(theme *ui.Theme, title, body string, action tea.Msg) *modal {
@@ -96,6 +101,9 @@ func (d modal) view(width int) string {
 		title = d.theme.Severity(ui.SevCritical).Bold(true).Render(d.title)
 	}
 	lines := []string{ui.SplitLine(title, d.tag, inner)}
+	if d.chart != "" {
+		lines = append(lines, "", d.chart)
+	}
 	if d.body != "" {
 		lines = append(lines, "", d.theme.Muted.Render(wrap(d.body, inner)))
 	}
@@ -112,11 +120,11 @@ func (d modal) view(width int) string {
 	if d.typing() {
 		lines = append(lines, "", d.theme.Prompt.Render("› ")+d.input.View())
 	}
-	hints := []string{ui.Keystroke("enter") + " yes", ui.Keystroke("esc") + " no"}
+	hints := []ui.Hint{{Key: "enter", Does: "yes"}, {Key: "esc", Does: "no"}}
 	if d.needs != "" {
-		hints = append([]string{ui.Keystroke("space") + " ticks the box"}, hints...)
+		hints = append([]ui.Hint{{Key: "space", Does: "ticks the box"}}, hints...)
 	}
-	lines = append(lines, "", d.theme.Subtle.Render(ui.Dotted(hints...)))
+	lines = append(lines, "", d.theme.Hints(hints...))
 	panel := d.theme.Panel
 	if d.danger {
 		panel = panel.BorderForeground(d.theme.P.Critical)

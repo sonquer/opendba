@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/sonquer/tui4db/src/cli/internal/ai/agent"
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
 	"github.com/sonquer/tui4db/src/cli/internal/config"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
@@ -30,6 +31,8 @@ const (
 	viewQuery     view = "query"
 	viewHelp      view = "help"
 	viewSwitch    view = "connections"
+	viewAsk       view = "ask"
+	viewAI        view = "ai"
 )
 
 // part is which of the two reads a message belongs to, so a refresh that asked
@@ -102,6 +105,33 @@ type Model struct {
 	zoomed     bool
 	split      int
 	spinner    spinner.Model
+
+	assistant conversation
+	build     Talk
+	talk      chat
+	ai        aiSettings
+	chooser   *chooser
+	pending   string
+	stopFetch context.CancelFunc
+	stopAsk   context.CancelFunc
+	stopLoad  context.CancelFunc
+}
+
+// Talk builds a conversation once it has been told how to ask for permission.
+// The screen owns consent because the screen is what can put the question in
+// front of somebody, so the assistant is handed a way to ask rather than
+// arriving with one.
+type Talk func(consent agent.Consent) (conversation, error)
+
+// WithAssistant gives the model something to have a conversation with. What is
+// kept is the way to build one rather than one already built: opening a local
+// model reads gigabytes off the disk, and nobody who never presses the key
+// should pay for that. A screen that can be handed a fake is also a screen that
+// can be tested.
+func (m Model) WithAssistant(instance string, build Talk) Model {
+	m.talk = newChat(m.theme, instance)
+	m.build = build
+	return m
 }
 
 // pane is what the keys are talking to inside the editor screen.
@@ -139,6 +169,8 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 		lists:     [2]browse{newBrowse(theme, 0, false), newBrowse(theme, 2, true)},
 		suggest:   completion{theme: theme},
 		sidebar:   newExplorer(theme),
+		talk:      newChat(theme, ""),
+		ai:        newAISettings(theme),
 		running:   newActivity(theme, session.Settings.Safety),
 		fields:    map[string][]driver.Column{},
 	}
@@ -297,13 +329,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = m.running.resize(ui.FrameWidth(m.width))
 		m.editor.SetWidth(m.paneWidth())
 		m.editor.SetHeight(m.editorRows())
+		m.talk.prompt.SetWidth(ui.TextWidth(m.width) - 4)
 		m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
 		if m.wizard != nil {
 			return m.toWizard(msg)
 		}
 		return m, nil
+	case askEventMsg:
+		return m.asked(msg)
+	case askApprovalMsg:
+		return m.approving(msg)
+	case askAnswerMsg:
+		return m.answered(msg)
+	case askEndedMsg:
+		return m.finished(msg)
+	case fetchProgressMsg:
+		return m.fetched(msg)
+	case fetchEndedMsg:
+		return m.doneFetching(msg)
+	case ollamaMsg:
+		return m.answered4Ollama(msg)
 	case spinner.TickMsg:
-		if !m.loading {
+		if !m.spinning() {
 			return m, nil
 		}
 		updated, cmd := m.spinner.Update(msg)
@@ -363,6 +410,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.run(msg.statement)
 	case newConnectionMsg:
 		return m.compose()
+	case warmedMsg:
+		return m.warmed(msg)
+	case readyMsg:
+		return m.ready(msg)
+	case anywayMsg:
+		return m.anyway(msg)
+	case forgetMsg:
+		return m.forgot(msg)
 	case quitMsg:
 		m.quitting = true
 		return m, tea.Quit
@@ -387,6 +442,14 @@ func (m Model) toWizard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.wizard = &wizard
 	return m, cmd
+}
+
+// spinning is whether anything on screen is waiting on something. A tick is
+// answered with the next one, so anything that stops answering stops the
+// spinner for good: a screen that draws one and is not named here draws a still
+// picture of one.
+func (m Model) spinning() bool {
+	return m.loading || m.ai.busy != "" || m.talk.busy || m.talk.loading
 }
 
 func (m Model) statement() string { return m.editor.Value() }
@@ -436,6 +499,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.modal != nil {
 		return m.modalKey(msg)
 	}
+	if m.chooser != nil {
+		return m.chooserKey(msg)
+	}
 	if m.palette != nil {
 		return m.paletteKey(msg)
 	}
@@ -447,6 +513,12 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.view == viewCatalog {
 		return m.catalogKey(msg)
+	}
+	if m.view == viewAsk {
+		return m.askKey(msg)
+	}
+	if m.view == viewAI {
+		return m.aiKey(msg)
 	}
 	if m.view == viewDashboard && m.onSessions && m.dashboardOwnsKey(msg) {
 		return m.activityKey(msg)
@@ -478,7 +550,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Focus):
 		return m.toggleSessions()
 	case key.Matches(msg, m.keys.Catalog):
-		return m.browse()
+		return m.browseCatalog()
 	case m.keys.opensPalette(msg, false):
 		return m.openPalette()
 	case key.Matches(msg, m.keys.Connections):
@@ -495,6 +567,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.show(viewHelp)
 	case key.Matches(msg, m.keys.Query):
 		return m.show(viewQuery)
+	case key.Matches(msg, m.keys.Ask):
+		return m.show(viewAsk)
 	case key.Matches(msg, m.keys.Reload):
 		m.loading = true
 		return m, tea.Batch(m.load(), m.spinner.Tick)
@@ -611,6 +685,19 @@ func (m Model) show(target view) (tea.Model, tea.Cmd) {
 	}
 	if target == viewQuery {
 		return m, m.editor.Focus()
+	}
+	if target == viewAsk {
+		warmed, warming := m.warming()
+		loading, load := warmed.load4Talk()
+		return loading, tea.Batch(loading.talk.prompt.Focus(), warming, load)
+	}
+	m.editor.Blur()
+	if target == viewCatalog {
+		return m.browseCatalog()
+	}
+	if target == viewAI {
+		warmed, warming := m.warming()
+		return warmed.read4AI(), warming
 	}
 	m.editor.Blur()
 	return m, nil
@@ -850,6 +937,9 @@ func (m Model) content() string {
 	if m.modal != nil {
 		return ui.Overlay(screen, m.modal.view(m.width), m.width, m.height)
 	}
+	if m.chooser != nil {
+		return ui.Overlay(screen, m.chooserView(m.width, m.height), m.width, m.height)
+	}
 	if m.palette != nil {
 		return ui.Overlay(screen, m.palette.view(m.width, m.height), m.width, m.height)
 	}
@@ -918,6 +1008,10 @@ func (m Model) body() string {
 		return m.workbench()
 	case viewHelp:
 		return m.helpBody()
+	case viewAsk:
+		return m.askBody()
+	case viewAI:
+		return m.aiBody()
 	case viewSwitch:
 		return m.list.view(ui.FrameWidth(m.width))
 	case viewCatalog:

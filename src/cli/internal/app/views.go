@@ -357,8 +357,18 @@ func Launch(session cli.Session, workspace cli.Workspace) error {
 	return launch(session, workspace)
 }
 
+// withAssistant hands the model a way to start a conversation when one is
+// configured. A section that is switched off leaves the screen saying so rather
+// than pretending the key does nothing.
+func withAssistant(m Model, session cli.Session) Model {
+	if !session.AI.Enabled {
+		return m
+	}
+	return m.WithAssistant(session.AI.Instance.Name, assistantFor(session))
+}
+
 func launch(session cli.Session, workspace cli.Workspace, options ...tea.ProgramOption) error {
-	program := tea.NewProgram(NewModel(session, workspace), options...)
+	program := tea.NewProgram(withAssistant(NewModel(session, workspace), session), options...)
 	final, err := program.Run()
 	if model, ok := final.(Model); ok {
 		model.release()

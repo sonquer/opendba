@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"image/color"
 	"strings"
 	"testing"
 
@@ -386,4 +388,69 @@ func TestALongLineWrapsUnderItsOwnNumber(t *testing.T) {
 	if strings.TrimSpace(lines[2]) == "" || strings.HasPrefix(strings.TrimSpace(lines[2]), "3") {
 		t.Errorf("what wrapped keeps the number it wrapped from: %q", lines[2])
 	}
+}
+
+func TestHintsPutEveryKeyOnACap(t *testing.T) {
+	theme := Default()
+	drawn := theme.Hints(Hint{Key: "enter", Does: "use"}, Hint{Key: "esc", Does: "close"})
+	got := plain(drawn)
+	for _, want := range []string{"enter", "use", "esc", "close", "·"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Hints() = %q, want it to say %q", got, want)
+		}
+	}
+	if drawn == got {
+		t.Error("the keys are not on caps, which is the whole difference between a hint and a sentence")
+	}
+	if !strings.Contains(got, plain(theme.KeycapStyle.Render(Keystroke("enter")))) {
+		t.Errorf("a dialog must draw its keys the way the footer does: %q", drawn)
+	}
+	if got := Default().Hints(); got != "" {
+		t.Errorf("Hints() = %q, want nothing when there is nothing to say", got)
+	}
+}
+
+// TestTrackIsExactlyAsWideAsItIsAsked is what lets a bar have a line of its
+// own: brackets included, in whatever shape the bar has been set to, it takes
+// the room it was given and not a column more.
+func TestTrackIsExactlyAsWideAsItIsAsked(t *testing.T) {
+	theme := Default()
+	for _, shape := range BarStyleNames() {
+		theme.Bars(shape)
+		for _, width := range []int{4, 12, 30} {
+			if got := lipgloss.Width(theme.Track(0.5, width)); got != width {
+				t.Errorf("Track(%d) in %s is %d wide", width, shape, got)
+			}
+		}
+	}
+	theme = Default()
+	bar := BarStyleNamed(DefaultBarStyle)
+	drawn := plain(theme.Track(0.5, 20))
+	if !strings.Contains(drawn, bar.Full) || !strings.Contains(drawn, bar.Empty) {
+		t.Errorf("Track() = %q, want a bar with a track behind it", drawn)
+	}
+}
+
+// TestTrackIsTheAccentColour is deliberate rather than incidental: a download
+// is neither healthy nor unhealthy, and the colours a reading uses would say it
+// was one or the other.
+func TestTrackIsTheAccentColour(t *testing.T) {
+	theme := Default()
+	accent := hex(theme.P.Accent)
+	drawn := theme.Track(0.5, 20)
+	if !strings.Contains(drawn, strings.TrimPrefix(accent, "#")) &&
+		!strings.Contains(drawn, colour4Test(theme.P.Accent)) {
+		t.Errorf("Track() = %q, want it drawn in %s", drawn, accent)
+	}
+	for _, wrong := range []Severity{SevOK, SevWarn, SevCritical, SevInfo} {
+		if drawn == theme.draw(0.5, wrong, 18) {
+			t.Errorf("a download is drawn as though it were a %s reading", wrong)
+		}
+	}
+}
+
+// colour4Test writes a colour the way lipgloss puts it in an escape sequence.
+func colour4Test(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)
 }

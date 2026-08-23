@@ -104,16 +104,43 @@ func (t *Theme) draw(ratio float64, sev Severity, width int) string {
 	return t.drawOn(ratio, sev, width, nil)
 }
 
+// Track is progress rather than a reading, so it is drawn in the accent colour:
+// a download is neither healthy nor unhealthy, and colouring it as though it
+// were says something about it that is not true.
+//
+// It is exactly as wide as it is asked to be, brackets and all, because it has
+// a line of its own rather than a column in a table.
+func (t *Theme) Track(ratio float64, width int) string {
+	style := t.shape()
+	inner := width
+	if style.Open != "" {
+		inner = max(width-lipgloss.Width(style.Open)-lipgloss.Width(style.Close), 1)
+	}
+	return t.paint(ratio, lipgloss.NewStyle().Foreground(t.P.Accent), inner, nil)
+}
+
+// shape is the style a bar is drawn with, which is the default until somebody
+// has chosen one.
+func (t *Theme) shape() BarStyle {
+	if t.style.Full == "" {
+		return BarStyleNamed(DefaultBarStyle)
+	}
+	return t.style
+}
+
 // drawOn is the same bar on a background, for the row a cursor is sitting on.
 // Every part of it carries the background itself, because a styled run ends
 // with a reset and a reset would end a background the row set around it.
 func (t *Theme) drawOn(ratio float64, sev Severity, width int, ground color.Color) string {
-	style := t.style
-	if style.Full == "" {
-		style = BarStyleNamed(DefaultBarStyle)
-	}
+	return t.paint(ratio, t.Bar(sev), width, ground)
+}
+
+// paint is the bar itself, given the colour to fill it with. The scale behind
+// the measurement is worked out from that colour, which is why this takes one
+// style rather than a foreground and a background.
+func (t *Theme) paint(ratio float64, colour lipgloss.Style, width int, ground color.Color) string {
+	style := t.shape()
 	full, part, empty := cells(ratio, width, len(style.Parts))
-	colour := t.Bar(sev)
 	track := colour
 	switch {
 	case style.Neutral:

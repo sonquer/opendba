@@ -17,6 +17,7 @@ func TestPathsFromXDG(t *testing.T) {
 	paths, err := PathsFor(envFrom(map[string]string{
 		"XDG_CONFIG_HOME": "/x/config",
 		"XDG_STATE_HOME":  "/x/state",
+		"XDG_DATA_HOME":   "/x/data",
 	}))
 	if err != nil {
 		t.Fatalf("PathsFor: %v", err)
@@ -26,6 +27,9 @@ func TestPathsFromXDG(t *testing.T) {
 	}
 	if paths.State != filepath.Join("/x/state", "tui4db") {
 		t.Errorf("State = %q", paths.State)
+	}
+	if paths.Data != filepath.Join("/x/data", "tui4db") {
+		t.Errorf("Data = %q", paths.Data)
 	}
 }
 
@@ -78,7 +82,11 @@ func TestFileNames(t *testing.T) {
 
 func TestEnsureCreatesPrivateDirectories(t *testing.T) {
 	root := t.TempDir()
-	paths := Paths{Config: filepath.Join(root, "config"), State: filepath.Join(root, "state")}
+	paths := Paths{
+		Config: filepath.Join(root, "config"),
+		State:  filepath.Join(root, "state"),
+		Data:   filepath.Join(root, "data"),
+	}
 	if err := paths.Ensure(); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -102,7 +110,7 @@ func TestEnsureTightensLoosePermissions(t *testing.T) {
 	if err := os.MkdirAll(loose, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	paths := Paths{Config: loose, State: filepath.Join(root, "state")}
+	paths := Paths{Config: loose, State: filepath.Join(root, "state"), Data: filepath.Join(root, "data")}
 	if err := paths.Ensure(); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -130,7 +138,11 @@ func TestEnsureFailsOnFileInsteadOfDirectory(t *testing.T) {
 func newStore(t *testing.T) Store {
 	t.Helper()
 	root := t.TempDir()
-	paths := Paths{Config: filepath.Join(root, "config"), State: filepath.Join(root, "state")}
+	paths := Paths{
+		Config: filepath.Join(root, "config"),
+		State:  filepath.Join(root, "state"),
+		Data:   filepath.Join(root, "data"),
+	}
 	if err := paths.Ensure(); err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +370,7 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSettings: %v", err)
 	}
-	if loaded != settings {
+	if !reflect.DeepEqual(loaded, settings) {
 		t.Fatalf("round trip changed the settings:\n%+v\n%+v", loaded, settings)
 	}
 }

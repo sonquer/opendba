@@ -254,6 +254,7 @@ func (m Model) openTable() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	page, cmd := m.definition(name)
+	page.ask = m.build != nil
 	m.page = &page
 	return m, cmd
 }

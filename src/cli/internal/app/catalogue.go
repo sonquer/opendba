@@ -20,6 +20,7 @@ func (m Model) listingPage() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		page := m.indexPage(shown[m.listing])
+		page.ask = m.build != nil
 		m.page = &page
 		return m, nil
 	}
@@ -29,6 +30,7 @@ func (m Model) listingPage() (tea.Model, tea.Cmd) {
 	}
 	table := shown[m.listing]
 	page := m.tablePage(table)
+	page.ask = m.build != nil
 	m.page = &page
 	return m, m.readOneColumn(table.Name)
 }

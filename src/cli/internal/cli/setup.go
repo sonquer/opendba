@@ -76,6 +76,25 @@ func (s Setup) Save(connection config.Connection, password []byte) error {
 	return s.Store.SaveProfiles(profiles)
 }
 
+// StoreKey puts an assistant's key in the operating system keychain and hands
+// back the reference that goes in settings.toml.
+//
+// Unlike storeSecret it does not fall back to the encrypted vault. The vault
+// needs a passphrase, and the only way this program has of asking for one reads
+// the terminal directly, which is wrong inside a screen that is already reading
+// it. A machine with no keychain is told so and pointed at an environment
+// variable, which needs no prompt and works everywhere.
+func (s Setup) StoreKey(name string, key []byte) (secretref.Ref, error) {
+	if s.Secrets == nil {
+		return secretref.Ref{}, fmt.Errorf("there is nowhere to keep a key on this machine")
+	}
+	reference := secretref.ForKeyring("ai-" + name)
+	if err := s.Secrets.Set(context.Background(), reference, key); err != nil {
+		return secretref.Ref{}, fmt.Errorf("keep the key in the keychain: %w", err)
+	}
+	return reference, nil
+}
+
 func (s Setup) storeSecret(id string, password []byte) (secretref.Ref, error) {
 	ctx := context.Background()
 	keyring := secretref.ForKeyring(id)
