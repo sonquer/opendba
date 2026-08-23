@@ -7,8 +7,8 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ai"
 )
 
-func TestSystemPrompt(t *testing.T) {
-	prompt, err := SystemPrompt("  you read databases  ", []ai.Tool{{
+func TestSystemPrompt4Test(t *testing.T) {
+	prompt, err := SystemPrompt4Test("  you read databases  ", []ai.Tool{{
 		Name:        "list_tables",
 		Description: "every table in a schema",
 		Parameters: ai.Schema{
@@ -17,7 +17,7 @@ func TestSystemPrompt(t *testing.T) {
 		},
 	}})
 	if err != nil {
-		t.Fatalf("SystemPrompt() error = %v", err)
+		t.Fatalf("SystemPrompt4Test() error = %v", err)
 	}
 	for _, want := range []string{
 		"you read databases",
@@ -38,28 +38,28 @@ func TestSystemPrompt(t *testing.T) {
 }
 
 func TestSystemPromptWithoutTools(t *testing.T) {
-	prompt, err := SystemPrompt("  just answer  ", nil)
+	prompt, err := SystemPrompt4Test("  just answer  ", nil)
 	if err != nil {
-		t.Fatalf("SystemPrompt() error = %v", err)
+		t.Fatalf("SystemPrompt4Test() error = %v", err)
 	}
 	if prompt != "just answer" {
-		t.Fatalf("SystemPrompt() = %q, want the trimmed instructions alone", prompt)
+		t.Fatalf("SystemPrompt4Test() = %q, want the trimmed instructions alone", prompt)
 	}
 }
 
 func TestSystemPromptWithoutInstructions(t *testing.T) {
-	prompt, err := SystemPrompt("", []ai.Tool{{Name: "list_tables"}})
+	prompt, err := SystemPrompt4Test("", []ai.Tool{{Name: "list_tables"}})
 	if err != nil {
-		t.Fatalf("SystemPrompt() error = %v", err)
+		t.Fatalf("SystemPrompt4Test() error = %v", err)
 	}
 	if !strings.HasPrefix(prompt, "You can use tools") {
-		t.Fatalf("SystemPrompt() = %q, want it to start with the tool instructions", prompt)
+		t.Fatalf("SystemPrompt4Test() = %q, want it to start with the tool instructions", prompt)
 	}
 }
 
 func TestSystemPromptRefusesABadName(t *testing.T) {
-	if _, err := SystemPrompt("", []ai.Tool{{Name: "Run Select"}}); err == nil {
-		t.Fatal("SystemPrompt() must refuse a name the grammar could not hold")
+	if _, err := SystemPrompt4Test("", []ai.Tool{{Name: "Run Select"}}); err == nil {
+		t.Fatal("SystemPrompt4Test() must refuse a name the grammar could not hold")
 	}
 }
 
@@ -120,7 +120,7 @@ func TestSpoken(t *testing.T) {
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			role, content := spoken(test.message)
+			role, content := turn4Message(test.message, Spoken(""))
 			if role != test.role {
 				t.Fatalf("role = %q, want %q", role, test.role)
 			}
@@ -140,11 +140,21 @@ func TestSpokenSkipsACallItCannotWriteDown(t *testing.T) {
 			{Name: "list_tables", Arguments: map[string]any{}},
 		},
 	}
-	_, content := spoken(message)
+	_, content := turn4Message(message, Spoken(""))
 	if strings.Contains(content, "broken") {
 		t.Fatalf("content = %q, want the call that cannot be written down left out", content)
 	}
 	if !strings.Contains(content, "list_tables") {
 		t.Fatalf("content = %q, want the call that can be written down kept", content)
 	}
+}
+
+// SystemPrompt4Test and Conversation4Test are the two builders with the dialect
+// left at the one this program describes, which is what these tests are about.
+func SystemPrompt4Test(instructions string, tools []ai.Tool) (string, error) {
+	return SystemPrompt(instructions, tools, "")
+}
+
+func Conversation4Test(messages []ai.Message, system string, tools []ai.Tool) ([]Turn, error) {
+	return Conversation(messages, system, tools, "")
 }

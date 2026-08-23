@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -48,26 +49,51 @@ type conversation interface {
 }
 
 // approval is a question the assistant asks the screen and waits for. The
-// assistant runs in a goroutine, so consent has to travel out as a message and
-// come back as one.
+// assistant runs in a goroutine, so a question has to travel out as a message
+// and come back as one.
+//
+// There are two of them and one channel, because they are the same question
+// from the screen's point of view: something is about to happen, and it is
+// waiting on an answer. One is a turn that would leave the machine; the other
+// is a statement that would run against the database.
 type approval struct {
-	outbound agent.Outbound
-	answer   chan error
+	outbound  *agent.Outbound
+	statement string
+	answer    chan error
 }
 
-// gate is what the assistant asks before a turn leaves the machine.
+// permission is what the assistant asks before it does either of the two things
+// it is not allowed to do on its own.
+type permission interface {
+	agent.Consent
+	Statement(ctx context.Context, statement string) error
+}
+
+// gate is what the assistant asks before a turn leaves the machine or a
+// statement reaches the database.
 type gate struct{ asks chan approval }
 
 // Allow puts the question to the screen and waits for the person to answer it.
 func (g gate) Allow(ctx context.Context, outbound agent.Outbound) error {
-	answer := make(chan error, 1)
+	return g.ask(ctx, approval{outbound: &outbound})
+}
+
+// Statement asks whether a statement the assistant wrote may run. The guard has
+// already refused it if it would change anything, so this is a person deciding
+// whether to read that, now, rather than a safety net.
+func (g gate) Statement(ctx context.Context, statement string) error {
+	return g.ask(ctx, approval{statement: statement})
+}
+
+func (g gate) ask(ctx context.Context, question approval) error {
+	question.answer = make(chan error, 1)
 	select {
-	case g.asks <- approval{outbound: outbound, answer: answer}:
+	case g.asks <- question:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 	select {
-	case err := <-answer:
+	case err := <-question.answer:
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
@@ -137,6 +163,12 @@ type chat struct {
 	// something there is any point offering.
 	loaded bool
 
+	// bottom is where the end of the conversation was the last time it was
+	// looked at, which is how following it is told apart from having been left
+	// there. Somebody who has walked back is not dragged to the end every time
+	// another word arrives.
+	bottom int
+
 	// thinking is whether the reasoning a model shows its working in is opened
 	// out. It is one setting for the whole conversation rather than one per
 	// answer: somebody either wants to see the working or does not.
@@ -159,13 +191,19 @@ func newChat(theme *ui.Theme, instance string) chat {
 	field.ShowLineNumbers = false
 	field.SetHeight(promptRows)
 	field.CharLimit = 0
+	ground := lipgloss.NewStyle().Background(theme.P.Empty)
 	styles := textarea.DefaultStyles(true)
-	styles.Focused.Base = lipgloss.NewStyle()
-	styles.Blurred.Base = lipgloss.NewStyle()
-	styles.Focused.CursorLine = lipgloss.NewStyle()
-	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(theme.P.Subtle)
-	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(theme.P.Accent)
-	styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(theme.P.Border)
+	styles.Focused.Base = ground
+	styles.Blurred.Base = ground
+	styles.Focused.Text = ground.Foreground(theme.P.Fg)
+	styles.Blurred.Text = ground.Foreground(theme.P.Fg)
+	styles.Focused.CursorLine = ground
+	styles.Focused.EndOfBuffer = ground
+	styles.Blurred.EndOfBuffer = ground
+	styles.Focused.Placeholder = ground.Foreground(theme.P.Subtle)
+	styles.Blurred.Placeholder = ground.Foreground(theme.P.Subtle)
+	styles.Focused.Prompt = ground
+	styles.Blurred.Prompt = ground
 	field.SetStyles(styles)
 	field.Prompt = ""
 	return chat{
@@ -199,7 +237,7 @@ func (m Model) load4Talk() (Model, tea.Cmd) {
 	m.talk.loading = true
 	m.talk.trouble = ""
 	m.talk.prompt.Blur()
-	return m, tea.Batch(func() tea.Msg {
+	return m, tea.Batch(m.guard("loading the model", func() tea.Msg {
 		built, err := build(consent)
 		if err != nil {
 			return readyMsg{err: err}
@@ -209,7 +247,7 @@ func (m Model) load4Talk() (Model, tea.Cmd) {
 			return readyMsg{err: err}
 		}
 		return readyMsg{talk: built}
-	}, m.spinner.Tick)
+	}), m.spinner.Tick)
 }
 
 // local4Talk is whether what answers runs on this machine, which is the only
@@ -279,8 +317,14 @@ func (m Model) started(question string) (Model, tea.Cmd) {
 	failed := make(chan error, 1)
 	conversing := m.assistant
 
+	report := crash{paths: m.workspace.Setup().Store.Paths, version: m.session.Version}
 	go func() {
 		defer close(events)
+		defer func() {
+			if cause := recover(); cause != nil {
+				failed <- fell("answering", cause, report.wrote("answering", cause, debug.Stack()))
+			}
+		}()
 		failed <- conversing.Ask(ctx, question, events)
 	}()
 
@@ -290,7 +334,7 @@ func (m Model) started(question string) (Model, tea.Cmd) {
 	m.talk.exchanges = append(m.talk.exchanges, exchange{question: question})
 	m.talk.prompt.SetValue("")
 	m.stopAsk = stop
-	m.offset = ui.MaxOffset(m.askTranscript(ui.TextWidth(m.width)), m.transcriptRows())
+	m = m.pinned()
 
 	m.talk.running = stream{events: events, approvals: m.talk.asks, failed: failed}
 	return m, tea.Batch(waitForAsk(m.talk.running, m.talk.token), m.spinner.Tick)
@@ -345,21 +389,36 @@ func (m Model) finished(msg askEndedMsg) (tea.Model, tea.Cmd) {
 // is the only part of it that moves.
 func (m Model) scroll4Ask(msg tea.KeyPressMsg) Model {
 	rows := m.transcriptRows()
-	step := rows
 	if msg.String() == "pgup" {
-		step = -rows
+		return m.rolled4Ask(-rows)
 	}
-	limit := ui.MaxOffset(m.askTranscript(ui.TextWidth(m.width)), rows)
+	return m.rolled4Ask(rows)
+}
+
+// rolled4Ask walks the conversation by a number of rows, from a key or from a
+// wheel. The end is noted as it goes, so that walking back to it starts
+// following the answer again.
+func (m Model) rolled4Ask(step int) Model {
+	limit := ui.MaxOffset(m.askTranscript(ui.TextWidth(m.width)), m.transcriptRows())
 	m.offset = min(max(m.offset+step, 0), limit)
+	m.talk.bottom = limit
 	return m
 }
 
-// pinned keeps the newest words on screen. Someone who has scrolled back is
-// left where they are, because yanking the view away mid-read is worse than
-// missing the last line.
+// pinned keeps the newest words on screen. Someone who has walked back is left
+// where they are, because dragging the view away mid-read is worse than missing
+// the last line.
+//
+// Being at the end is remembered rather than guessed at: the end moves with
+// every word that arrives, so an offset compared against where the end was a
+// moment ago is the only way to tell somebody following along from somebody
+// reading something further up.
 func (m Model) pinned() Model {
-	width := ui.TextWidth(m.width)
-	m.offset = ui.MaxOffset(m.askTranscript(width), m.transcriptRows())
+	limit := ui.MaxOffset(m.askTranscript(ui.TextWidth(m.width)), m.transcriptRows())
+	if m.offset >= m.talk.bottom {
+		m.offset = limit
+	}
+	m.talk.bottom = limit
 	return m
 }
 
@@ -382,13 +441,13 @@ func (m Model) askKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.show(viewDashboard)
 	case key.Matches(msg, m.keys.Switch):
 		return m.choosing()
-	case m.talk.loading:
-		return m, nil
-	case key.Matches(msg, m.keys.Release):
-		return m.released()
+	case key.Matches(msg, m.keys.Page):
+		return m.scroll4Ask(msg), nil
 	case key.Matches(msg, m.keys.Thinking):
 		m.talk.thinking = !m.talk.thinking
 		return m.pinned(), nil
+	case m.shut():
+		return m, nil
 	case key.Matches(msg, m.keys.Choose):
 		if m.build == nil {
 			return m.choosing()
@@ -396,8 +455,6 @@ func (m Model) askKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.send()
 	case m.keys.opensPalette(msg, true):
 		return m.openPalette()
-	case key.Matches(msg, m.keys.Page):
-		return m.scroll4Ask(msg), nil
 	}
 	updated, cmd := m.talk.prompt.Update(msg)
 	m.talk.prompt = updated
@@ -552,7 +609,7 @@ func (a *chat) ended(err error) {
 const boxRows = promptRows + 3
 
 func (m Model) transcriptRows() int {
-	return max(ui.BodyHeight(m.height)-boxRows-3, 3)
+	return max(ui.BodyHeight(m.height)-boxRows-4, 3)
 }
 
 // askBody lays the screen out: the conversation above, the box to type in at
@@ -569,6 +626,7 @@ func (m Model) askBody() string {
 		m.theme.Screen("ask", "", width),
 		"",
 		ui.Fit(shown, m.transcriptRows()),
+		"",
 		m.foot(width),
 	}
 	if more > 0 {
@@ -588,62 +646,124 @@ func (m Model) askBody() string {
 func (m Model) foot(width int) string {
 	inner := width - 4
 	if m.talk.pending != nil {
-		return m.boxed(strings.Join([]string{
-			m.theme.Title.Render("send this?"),
-			"",
-			m.theme.Value.Render(wrap(consentBody(m.talk.pending.outbound), inner)),
-			"",
-			m.theme.Hints(
-				ui.Hint{Key: "enter", Does: "send"},
-				ui.Hint{Key: "esc", Does: "do not send"}),
-		}, "\n"), inner)
+		return m.boxed(m.asked4Permission(*m.talk.pending, inner), inner)
 	}
 	return m.boxed(strings.Join([]string{
-		m.talk.prompt.View(),
+		m.typed(inner),
 		m.meta(inner),
 	}, "\n"), inner)
 }
 
-// boxed puts the border round the box, squaring the contents off first so that
-// the border is exactly as wide as the screen and nothing inside it wraps.
-func (m Model) boxed(content string, inner int) string {
-	panel := m.theme.Panel
-	if m.talk.prompt.Focused() && m.talk.pending == nil {
-		panel = panel.BorderForeground(m.theme.P.Accent)
+// typed is the box itself. While a model is being read into memory, or while it
+// is answering, the whole of it goes dim: the keys do nothing until that
+// finishes, and a box that looks ready and is not is the same lie as a box that
+// takes words and drops them.
+func (m Model) typed(width int) string {
+	if !m.shut() {
+		return m.talk.prompt.View()
 	}
-	return panel.Render(square(content, inner))
+	written := strings.TrimSpace(m.talk.prompt.Value())
+	if written == "" {
+		written = m.talk.prompt.Placeholder
+	}
+	lines := make([]string, 0, promptRows)
+	dim := m.theme.Subtle.Background(m.theme.P.Empty)
+	for i, line := range strings.Split(ui.Fit(written, promptRows), "\n") {
+		if i >= promptRows {
+			break
+		}
+		lines = append(lines, dim.Render(ui.Clip(line, width)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// asked4Permission is the box turned into the question the assistant is waiting
+// on: what would be sent, or what would be run.
+func (m Model) asked4Permission(waiting approval, inner int) string {
+	if waiting.statement != "" {
+		return strings.Join([]string{
+			m.theme.Title.Render("run this?"),
+			"",
+			m.theme.Statement(waiting.statement, inner),
+			"",
+			m.theme.Hints(
+				ui.Hint{Key: "enter", Does: "run it"},
+				ui.Hint{Key: "esc", Does: "do not run it"}),
+		}, "\n")
+	}
+	said := ""
+	if waiting.outbound != nil {
+		said = consentBody(*waiting.outbound)
+	}
+	return strings.Join([]string{
+		m.theme.Title.Render("send this?"),
+		"",
+		m.theme.Value.Render(wrap(said, inner)),
+		"",
+		m.theme.Hints(
+			ui.Hint{Key: "enter", Does: "send"},
+			ui.Hint{Key: "esc", Does: "do not send"}),
+	}, "\n")
+}
+
+// boxed draws the box: a bar down the left and a ground behind the whole of it,
+// rather than a border around it.
+//
+// The bar is what says where typing goes, and it is the only part that changes
+// colour: lit while the box has the keys, plain while a model is being read in
+// or is answering. A border would draw a rectangle around three blank lines,
+// which is a lot of furniture for a place to type.
+func (m Model) boxed(content string, inner int) string {
+	ground := lipgloss.NewStyle().Background(m.theme.P.Empty)
+	bar := ground.Foreground(m.theme.P.Border)
+	if !m.shut() && m.talk.prompt.Focused() && m.talk.pending == nil {
+		bar = ground.Foreground(m.theme.P.Accent)
+	}
+	lines := strings.Split(content, "\n")
+	drawn := make([]string, 0, len(lines)+2)
+	blank := bar.Render("┃") + ui.Fill("", inner+3, m.theme.P.Empty)
+	drawn = append(drawn, blank)
+	for _, line := range lines {
+		drawn = append(drawn, bar.Render("┃")+ui.Fill("  "+line, inner+3, m.theme.P.Empty))
+	}
+	return strings.Join(append(drawn, blank), "\n")
 }
 
 // meta is what is answering, written inside the box under what you type.
 func (m Model) meta(width int) string {
 	if m.build == nil {
 		return ui.SplitLine("",
-			m.theme.Hints(ui.Hint{Key: "enter", Does: "choose what answers"}), width)
+			m.theme.HintsOn(m.theme.P.Empty, ui.Hint{Key: "enter", Does: "choose what answers"}), width)
 	}
-	said := []string{m.theme.Accent.Render(m.talk.instance)}
+	ground := m.theme.P.Empty
+	said := []string{m.theme.Accent.Background(ground).Render(m.talk.instance)}
 	if model := m.model4Meta(); model != "" {
-		said = append(said, m.theme.Value.Render(model))
+		said = append(said, m.theme.Value.Background(ground).Render(model))
 	}
-	switch {
-	case m.talk.loading:
-		said = append(said, m.spinner.View()+m.theme.Muted.Render(" loading"))
-	case m.talk.busy:
-		said = append(said, m.spinner.View()+m.theme.Muted.Render(" thinking"))
+	if m.talk.loading {
+		said = append(said, m.spinner.View()+m.theme.Muted.Background(ground).Render(" loading"))
 	}
-	return ui.SplitLine(ui.Dotted(said...), m.hint4Meta(), width)
+	return ui.SplitLine(strings.Join(said, m.theme.Subtle.Background(ground).Render(" · ")),
+		m.hint4Meta(), width)
 }
 
 // hint4Meta is the key worth offering under the box, which is the one that
 // changes while a model is being loaded or held.
 func (m Model) hint4Meta() string {
-	if m.talk.loading {
-		return m.theme.Hints(ui.Hint{Key: "esc", Does: "stop loading"})
+	ground := m.theme.P.Empty
+	switch {
+	case m.talk.loading:
+		return m.theme.HintsOn(ground, ui.Hint{Key: "esc", Does: "stop loading"})
+	case m.talk.busy:
+		return m.theme.HintsOn(ground, ui.Hint{Key: "esc", Does: "cancel"})
 	}
-	if m.talk.loaded {
-		return m.theme.Hints(ui.Hint{Key: "u", Does: "release"}, ui.Hint{Key: "ctrl+o", Does: "change"})
-	}
-	return m.theme.Hints(ui.Hint{Key: "ctrl+o", Does: "change"})
+	return m.theme.HintsOn(ground, ui.Hint{Key: "ctrl+o", Does: "change"})
 }
+
+// shut is whether the box is closed to typing: while a model is being read in,
+// and while it is answering. What it says in the meantime is on the line under
+// it, once, rather than in two places at once.
+func (m Model) shut() bool { return m.talk.loading || m.talk.busy }
 
 // model4Meta is the model the instance answers with, which is the part somebody
 // actually recognises when two instances share a provider.
@@ -678,8 +798,7 @@ func (m Model) askTranscript(width int) string {
 
 func (m Model) exchangeView(said exchange, width int, current bool) string {
 	parts := []string{
-		m.theme.Label.Render("you"),
-		m.theme.Value.Render(said.question),
+		m.asked4View(said.question, width),
 		"",
 		m.theme.Accent.Render(m.talk.instance),
 	}
@@ -700,6 +819,22 @@ func (m Model) exchangeView(said exchange, width int, current bool) string {
 		parts = append(parts, m.theme.Muted.Render("stopped"))
 	}
 	return strings.Join(parts, "\n")
+}
+
+// asked4View is the question, drawn as the thing that was said rather than
+// labelled as it. A bar down the side and a ground behind it is what tells one
+// side of a conversation from the other at a glance, which is work a word like
+// "you" at the top of every block does badly.
+func (m Model) asked4View(question string, width int) string {
+	room := max(width-2, 1)
+	body := lipgloss.NewStyle().Background(m.theme.P.Selection).Foreground(m.theme.P.OnSelection)
+	bar := lipgloss.NewStyle().Background(m.theme.P.Selection).Foreground(m.theme.P.Accent)
+	lines := strings.Split(wrap(strings.TrimSpace(question), room), "\n")
+	drawn := make([]string, 0, len(lines))
+	for _, line := range lines {
+		drawn = append(drawn, bar.Render("▌ ")+body.Width(room).Render(line))
+	}
+	return strings.Join(drawn, "\n")
 }
 
 // thinking4View is the working a model showed. It is folded away by default and
@@ -773,3 +908,8 @@ func size(value int) string {
 	}
 	return fmt.Sprintf("%.0f KiB", float64(value)/1024)
 }
+
+// releaseMsg is the command that gives back the memory a local model is loaded
+// into. It is a command rather than a key on the conversation screen: every
+// letter there is a letter somebody is typing into the box.
+type releaseMsg struct{}

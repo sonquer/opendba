@@ -57,6 +57,11 @@ linters:
     rules:
       - path: internal/ai/transport\.go
         linters: [bodyclose]
+      # The inference library hands its log over as a pointer to bytes, and
+      # reading those bytes is the only way to have what it said. It happens in
+      # one file, in the one package that reaches into the library at all.
+      - path: internal/ai/providers/local/llama/log\.go
+        linters: [gosec]
       - path: _test\.go
         linters: [gosec, errcheck, bodyclose]
       - path: internal/parser/generated/

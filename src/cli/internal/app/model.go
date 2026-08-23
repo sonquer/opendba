@@ -13,7 +13,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai/agent"
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
 	"github.com/sonquer/tui4db/src/cli/internal/config"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
@@ -121,7 +120,7 @@ type Model struct {
 // The screen owns consent because the screen is what can put the question in
 // front of somebody, so the assistant is handed a way to ask rather than
 // arriving with one.
-type Talk func(consent agent.Consent) (conversation, error)
+type Talk func(allowed permission) (conversation, error)
 
 // WithAssistant gives the model something to have a conversation with. What is
 // kept is the way to build one rather than one already built: opening a local
@@ -414,6 +413,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.warmed(msg)
 	case readyMsg:
 		return m.ready(msg)
+	case crashedMsg:
+		return m.crashed(msg)
+	case releaseMsg:
+		return m.released()
 	case anywayMsg:
 		return m.anyway(msg)
 	case forgetMsg:
@@ -421,6 +424,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case quitMsg:
 		m.quitting = true
 		return m, tea.Quit
+	case tea.MouseWheelMsg:
+		return m.wheeled(msg)
 	case tea.KeyPressMsg:
 		return m.key(msg)
 	}
@@ -704,19 +709,21 @@ func (m Model) show(target view) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) scroll(msg tea.KeyPressMsg) Model {
-	step := 0
 	switch {
 	case key.Matches(msg, m.keys.Up):
-		step = -1
+		return m.scrolled(-1)
 	case key.Matches(msg, m.keys.Down):
-		step = 1
+		return m.scrolled(1)
 	case msg.String() == "pgup":
-		step = -ui.BodyHeight(m.height)
+		return m.scrolled(-ui.BodyHeight(m.height))
 	case msg.String() == "pgdown":
-		step = ui.BodyHeight(m.height)
-	default:
-		return m
+		return m.scrolled(ui.BodyHeight(m.height))
 	}
+	return m
+}
+
+// scrolled walks the body by a number of rows, however it was asked to.
+func (m Model) scrolled(step int) Model {
 	m.offset += step
 	if m.offset < 0 {
 		m.offset = 0
@@ -726,6 +733,29 @@ func (m Model) scroll(msg tea.KeyPressMsg) Model {
 	}
 	return m
 }
+
+// wheeled is the mouse doing what the keys already do. A terminal program that
+// ignores the wheel is a terminal program people scroll with their hand off the
+// keyboard and nothing happens, which reads as a program that has frozen.
+func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	step := wheelRows
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		step = -wheelRows
+	case tea.MouseWheelDown:
+	default:
+		return m, nil
+	}
+	if m.view == viewAsk && m.chooser == nil && m.modal == nil && m.page == nil {
+		return m.rolled4Ask(step), nil
+	}
+	return m.scrolled(step), nil
+}
+
+// wheelRows is how far one notch of a wheel goes. Three is what a terminal
+// sends a line-scrolling program, and what every other program in a terminal
+// moves by.
+const wheelRows = 3
 
 func (m Model) openPalette() (tea.Model, tea.Cmd) {
 	opened := newPalette(m.theme, m.keys)
@@ -911,6 +941,7 @@ func (m Model) Verdict() sqlguard.Result {
 func (m Model) View() tea.View {
 	var v tea.View
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	v.BackgroundColor = m.theme.P.Bg
 	v.ForegroundColor = m.theme.P.Fg
 	v.WindowTitle = "tui4db, " + m.session.Connection.Name

@@ -251,3 +251,42 @@ func TestTextThatOnlyLooksLikeAMarkerIsKept(t *testing.T) {
 		t.Fatal("ordinary text ended the turn")
 	}
 }
+
+// TestWhatIsHeldBehindACallIsCutToo is the leak that survived the first fix:
+// from the moment a tool call starts nothing is shown until the turn is over,
+// and that held text went out whole — the call, the model's own end of turn
+// marker, and the conversation it imagined having next.
+func TestWhatIsHeldBehindACallIsCutToo(t *testing.T) {
+	var r reader
+	text, calls := "", 0
+	for _, chunk := range r.add("I will look.") {
+		text += chunk.Text
+	}
+	r.add(`<|tool_call>call:list_schemas{}<tool_call|>` + "\n<end_of_turn>\n" +
+		"<start_of_turn>model\nThe database has four tables.<end_of_turn>")
+
+	chunks, err := r.done(ai.StopEndTurn)
+	if err != nil {
+		t.Fatalf("done() error = %v", err)
+	}
+	for _, chunk := range chunks {
+		text += chunk.Text
+		if chunk.Kind == ai.ChunkToolStart {
+			calls++
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want the one the model actually made", calls)
+	}
+	for _, gone := range []string{"end_of_turn", "start_of_turn", "four tables"} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("text holds %q:\n%s", gone, text)
+		}
+	}
+	if !strings.Contains(text, "I will look.") {
+		t.Fatalf("text = %q, want what the model said before the call", text)
+	}
+	if !r.Ended() {
+		t.Fatal("the turn is not marked as over")
+	}
+}

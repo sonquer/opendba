@@ -27,6 +27,10 @@ type Assistant struct {
 	Settings config.AISettings
 	Trouble  string
 
+	// Log is where the inference library writes what it is doing, which is the
+	// only account of itself it leaves when it ends the process.
+	Log string
+
 	// Token is the resolved Hugging Face token, for the repositories that want
 	// one. It is resolved here so that nothing above ever handles the reference
 	// and mistakes it for the secret.
@@ -43,6 +47,7 @@ func NewAssistant(ctx context.Context, paths config.Paths, settings config.Setti
 		Library:  local.NewLibrary(paths.LibDir()),
 		Models:   models,
 		Settings: settings.AI,
+		Log:      paths.EngineLog(),
 	}
 	if settings.AI.Token != "" && secrets != nil {
 		if reference, err := secretref.Parse(settings.AI.Token); err == nil {
@@ -72,7 +77,7 @@ func (a Assistant) Open() (ai.Client, error) {
 	}
 	return a.Registry.Open(a.Instance, ai.Deps{
 		HTTP:   &http.Client{Timeout: replyTimeout},
-		Engine: llama.New(a.Library.Dir()),
+		Engine: llama.New(a.Library.Dir()).LogTo(a.Log),
 	})
 }
 
@@ -87,7 +92,7 @@ func (a Assistant) Memory() int64 {
 		return 0
 	}
 	largest := int64(0)
-	for _, device := range llama.New(a.Library.Dir()).Devices() {
+	for _, device := range llama.New(a.Library.Dir()).LogTo(a.Log).Devices() {
 		if device.TotalBytes > largest {
 			largest = device.TotalBytes
 		}

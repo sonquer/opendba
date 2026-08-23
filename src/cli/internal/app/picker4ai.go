@@ -150,7 +150,7 @@ func (m Model) models4Offer() []offer {
 func mark4Model(here, answering bool) string {
 	switch {
 	case answering:
-		return "●"
+		return "▌"
 	case here:
 		return "✓"
 	default:
@@ -489,8 +489,8 @@ func (o offer) grey() bool { return o.deed == useModel && !o.here && !o.verdict.
 
 func (m Model) mark4Chooser(item offer) string {
 	switch item.mark {
-	case "●":
-		return m.theme.Accent.Render("● ")
+	case "▌":
+		return m.theme.Accent.Render("▌ ")
 	case "✓":
 		return m.theme.Severity(ui.SevOK).Render("✓ ")
 	default:
@@ -502,10 +502,26 @@ func (m Model) mark4Chooser(item offer) string {
 // that does nothing on eleven rows out of twelve is a key nobody trusts.
 func (m Model) chooser4Foot() string {
 	hints := []ui.Hint{{Key: "enter", Does: "use"}}
-	if chosen, ok := m.chooser.selected(); ok && chosen.deed == useModel && chosen.here {
-		hints = append(hints, ui.Hint{Key: "d", Does: "remove"})
+	if chosen, ok := m.chooser.selected(); ok && chosen.deed == useModel {
+		if m.talk.loaded && chosen.current {
+			hints = append(hints, ui.Hint{Key: "r", Does: "release"})
+		}
+		if chosen.here {
+			hints = append(hints, ui.Hint{Key: "d", Does: "remove"})
+		}
 	}
 	return m.theme.Hints(append(hints, ui.Hint{Key: "esc", Does: "close"})...)
+}
+
+// let4Go gives back the memory the model under the cursor is loaded into. It is
+// here rather than on the conversation screen because there is no letter to
+// spare there: every one of them is something to type into the box.
+func (m Model) let4Go() (tea.Model, tea.Cmd) {
+	chosen, ok := m.chooser.selected()
+	if !ok || chosen.deed != useModel || !chosen.current || !m.talk.loaded {
+		return m, nil
+	}
+	return m.released()
 }
 
 // chooserKey is what the modal does with a key.
@@ -530,6 +546,8 @@ func (m Model) chooserKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.chose4Chooser()
 	case key.Matches(msg, m.keys.Remove) && !m.chooser.typing():
 		return m.forget4Chooser()
+	case key.Matches(msg, m.keys.Release) && !m.chooser.typing():
+		return m.let4Go()
 	}
 	updated, cmd := m.chooser.filter.Update(msg)
 	m.chooser.filter = updated

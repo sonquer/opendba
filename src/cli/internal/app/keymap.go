@@ -66,7 +66,7 @@ func newKeymap() keymap {
 		Query:       binding("query", "e"),
 		Ask:         binding("ask", "a"),
 		Switch:      binding("change what answers", "ctrl+o"),
-		Release:     binding("release the model", "u"),
+		Release:     binding("release the model", "r"),
 		Thinking:    binding("thinking", "ctrl+t"),
 		Page:        binding("scroll", "pgup", "pgdown"),
 		Schema:      binding("tables", "s"),

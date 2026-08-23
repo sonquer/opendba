@@ -50,6 +50,26 @@ type Set struct {
 	mode     sqlguard.Mode
 	rowLimit int
 	caps     driver.Capabilities
+	approve  Approve
+}
+
+// Approve is asked before a statement the assistant wrote is run. Returning an
+// error stops it, and what the error says is what the model is told.
+//
+// It is optional because not every caller has somebody to ask: the command line
+// runs tools with nobody watching, and a screen has a person in front of it.
+type Approve func(ctx context.Context, statement string) error
+
+// WithApproval puts a person between the statement and the database.
+//
+// The classifier is not what this replaces. A statement is refused by the guard
+// before anybody is asked about it, so what reaches the question is already a
+// read; the question is whether to read that, now, on this connection. It is
+// also what makes a model that writes its own SQL a reasonable thing to have:
+// whatever it thought of, somebody sees it before it runs.
+func (s *Set) WithApproval(approve Approve) *Set {
+	s.approve = approve
+	return s
 }
 
 // New binds the tools to a connection.
@@ -313,6 +333,11 @@ func write(out *strings.Builder, node driver.PlanNode, depth int) {
 func (s *Set) runSelect(ctx context.Context, statement string, limit int) (string, error) {
 	if err := s.allowed(statement); err != nil {
 		return "", err
+	}
+	if s.approve != nil {
+		if err := s.approve(ctx, statement); err != nil {
+			return "", err
+		}
 	}
 	if limit <= 0 || limit > s.rowLimit {
 		limit = s.rowLimit

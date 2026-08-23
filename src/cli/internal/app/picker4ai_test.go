@@ -589,7 +589,7 @@ func TestAModelThatIsHereIsMarked(t *testing.T) {
 	if marks[entry.ID] != "✓" {
 		t.Fatalf("a model that is downloaded is marked %q", marks[entry.ID])
 	}
-	if marks["gemma-4-e4b-qat"] != "●" {
+	if marks["gemma-4-e4b-qat"] != "▌" {
 		t.Fatalf("the model that is answering is marked %q", marks["gemma-4-e4b-qat"])
 	}
 	if marks["gpt-oss-120b"] != "" {
@@ -861,7 +861,7 @@ func TestTheListDrawsItsMarks(t *testing.T) {
 	m.chooser.offers = m.offers()
 	m.chooser.cursor = 0
 	view := drawn(t, m)
-	if !strings.Contains(view, "● Gemma 4 E4B") {
+	if !strings.Contains(view, "▌ Gemma 4 E4B") {
 		t.Fatalf("the model that answers is not marked:\n%s", view)
 	}
 	if !strings.Contains(view, "✓ Gemma 4 E2B") {
@@ -931,5 +931,98 @@ func TestAnInstanceThatCannotBeWrittenIsReported(t *testing.T) {
 	}
 	if after.chooser == nil {
 		t.Fatal("the modal closed on a failure nobody would have read")
+	}
+}
+
+// TestChoosingAModelThatIsAlreadyHereDoesNotFetchIt is the shortest path
+// through the modal, and the one somebody takes every time they switch back to
+// a model they already downloaded.
+func TestChoosingAModelThatIsAlreadyHereDoesNotFetchIt(t *testing.T) {
+	m := opened4Chooser(t)
+	entry := install4Model(t, m, "gemma-4-e4b-qat")
+	m.chooser.offers = m.offers()
+	m.chooser = m.chooser.at(entry.ID)
+	chosen, _ := press(t, m, "enter")
+	if chosen.ai.busy != "" {
+		t.Fatalf("busy = %q, want nothing fetched for weights that are here", chosen.ai.busy)
+	}
+	if chosen.pending != "" {
+		t.Fatalf("pending = %q", chosen.pending)
+	}
+	if chosen.talk.instance != "here" {
+		t.Fatalf("the conversation names %q", chosen.talk.instance)
+	}
+}
+
+// TestThePictureOnlyDrawsWhatWasMeasured keeps the dialog honest: the memory a
+// model needs is known only once the inference library has been asked, and a
+// bar drawn against a nought would say the machine has none.
+func TestThePictureOnlyDrawsWhatWasMeasured(t *testing.T) {
+	m := opened4Chooser(t)
+	m.ai.memory = 0
+	drawn := plain(m.cost4Model(offer{model: local.Entry{Bytes: 1 << 30}}))
+	if strings.Contains(drawn, "memory") {
+		t.Fatalf("cost4Model() = %q, want nothing said about memory nobody measured", drawn)
+	}
+	if !strings.Contains(drawn, "disk") {
+		t.Fatalf("cost4Model() = %q, want the disk, which is always known", drawn)
+	}
+	m.ai.memory = 8 << 30
+	if !strings.Contains(plain(m.cost4Model(offer{model: local.Entry{Bytes: 1 << 30}})), "memory") {
+		t.Fatal("the memory reading is not drawn once it is known")
+	}
+}
+
+func TestAKeyIsNotAskedForWhereThereIsNoneToGive(t *testing.T) {
+	m := opened4Chooser(t)
+	m.chooser.offers = m.offers()
+	m.chooser = m.chooser.at("ollama:add")
+	chosen, _ := press(t, m, "enter")
+	if chosen.chooser != nil && chosen.chooser.asking {
+		t.Fatal("a daemon that takes no key was asked for one")
+	}
+}
+
+// TestReleasingIsOfferedWhereThereIsSomethingToRelease keeps the key off the
+// conversation screen, where every letter is a letter somebody is typing.
+func TestReleasingIsOfferedWhereThereIsSomethingToRelease(t *testing.T) {
+	talk := &scripted{}
+	m := opened4Chooser(t)
+	install4Model(t, m, "gemma-4-e4b-qat")
+	m.session.Settings.AI.Active = "here"
+	m.talk.instance, m.talk.loaded, m.assistant = "here", true, talk
+	m.chooser.offers = m.offers()
+	m.chooser = m.chooser.at("gemma-4-e4b-qat")
+	if !strings.Contains(plain(m.chooser4Foot()), "release") {
+		t.Fatalf("the footer does not offer to let go of the model in use: %q", plain(m.chooser4Foot()))
+	}
+	released, _ := press(t, m, "r")
+	if !talk.closed || released.talk.loaded {
+		t.Fatal("r did not let go of the model")
+	}
+
+	m.chooser = m.chooser.at("gemma-4-e2b-qat")
+	if strings.Contains(plain(m.chooser4Foot()), "release") {
+		t.Fatalf("the footer offers to let go of a model nobody loaded: %q", plain(m.chooser4Foot()))
+	}
+	quiet, _ := press(t, m, "r")
+	if quiet.assistant == nil {
+		t.Fatal("r on another row let go of the model in use")
+	}
+}
+
+// TestALetterIsALetterWhileFiltering is the rule the whole modal follows: once
+// somebody is typing, a letter is a letter.
+func TestALetterIsALetterWhileFiltering(t *testing.T) {
+	talk := &scripted{}
+	m := opened4Chooser(t)
+	m.talk.loaded, m.assistant = true, talk
+	m = typeInto(t, m, "gemma")
+	typed, _ := press(t, m, "r")
+	if talk.closed {
+		t.Fatal("a letter typed into the filter let go of the model")
+	}
+	if typed.chooser.filter.Value() != "gemmar" {
+		t.Fatalf("filter = %q, want the letter typed", typed.chooser.filter.Value())
 	}
 }

@@ -30,6 +30,17 @@ func (p Paths) ModelsDir() string { return filepath.Join(p.Data, "models") }
 // LibDir is where the inference library is unpacked.
 func (p Paths) LibDir() string { return filepath.Join(p.Data, "lib") }
 
+// EngineLog is where the inference library's own account of what it is doing is
+// written. It is in the state directory because it is worth nothing after the
+// run it belongs to, except in the minutes after that run ended badly.
+func (p Paths) EngineLog() string { return filepath.Join(p.State, "engine.log") }
+
+// CrashFile is where an account of a failure that ended the program is written,
+// named for when it happened so that one does not overwrite the last.
+func (p Paths) CrashFile(stamp string) string {
+	return filepath.Join(p.State, "crash-"+stamp+".log")
+}
+
 type Environment func(string) string
 
 func DefaultPaths() (Paths, error) { return PathsFor(os.Getenv) }

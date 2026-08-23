@@ -24,12 +24,21 @@ const (
 // resolved and opened once, and every model afterwards is loaded through it.
 type Engine struct {
 	directory string
+	log       string
 	once      sync.Once
 	err       error
 }
 
 // New returns an engine that opens its library from a directory.
 func New(directory string) *Engine { return &Engine{directory: directory} }
+
+// LogTo is where llama.cpp's own account of what it is doing is written. It is
+// worth having because of how this library fails: it ends the process where it
+// stands, and what it wrote a moment earlier is the only evidence left.
+func (e *Engine) LogTo(path string) *Engine {
+	e.log = path
+	return e
+}
 
 // Ready opens the library and starts the backend, once. Calling it again
 // returns whatever the first call decided.
@@ -39,7 +48,11 @@ func (e *Engine) Ready() error {
 			e.err = fmt.Errorf("open the inference library in %s: %w: %w", e.directory, local.ErrNoLibrary, err)
 			return
 		}
-		llama.LogSet(llama.LogSilent())
+		if e.log != "" {
+			logTo(e.log)
+		} else {
+			llama.LogSet(llama.LogSilent())
+		}
 		llama.Init()
 	})
 	return e.err
@@ -116,6 +129,8 @@ func (e *Engine) Open(_ context.Context, path string, opts ai.EngineOptions) (ai
 		sampler:   sampler(model, vocab, opts),
 		template:  chatTemplate(model, opts.Template),
 		maxTokens: opts.MaxTokens,
+		window:    opts.Context,
+		dialect:   opts.Template,
 	}
 	return built, nil
 }
@@ -196,12 +211,22 @@ type session struct {
 	sampler   llama.Sampler
 	template  string
 	maxTokens int
+
+	// dialect is the shape this model writes a tool call in, which is also the
+	// shape it is shown its own past calls and the answers to them in.
+	dialect string
+
+	// window is how many tokens the context holds. It is kept because the
+	// library does not stop at the end of it politely: a decode with nowhere
+	// left to put the token ends the process, taking the program with it, so
+	// the end has to be seen coming from here.
+	window int
 }
 
 // Template lays the conversation out the way the model was trained to read it,
 // using the template carried in the model file rather than one of ours.
 func (s *session) Template(messages []ai.Message, system string, tools []ai.Tool) (string, error) {
-	turns, err := local.Conversation(messages, system, tools)
+	turns, err := local.Conversation(messages, system, tools, s.dialect)
 	if err != nil {
 		return "", err
 	}
@@ -239,16 +264,20 @@ func (s *session) Generate(ctx context.Context, prompt string, out chan<- ai.Tok
 	if len(tokens) == 0 {
 		return fmt.Errorf("the prompt produced no tokens")
 	}
-	batch := llama.BatchGetOne(tokens)
+	room := s.window - len(tokens)
+	if room < minRoom {
+		return &ai.Error{Reason: ai.ReasonContextOverflow, Message: fmt.Sprintf(
+			"the conversation is %d tokens and the window holds %d", len(tokens), s.window)}
+	}
+	if err := s.feed(ctx, tokens); err != nil {
+		return err
+	}
 	var text local.Pieces
 	stop := ai.StopMaxTokens
 
-	for produced := 0; produced < s.maxTokens; produced++ {
+	for produced := 0; produced < min(s.maxTokens, room-1); produced++ {
 		if err := ctx.Err(); err != nil {
 			return err
-		}
-		if _, err := llama.Decode(s.context, batch); err != nil {
-			return fmt.Errorf("decode: %w", err)
 		}
 		token := llama.SamplerSample(s.sampler, s.context, -1)
 		if llama.VocabIsEOG(s.vocab, token) {
@@ -258,13 +287,43 @@ func (s *session) Generate(ctx context.Context, prompt string, out chan<- ai.Tok
 		if err := emit(ctx, out, text.Add(piece(s.vocab, token))); err != nil {
 			return err
 		}
-		batch = llama.BatchGetOne([]llama.Token{token})
+		if _, err := llama.Decode(s.context, llama.BatchGetOne([]llama.Token{token})); err != nil {
+			return fmt.Errorf("decode: %w", err)
+		}
 	}
 	if err := emit(ctx, out, text.Flush()); err != nil {
 		return err
 	}
 	return emitToken(ctx, out, ai.Token{Done: true, Stop: stop})
 }
+
+// feed reads the prompt into the context a chunk at a time.
+//
+// A batch has a size the library was built with, and handing it a prompt longer
+// than that is not a slow path but an assertion inside the library, which ends
+// the process rather than returning an error anybody can show. A schema put in
+// front of a model is easily longer than it.
+func (s *session) feed(ctx context.Context, tokens []llama.Token) error {
+	for at := 0; at < len(tokens); at += promptChunk {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if _, err := llama.Decode(s.context, llama.BatchGetOne(tokens[at:min(at+promptChunk, len(tokens))])); err != nil {
+			return fmt.Errorf("decode: %w", err)
+		}
+	}
+	return nil
+}
+
+const (
+	// promptChunk is how much of a prompt is read in at once, chosen to sit
+	// under the smallest batch a build of the library is made with.
+	promptChunk = 256
+
+	// minRoom is how many tokens have to be left over for an answer to be
+	// worth starting.
+	minRoom = 32
+)
 
 func piece(vocab llama.Vocab, token llama.Token) []byte {
 	buf := make([]byte, pieceBuffer)

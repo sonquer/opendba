@@ -56,6 +56,10 @@ type App struct {
 }
 
 type Session struct {
+	// Version is which build of this program is running, for the account of
+	// itself it leaves behind when it fails.
+	Version string
+
 	AI           Assistant
 	Warning      string
 	Capabilities driver.Capabilities
@@ -301,6 +305,7 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		return Session{}, nil, err
 	}
 	session := Session{
+		Version:      a.Version,
 		AI:           NewAssistant(ctx, a.Store.Paths, settings, a.Secrets),
 		Capabilities: target.Capabilities(),
 		Connection:   connection,

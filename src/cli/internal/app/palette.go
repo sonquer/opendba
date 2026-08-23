@@ -54,6 +54,7 @@ func newPalette(theme *ui.Theme, keys keymap) palette {
 			{title: "connections", hint: keys.Connections.Help().Key, msg: gotoMsg{view: viewSwitch}},
 			{title: "new connection", hint: keys.New.Help().Key, msg: newConnectionMsg{}},
 			{title: "ai settings", hint: "instances and models", msg: gotoMsg{view: viewAI}},
+			{title: "release the model", hint: "gives back the memory it holds", msg: releaseMsg{}},
 			{title: "keys and safety", hint: keys.Help.Help().Key, msg: gotoMsg{view: viewHelp}},
 			{title: "quit", hint: keys.Quit.Help().Key, msg: quitMsg{}},
 		},

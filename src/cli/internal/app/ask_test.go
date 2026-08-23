@@ -3,15 +3,18 @@ package app
 import (
 	"context"
 	"errors"
+	"image/color"
 	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/ai"
 	"github.com/sonquer/tui4db/src/cli/internal/ai/agent"
 	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local"
+	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
 // scripted is a conversation that answers from a list rather than from a model.
@@ -20,9 +23,17 @@ type scripted struct {
 	err     error
 	asked   []string
 	consent agent.Consent
+	allowed permission
 	gated   bool
-	class   agent.Class
-	held    chan struct{}
+
+	// statement is a query the conversation puts up for approval before it
+	// runs, the way the tools do.
+	statement string
+	ran       bool
+	refused   error
+
+	class agent.Class
+	held  chan struct{}
 
 	// warming and closed are the two things a model that runs here does around
 	// a conversation: it is read into memory before the first question, and let
@@ -54,6 +65,13 @@ func (s *scripted) Close() error {
 
 func (s *scripted) Ask(ctx context.Context, question string, out chan<- agent.Event) error {
 	s.asked = append(s.asked, question)
+	if s.statement != "" {
+		if err := s.allowed.Statement(ctx, s.statement); err != nil {
+			s.refused = err
+			return nil
+		}
+		s.ran = true
+	}
 	if s.gated {
 		err := s.consent.Allow(ctx, agent.Outbound{
 			Instance: "claude", Model: "claude-sonnet-5",
@@ -82,8 +100,8 @@ func (s *scripted) Ask(ctx context.Context, question string, out chan<- agent.Ev
 
 func talking(t *testing.T, talk *scripted) Model {
 	t.Helper()
-	m := loaded(t, healthy()).WithAssistant("claude", func(consent agent.Consent) (conversation, error) {
-		talk.consent = consent
+	m := loaded(t, healthy()).WithAssistant("claude", func(consent permission) (conversation, error) {
+		talk.consent, talk.allowed = consent, consent
 		return talk, nil
 	})
 	opened, _ := m.show(viewAsk)
@@ -475,8 +493,8 @@ func TestAskInThePalette(t *testing.T) {
 
 func TestAskAboutAReadingOnTheDashboard(t *testing.T) {
 	talk := &scripted{}
-	m := loaded(t, healthy()).WithAssistant("claude", func(consent agent.Consent) (conversation, error) {
-		talk.consent = consent
+	m := loaded(t, healthy()).WithAssistant("claude", func(consent permission) (conversation, error) {
+		talk.consent, talk.allowed = consent, consent
 		return talk, nil
 	})
 	opened, _ := press(t, m, "enter")
@@ -531,7 +549,7 @@ func TestASubjectCarriesTheStatement(t *testing.T) {
 
 func TestAskReportsAnAssistantItCannotOpen(t *testing.T) {
 	broken := errors.New("the local model is not downloaded")
-	m := loaded(t, healthy()).WithAssistant("here", func(agent.Consent) (conversation, error) {
+	m := loaded(t, healthy()).WithAssistant("here", func(permission) (conversation, error) {
 		return nil, broken
 	})
 	opened, _ := m.show(viewAsk)
@@ -548,7 +566,7 @@ func TestAskReportsAnAssistantItCannotOpen(t *testing.T) {
 
 func TestTheAssistantIsNotOpenedUntilItIsNeeded(t *testing.T) {
 	opened := 0
-	m := loaded(t, healthy()).WithAssistant("here", func(agent.Consent) (conversation, error) {
+	m := loaded(t, healthy()).WithAssistant("here", func(permission) (conversation, error) {
 		opened++
 		return &scripted{events: []agent.Event{{Kind: agent.EventDone, Stop: ai.StopEndTurn}}}, nil
 	})
@@ -782,7 +800,7 @@ func local4Talking(t *testing.T, talk *scripted) (Model, tea.Cmd) {
 	m.width, m.height = 100, 32
 	m.view = viewAsk
 	m.talk.instance = "here"
-	m.build = func(consent agent.Consent) (conversation, error) {
+	m.build = func(consent permission) (conversation, error) {
 		talk.consent = consent
 		return talk, nil
 	}
@@ -816,10 +834,35 @@ func TestTheBoxIsShutWhileAModelLoads(t *testing.T) {
 	if typed.talk.prompt.Value() != "" {
 		t.Fatalf("the box took %q while the model was being read", typed.talk.prompt.Value())
 	}
+	if loading.typed(80) == loading.talk.prompt.View() {
+		t.Fatal("the box looks ready while the keys do nothing")
+	}
+	if !strings.Contains(plain(loading.typed(80)), "ask about this database") {
+		t.Fatalf("the box lost what it says: %q", plain(loading.typed(80)))
+	}
+	if strings.Contains(loading.boxed("x", 20), plain4Accent(loading)) {
+		t.Fatal("the border is still lit while nothing can be typed")
+	}
 	close(held)
 	if _, ok := runFirst(t, cmd).(readyMsg); !ok {
 		t.Fatal("nothing was going to say the model had arrived")
 	}
+}
+
+// plain4Accent is the accent colour as it appears in a rendered line, which is
+// how a test tells a lit border from an unlit one.
+func plain4Accent(m Model) string { return sgr(m.theme.Accent.Render("|")) }
+
+// sgr is the colour out of a rendered run, without the letter that ends the
+// escape: a run that carries a background as well ends differently and is still
+// the same colour.
+func sgr(rendered string) string {
+	after, ok := strings.CutPrefix(rendered, "\x1b[")
+	if !ok {
+		return rendered
+	}
+	numbers, _, _ := strings.Cut(after, "m")
+	return numbers
 }
 
 func TestAModelThatHasLoadedHandsTheBoxBack(t *testing.T) {
@@ -839,8 +882,8 @@ func TestAModelThatHasLoadedHandsTheBoxBack(t *testing.T) {
 	if !ready.talk.prompt.Focused() {
 		t.Fatal("the box did not get the keys back")
 	}
-	if !strings.Contains(plain(ready.askBody()), "release") {
-		t.Fatalf("nothing offers to let go of it:\n%s", plain(ready.askBody()))
+	if !ready.talk.loaded {
+		t.Fatal("the screen does not know it is holding a model")
 	}
 }
 
@@ -851,7 +894,7 @@ func TestReleasingGivesTheMemoryBack(t *testing.T) {
 	talk := &scripted{}
 	loading, cmd := local4Talking(t, talk)
 	done, _ := loading.Update(runFirst(t, cmd))
-	released, notice := press(t, done.(Model), "u")
+	released, notice := done.(Model).released()
 	if !talk.closed {
 		t.Fatal("the model was dropped without being let go of")
 	}
@@ -912,7 +955,7 @@ func TestALoadThatFailedSaysSo(t *testing.T) {
 func TestSomethingSomewhereElseIsNotLoaded(t *testing.T) {
 	m := configured(t)
 	m.talk.instance = "claude"
-	m.build = func(agent.Consent) (conversation, error) { return &scripted{}, nil }
+	m.build = func(permission) (conversation, error) { return &scripted{}, nil }
 	loading, cmd := m.load4Talk()
 	if cmd != nil || loading.talk.loading {
 		t.Fatal("a back-end on somebody else's machine was read off this one")
@@ -1012,3 +1055,293 @@ func TestAModelThatWillNotLetGoSaysSo(t *testing.T) {
 type stubborn struct{ scripted }
 
 func (s *stubborn) Close() error { return errors.New("the memory is still mapped") }
+
+// TestTheBoxIsShutWhileAnAnswerArrives is the same closing as a model being
+// read in, for the same reason: what it is doing is said once, on the line
+// under the box, and the box itself is plainly not for typing into yet.
+func TestTheBoxIsShutWhileAnAnswerArrives(t *testing.T) {
+	held := make(chan struct{})
+	defer close(held)
+	talk := &scripted{held: held, events: []agent.Event{{Kind: agent.EventText, Text: "looking"}}}
+	m := talking(t, talk)
+	m.width, m.height = 100, 32
+	m = typeInto(t, m, "which is biggest")
+	busy, cmd := press(t, m, "enter")
+	if !busy.talk.busy {
+		t.Fatal("the screen does not think it is answering")
+	}
+	if cmd == nil {
+		t.Fatal("nothing was started")
+	}
+
+	body := plain(busy.askBody())
+	if !strings.Contains(body, "esc") || !strings.Contains(body, "cancel") {
+		t.Fatalf("nothing offers to stop it:\n%s", body)
+	}
+	if strings.Count(body, "thinking") > 1 {
+		t.Fatalf("it says what it is doing twice:\n%s", body)
+	}
+	if busy.typed(80) == busy.talk.prompt.View() {
+		t.Fatal("the box looks ready to type into while an answer is arriving")
+	}
+	typed, _ := press(t, busy, "x")
+	if typed.talk.prompt.Value() != "" {
+		t.Fatalf("the box took %q while an answer was arriving", typed.talk.prompt.Value())
+	}
+	stopped, _ := press(t, busy, "esc")
+	done := converse(t, stopped, cmd)
+	if done.talk.busy {
+		t.Fatal("esc did not stop the answer")
+	}
+	if !done.talk.exchanges[0].cancelled {
+		t.Fatalf("the turn is not marked as stopped: %+v", done.talk.exchanges[0])
+	}
+	if !done.talk.prompt.Focused() {
+		t.Fatal("the box did not get the keys back")
+	}
+}
+
+// TestScrollingAndThinkingStillWorkWhileBusy keeps the closing from going too
+// far: reading what has arrived so far is not typing.
+func TestScrollingAndThinkingStillWorkWhileBusy(t *testing.T) {
+	m := talking(t, &scripted{})
+	m.width, m.height = 100, 32
+	m.talk.busy = true
+	m.talk.exchanges = []exchange{{question: "q", reasoning: "a thought", answer: "an answer"}}
+	opened, _ := press(t, m, "ctrl+t")
+	if !opened.talk.thinking {
+		t.Fatal("the working cannot be opened while the model is still working")
+	}
+	m.offset = 5
+	if scrolled, _ := press(t, m, "pgup"); scrolled.offset == 5 {
+		t.Fatal("the conversation cannot be walked back while an answer arrives")
+	}
+}
+
+// TestTheConversationCanBeWalkedBack is what pgup is for, and what following
+// the end of an answer must not take away: an answer arriving while somebody is
+// reading further up must leave them where they are.
+func TestTheConversationCanBeWalkedBack(t *testing.T) {
+	m := talking(t, &scripted{})
+	m.width, m.height = 100, 24
+	for i := range 12 {
+		m.talk.exchanges = append(m.talk.exchanges, exchange{
+			question: "question " + string(rune('a'+i)),
+			answer:   strings.Repeat("a line of an answer\n", 4),
+			done:     true,
+		})
+	}
+	m = m.pinned()
+	if m.offset == 0 {
+		t.Fatal("a conversation twelve exchanges long fits on a screen of twenty four rows")
+	}
+	end := m.offset
+
+	up, _ := press(t, m, "pgup")
+	if up.offset >= end {
+		t.Fatalf("offset = %d, want it walked back from %d", up.offset, end)
+	}
+	if plain(up.askBody()) == plain(m.askBody()) {
+		t.Fatal("the screen did not move")
+	}
+
+	stayed := up.pinned()
+	if stayed.offset != up.offset {
+		t.Fatalf("offset = %d, want it left at %d while an answer arrived", stayed.offset, up.offset)
+	}
+
+	down, _ := press(t, up, "pgdown")
+	if down.offset <= up.offset {
+		t.Fatal("pgdown did not walk forward")
+	}
+	if followed := down.pinned(); followed.offset != down.offset {
+		t.Fatal("coming back to the end did not start following it again")
+	}
+}
+
+// TestWhoSaidWhatIsDrawnRatherThanLabelled is what tells the two sides of a
+// conversation apart at a glance.
+func TestWhoSaidWhatIsDrawnRatherThanLabelled(t *testing.T) {
+	m := talking(t, &scripted{})
+	m.width, m.height = 100, 32
+	m.talk.exchanges = []exchange{{question: "ile mam tabel?", answer: "four", done: true}}
+	drawn := m.exchangeView(m.talk.exchanges[0], 80, true)
+	asked := strings.Split(drawn, "\n")[0]
+	if !strings.Contains(plain(asked), "▌ ile mam tabel?") {
+		t.Fatalf("the question has no bar down its side: %q", plain(asked))
+	}
+	if !strings.Contains(asked, plain4Accent(m)) {
+		t.Fatalf("the bar is not the accent colour: %q", asked)
+	}
+	if !strings.Contains(asked, ground4Test(m.theme.P.Selection)) {
+		t.Fatalf("the question has no ground behind it: %q", asked)
+	}
+	if lipgloss.Width(asked) != 80 {
+		t.Fatalf("the question is %d wide in a screen of 80", lipgloss.Width(asked))
+	}
+	if strings.Contains(plain(drawn), "you") {
+		t.Fatalf("the question is labelled as well as drawn:\n%s", plain(drawn))
+	}
+}
+
+// ground4Test is a background as it appears in a rendered line.
+func ground4Test(ground color.Color) string {
+	return sgr(lipgloss.NewStyle().Background(ground).Render("|"))
+}
+
+// TestAStatementIsShownBeforeItRuns is what makes a model that writes its own
+// SQL a reasonable thing to have: whatever it thought of, somebody reads it
+// before the database does.
+func TestAStatementIsShownBeforeItRuns(t *testing.T) {
+	talk := &scripted{
+		statement: "SELECT count(*) FROM orders",
+		events:    []agent.Event{{Kind: agent.EventText, Text: "four"}, {Kind: agent.EventDone}},
+	}
+	m := talking(t, talk)
+	m.width, m.height = 100, 32
+	m = typeInto(t, m, "how many orders?")
+	asked, cmd := press(t, m, "enter")
+	waiting := converse4Approval(t, asked, cmd)
+
+	body := plain(waiting.askBody())
+	for _, want := range []string{"run this?", "SELECT count(*) FROM orders", "run it", "do not run it"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the question does not say %q:\n%s", want, body)
+		}
+	}
+	if talk.ran {
+		t.Fatal("the statement ran before anybody was asked")
+	}
+	allowed, cmd := press(t, waiting, "enter")
+	allowed = converse(t, allowed, cmd)
+	if !talk.ran {
+		t.Fatal("saying yes did not let the statement run")
+	}
+	if !strings.Contains(said(t, allowed), "four") {
+		t.Fatalf("body = %q, want the answer once the statement had run", said(t, allowed))
+	}
+}
+
+func TestAStatementCanBeRefused(t *testing.T) {
+	talk := &scripted{statement: "SELECT * FROM billing"}
+	m := talking(t, talk)
+	m.width, m.height = 100, 32
+	m = typeInto(t, m, "show me billing")
+	asked, cmd := press(t, m, "enter")
+	waiting := converse4Approval(t, asked, cmd)
+
+	refused, cmd := press(t, waiting, "esc")
+	refused = converse(t, refused, cmd)
+	if talk.ran {
+		t.Fatal("the statement ran after it was refused")
+	}
+	if talk.refused == nil {
+		t.Fatal("the assistant was not told the statement was refused")
+	}
+	if refused.talk.pending != nil {
+		t.Fatal("the question is still up")
+	}
+	if !refused.talk.prompt.Focused() {
+		t.Fatal("the box did not get the keys back")
+	}
+}
+
+// TestTheBoxIsAWholeBlock is what the box is made of: a bar down the side and a
+// ground behind every cell of it, including the rows the text field pads out
+// for itself, which it pads with nothing at all.
+func TestTheBoxIsAWholeBlock(t *testing.T) {
+	m := talking(t, &scripted{})
+	m.width, m.height = 100, 32
+	m.talk.prompt.SetWidth(ui.TextWidth(m.width) - 4)
+	block := strings.Split(m.foot(ui.FrameWidth(m.width)), "\n")
+	if len(block) != boxRows {
+		t.Fatalf("the box is %d rows, want %d", len(block), boxRows)
+	}
+	for at, line := range block {
+		if lipgloss.Width(line) != ui.FrameWidth(m.width) {
+			t.Fatalf("row %d is %d wide, want %d", at, lipgloss.Width(line), ui.FrameWidth(m.width))
+		}
+		if !strings.HasPrefix(plain(line), "┃") {
+			t.Fatalf("row %d has no bar down its side: %q", at, plain(line))
+		}
+		if strings.Count(line, ground4Test(m.theme.P.Empty)) == 0 {
+			t.Fatalf("row %d has nothing behind it: %q", at, line)
+		}
+	}
+	if !strings.Contains(block[1], plain4Accent(m)) {
+		t.Fatalf("the bar is not lit while the box has the keys: %q", block[1])
+	}
+	m.talk.busy = true
+	if strings.Contains(strings.Split(m.foot(ui.FrameWidth(m.width)), "\n")[1], plain4Accent(m)) {
+		t.Fatal("the bar is still lit while an answer is arriving")
+	}
+}
+
+// TestTheWheelWalksTheConversation is the mouse doing what pgup does. A
+// terminal program that ignores the wheel is one people scroll with nothing
+// happening, which reads as a program that has stopped.
+func TestTheWheelWalksTheConversation(t *testing.T) {
+	m := talking(t, &scripted{})
+	m.width, m.height = 100, 24
+	for i := range 12 {
+		m.talk.exchanges = append(m.talk.exchanges, exchange{
+			question: "question " + string(rune('a'+i)),
+			answer:   strings.Repeat("a line of an answer\n", 4),
+			done:     true,
+		})
+	}
+	m = m.pinned()
+	end := m.offset
+
+	up, _ := m.wheeled(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	rolled := up.(Model)
+	if rolled.offset != end-wheelRows {
+		t.Fatalf("offset = %d, want %d rows back from %d", rolled.offset, wheelRows, end)
+	}
+	down, _ := rolled.wheeled(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if down.(Model).offset != end {
+		t.Fatalf("offset = %d, want it back at %d", down.(Model).offset, end)
+	}
+	sideways, _ := rolled.wheeled(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
+	if sideways.(Model).offset != rolled.offset {
+		t.Fatal("a sideways wheel moved the conversation")
+	}
+}
+
+func TestTheWheelWalksEveryOtherScreenToo(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 100, 20
+	opened, _ := m.show(viewHelp)
+	help := opened.(Model)
+	down, _ := help.wheeled(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if down.(Model).offset != wheelRows {
+		t.Fatalf("offset = %d, want the help walked down", down.(Model).offset)
+	}
+}
+
+// TestTheAnswerDoesNotTouchTheBox is a gap of one row, which is the difference
+// between a conversation and a wall of text with a box wedged into it.
+func TestTheAnswerDoesNotTouchTheBox(t *testing.T) {
+	m := talking(t, &scripted{})
+	m.width, m.height = 100, 24
+	m.talk.exchanges = []exchange{{
+		question: "q",
+		answer:   strings.Repeat("a line of an answer\n", 40),
+		done:     true,
+	}}
+	m = m.pinned()
+	lines := strings.Split(plain(m.askBody()), "\n")
+	box := -1
+	for at, line := range lines {
+		if strings.HasPrefix(line, "┃") {
+			box = at
+			break
+		}
+	}
+	if box < 1 {
+		t.Fatalf("the box is not there:\n%s", plain(m.askBody()))
+	}
+	if strings.TrimSpace(lines[box-1]) != "" {
+		t.Fatalf("the answer runs into the box: %q", lines[box-1])
+	}
+}

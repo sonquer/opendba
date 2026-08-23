@@ -34,6 +34,12 @@ it in the keychain, writing only a reference to it. A key already in the
 environment is offered as it stands. `ctrl+o` opens the same list from inside a
 conversation.
 
+A statement the assistant writes is put on the screen before it runs, and runs
+when the person says so. It has already met the same classifier a typed
+statement meets, so the question is whether to read that rather than whether it
+is safe, and it is what lets the assistant answer anything it can write a query
+for.
+
 Before the first request of a turn that would leave this machine, the screen
 says what would be sent and waits. It says it by class — your question, the
 shape of the database, rows out of the tables — and asks again when a turn would

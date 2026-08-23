@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -484,14 +485,14 @@ func (m Model) warming() (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.ai.warmed = true
-	return m, func() tea.Msg {
+	return m, m.guard("unpacking the inference library", func() tea.Msg {
 		if !assistant.Library.Present() {
 			if err := assistant.Library.Install(context.Background(), nil); err != nil {
 				return warmedMsg{err: err}
 			}
 		}
 		return warmedMsg{memory: assistant.Memory()}
-	}
+	})
 }
 
 // warmed takes the library having arrived, or not. A failure is written down
@@ -519,8 +520,14 @@ func (m Model) started4AI(what job4AI, doing, subject string,
 	ctx, stop := context.WithCancel(context.Background())
 	progress := make(chan local.Progress)
 	failed := make(chan error, 1)
+	report := crash{paths: m.workspace.Setup().Store.Paths, version: m.session.Version}
 	go func() {
 		defer close(progress)
+		defer func() {
+			if cause := recover(); cause != nil {
+				failed <- fell(doing, cause, report.wrote(doing, cause, debug.Stack()))
+			}
+		}()
 		failed <- run(ctx, progress)
 	}()
 	m.ai.token++

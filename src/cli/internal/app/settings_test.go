@@ -422,7 +422,7 @@ func TestAssistantForBuildsAConversation(t *testing.T) {
 	session.AI.Enabled = true
 	session.AI.Instance = ai.Instance{Name: "here", Kind: ai.KindOllama, Model: "qwen3.5:9b"}
 
-	built, err := assistantFor(session)(nil)
+	built, err := assistantFor(session)(gate{asks: make(chan approval)})
 	if err != nil {
 		t.Fatalf("assistantFor() error = %v", err)
 	}

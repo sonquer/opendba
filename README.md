@@ -178,7 +178,6 @@ single shortcut. `ctrl+k` does the same and is the one to use while typing.
 | `a` | ask, and on any page: ask about what is on it |
 | `ctrl+o` | change what answers |
 | `ctrl+t` | show the working a model did before answering |
-| `u` | give back the memory a local model is loaded into |
 | `s` `i` | tables, indexes |
 | `r` | read everything again |
 | `ctrl+p` | connections |
@@ -404,6 +403,11 @@ $XDG_CONFIG_HOME/tui4db/      (or ~/.config/tui4db/)
 $XDG_DATA_HOME/tui4db/       (or ~/.local/share/tui4db/)
   models/                  weights, and a manifest saying what they are
   lib/                     llama.cpp, written out of this program
+
+$XDG_STATE_HOME/tui4db/      (or ~/.local/state/tui4db/)
+  history.db               statements you have run
+  engine.log               what llama.cpp said this run
+  crash-<when>.log         an account of a failure that ended the program
 ```
 
 Both files are refused if another user can read them, and the directory is

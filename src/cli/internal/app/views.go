@@ -3,6 +3,7 @@ package app
 import (
 	_ "embed"
 	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -367,8 +368,25 @@ func withAssistant(m Model, session cli.Session) Model {
 	return m.WithAssistant(session.AI.Instance.Name, assistantFor(session))
 }
 
-func launch(session cli.Session, workspace cli.Workspace, options ...tea.ProgramOption) error {
-	program := tea.NewProgram(withAssistant(NewModel(session, workspace), session), options...)
+// launch runs the interface and catches it falling over.
+//
+// The panic catching the library does restores the terminal and prints a stack
+// to a screen that has just been cleared, which is a stack nobody reads. This
+// does the same restoring and writes the account to a file instead, so that
+// what is left of a crash is a path rather than a memory of something scrolling
+// past.
+func launch(session cli.Session, workspace cli.Workspace, options ...tea.ProgramOption) (err error) {
+	program := tea.NewProgram(withAssistant(NewModel(session, workspace), session),
+		append(options, tea.WithoutCatchPanics())...)
+	report := crash{paths: workspace.Setup().Store.Paths, version: session.Version}
+	defer func() {
+		cause := recover()
+		if cause == nil {
+			return
+		}
+		program.Kill()
+		err = fell("drawing the screen", cause, report.wrote("drawing the screen", cause, debug.Stack()))
+	}()
 	final, err := program.Run()
 	if model, ok := final.(Model); ok {
 		model.release()

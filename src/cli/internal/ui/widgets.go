@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
+	"regexp"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -218,12 +220,22 @@ type Hint struct{ Key, Does string }
 // Hints is the row of keys a dialog offers, each on the same grey cap the
 // footer of every screen puts them on. A bare letter beside a word does not
 // read as something to press, and a dialog has no footer to learn that from.
-func (t *Theme) Hints(hints ...Hint) string {
+func (t *Theme) Hints(hints ...Hint) string { return t.HintsOn(nil, hints...) }
+
+// HintsOn is the same row on a ground of its own. A run of text ends with a
+// reset, and a reset ends whatever was painted behind it, so a background put
+// around a line of hints from the outside would show through only in the gaps.
+// Every part carries it instead.
+func (t *Theme) HintsOn(ground color.Color, hints ...Hint) string {
+	muted, subtle, cap := t.Muted, t.Subtle, t.KeycapStyle
+	if ground != nil {
+		muted, subtle = muted.Background(ground), subtle.Background(ground)
+	}
 	parts := make([]string, 0, len(hints))
 	for _, hint := range hints {
-		parts = append(parts, t.KeycapStyle.Render(Keystroke(hint.Key))+t.Muted.Render(" "+hint.Does))
+		parts = append(parts, cap.Render(Keystroke(hint.Key))+muted.Render(" "+hint.Does))
 	}
-	return strings.Join(parts, t.Subtle.Render(" · "))
+	return strings.Join(parts, subtle.Render(" · "))
 }
 
 func join(separator string, parts []string) string {
@@ -454,3 +466,57 @@ const (
 	// list of the room to be read.
 	maxFact = 20
 )
+
+// Fill paints a ground behind everything on a line that does not have one, and
+// pads the line out to a width.
+//
+// A rendered line is escapes and text, and every run of text ends with a reset.
+// A background wrapped around the whole line from the outside is therefore
+// visible until the first reset and no further, which is why a block with a
+// colour behind it cannot be made by putting a colour around it. The colour has
+// to be woven into every run that has none of its own.
+//
+// The runs that have one are left alone: a key on a grey cap keeps its cap, and
+// a cursor keeps whatever it is drawn as.
+func Fill(line string, width int, ground color.Color) string {
+	painted := strings.Builder{}
+	at := 0
+	for _, found := range sgrPattern.FindAllStringIndex(line, -1) {
+		painted.WriteString(onGround(line[at:found[0]], "", ground))
+		at = found[1]
+		params := line[found[0]+2 : found[1]-1]
+		next := sgrPattern.FindStringIndex(line[at:])
+		text := line[at:]
+		if next != nil {
+			text = line[at : at+next[0]]
+		}
+		painted.WriteString(onGround(text, params, ground))
+		at += len(text)
+	}
+	painted.WriteString(onGround(line[at:], "", ground))
+	if gap := width - lipgloss.Width(line); gap > 0 {
+		painted.WriteString(onGround(strings.Repeat(" ", gap), "", ground))
+	}
+	return painted.String()
+}
+
+// onGround writes one run with the ground behind it, keeping whatever the run
+// already said about itself and adding a background only where there is none.
+func onGround(text, params string, ground color.Color) string {
+	if text == "" {
+		return ""
+	}
+	if strings.Contains(params, "48;") || strings.Contains(params, "48:") {
+		return "\x1b[" + params + "m" + text
+	}
+	r, g, b, _ := ground.RGBA()
+	colour := fmt.Sprintf("48;2;%d;%d;%d", r>>8, g>>8, b>>8)
+	if params == "" || params == "0" {
+		return "\x1b[" + colour + "m" + text + "\x1b[m"
+	}
+	return "\x1b[" + params + ";" + colour + "m" + text + "\x1b[m"
+}
+
+// sgrPattern is a run of colour instructions, which is the only escape a
+// rendered line of this program holds.
+var sgrPattern = regexp.MustCompile("\x1b\\[[0-9;:]*m")

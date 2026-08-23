@@ -44,3 +44,11 @@ cover.out
 .env
 /.local/
 /.screens/
+
+# The inference library this program carries is committed on purpose. It is
+# what makes local models work without fetching anything at run time, and the
+# rules above for built objects would otherwise leave it out of the release and
+# out of every clone.
+!/src/cli/internal/ai/providers/local/embedded/**/*.dylib
+!/src/cli/internal/ai/providers/local/embedded/**/*.so
+!/src/cli/internal/ai/providers/local/embedded/**/*.dll

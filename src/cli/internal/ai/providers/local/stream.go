@@ -31,8 +31,17 @@ type reader struct {
 // Endings are the markers that mean the model has finished its turn, in every
 // form the families this program runs write them. Text from one on is not part
 // of the answer.
+//
+// The marker that opens a turn ends this one, which is not a contradiction. A
+// model that writes the beginning of a turn has finished its own and started
+// imagining the next: the question it thinks it will be asked, the tool result
+// it expects to get back, the answer it would then give. All of it is invented,
+// and one of them wrote a page of it.
 var Endings = []string{
 	"<end_of_turn>",
+	"<start_of_turn>",
+	"</start_of_turn>",
+	"<|start_of_turn>",
 	"<|im_end|>",
 	"<|eot_id|>",
 	"<|end_of_text|>",
@@ -46,6 +55,11 @@ var Endings = []string{
 func (r *reader) Ended() bool { return r.ending }
 
 // add takes the next piece of text and returns the chunks it produced.
+//
+// Whichever comes first decides: a call that begins before the end of the turn
+// is a call to make, and an end of turn before any call is the end of the
+// answer. Reading it the other way round turns a tool call into a sentence
+// printed to the person, tags and all.
 func (r *reader) add(text string) []ai.Chunk {
 	if text == "" || r.ending {
 		return nil
@@ -56,19 +70,20 @@ func (r *reader) add(text string) []ai.Chunk {
 	}
 	r.visible.WriteString(text)
 	pending := r.visible.String()
-	if at := earliest(pending, Endings); at >= 0 {
+	_, call := opening(pending)
+	ends := earliest(pending, Endings)
+	if call >= 0 && (ends < 0 || call < ends) {
+		r.calling = true
+		r.visible.Reset()
+		r.held.WriteString(pending[call:])
+		return r.show(pending[:call])
+	}
+	if ends >= 0 {
 		r.ending = true
 		r.visible.Reset()
-		return r.show(pending[:at])
+		return r.show(pending[:ends])
 	}
-	start := strings.Index(pending, CallOpen)
-	if start < 0 {
-		return r.show(r.release(pending))
-	}
-	r.calling = true
-	r.visible.Reset()
-	r.held.WriteString(pending[start:])
-	return r.show(pending[:start])
+	return r.show(r.release(pending))
 }
 
 // earliest is where the first of a set of markers begins, or -1 for none.
@@ -105,6 +120,23 @@ func (r *reader) show(text string) []ai.Chunk {
 	return append(chunks, ai.Chunk{Kind: ai.ChunkTextDelta, Text: text})
 }
 
+// finished is the held text with anything after the end of the turn taken off.
+//
+// The live text is cut as it arrives, but from the moment a tool call starts
+// nothing is shown until the turn is over, and that held text used to go out
+// whole: a call, then the model's own end of turn marker, then the question it
+// imagined being asked next and the answer it would have given. All of it
+// appeared on the screen at once, which is what the cutting was there to stop.
+func (r *reader) finished() string {
+	held := r.held.String()
+	at := earliest(held, Endings)
+	if at < 0 {
+		return held
+	}
+	r.ending = true
+	return held[:at]
+}
+
 // done closes the answer: whatever text was still held, then the calls the
 // model made, then the reason it stopped.
 func (r *reader) done(stop ai.StopReason) ([]ai.Chunk, error) {
@@ -119,7 +151,7 @@ func (r *reader) done(stop ai.StopReason) ([]ai.Chunk, error) {
 	if r.started {
 		chunks = append(chunks, ai.Chunk{Kind: ai.ChunkTextEnd})
 	}
-	calls, prose, err := ParseCalls(r.held.String())
+	calls, prose, err := ParseCalls(r.finished())
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +177,7 @@ func (r *reader) done(stop ai.StopReason) ([]ai.Chunk, error) {
 // enough of it to recognise.
 func partialTag(text string) int {
 	keep := 0
-	for _, marker := range append([]string{CallOpen}, Endings...) {
+	for _, marker := range append(Openers(), Endings...) {
 		longest := min(len(text), len(marker)-1)
 		for length := longest; length > keep; length-- {
 			if strings.HasPrefix(marker, text[len(text)-length:]) {

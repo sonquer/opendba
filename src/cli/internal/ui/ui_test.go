@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -453,4 +454,64 @@ func TestTrackIsTheAccentColour(t *testing.T) {
 func colour4Test(c color.Color) string {
 	r, g, b, _ := c.RGBA()
 	return fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)
+}
+
+// TestFillPaintsWhatNothingElsePainted is what a block of colour behind text is
+// made of. A background put around a rendered line reaches as far as the first
+// reset, and every run of styled text ends with one, so a line of a dozen runs
+// shows the colour in the gaps between them and nowhere else.
+func TestFillPaintsWhatNothingElsePainted(t *testing.T) {
+	theme := Default()
+	ground := theme.P.Empty
+	line := theme.Accent.Render("local") + " · " + theme.KeycapStyle.Render("esc")
+	filled := Fill(line, 40, ground)
+
+	if plain(filled) != plain(line)+strings.Repeat(" ", 40-lipgloss.Width(line)) {
+		t.Fatalf("Fill() changed the text: %q", plain(filled))
+	}
+	if lipgloss.Width(filled) != 40 {
+		t.Fatalf("Fill() is %d wide, want 40", lipgloss.Width(filled))
+	}
+	for at, cell := range background4Test(filled) {
+		if cell == "" {
+			t.Fatalf("cell %d of %q has nothing behind it", at, plain(filled))
+		}
+	}
+	keycap := background4Test(theme.KeycapStyle.Render("esc"))[1]
+	if !strings.Contains(strings.Join(background4Test(filled), " "), keycap) {
+		t.Fatalf("Fill() painted over a run that had a ground of its own: %q", filled)
+	}
+}
+
+func TestFillLeavesNothingToDoWithNothing(t *testing.T) {
+	if got := plain(Fill("", 4, Default().P.Empty)); got != "    " {
+		t.Fatalf("Fill() = %q, want a run of ground", got)
+	}
+	if got := plain(Fill("wider than it is told", 4, Default().P.Empty)); got != "wider than it is told" {
+		t.Fatalf("Fill() = %q, want the line left whole", got)
+	}
+}
+
+// background4Test is the background of every cell of a rendered line, as the
+// terminal would paint it.
+func background4Test(line string) []string {
+	active := ""
+	cells := []string{}
+	for at := 0; at < len(line); {
+		if found := sgrPattern.FindStringIndex(line[at:]); found != nil && found[0] == 0 {
+			params := line[at+2 : at+found[1]-1]
+			switch {
+			case params == "" || params == "0":
+				active = ""
+			case strings.Contains(params, "48;"):
+				active = params[strings.Index(params, "48;"):]
+			}
+			at += found[1]
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(line[at:])
+		cells = append(cells, active)
+		at += size
+	}
+	return cells
 }

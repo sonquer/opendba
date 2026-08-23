@@ -33,6 +33,11 @@ asks first.
 Before anything goes to a machine that is not this one, the screen says what
 would be sent and waits for you. A model running here sends nothing anywhere.
 
+A statement the assistant writes is shown to you before it runs, and runs only
+when you say so. It has already been through the same classifier your own
+statements meet, so what you are being asked is whether to read that, now — and
+it is what lets the assistant answer anything it can write a query for.
+
 `ctrl+o` opens the list of everything that could answer: the models that run on
 this machine, and the providers that need a key. Choosing a model downloads it
 and starts using it; choosing a provider asks for a key and keeps it in your
@@ -40,13 +45,19 @@ keychain. The first time you press `a` with nothing set up, that list opens by
 itself. While a model is arriving the list gives way to the download, and
 leaving asks before it gives up on it; what has arrived is kept either way.
 
-What is answering is written under the box you type in. `pgup` and `pgdown` walk
-back through a long conversation, and `ctrl+t` opens out the working a model
+What is answering is written under the box you type in. `pgup`, `pgdown` and the
+mouse wheel walk back through a long conversation, and `ctrl+t` opens out the working a model
 showed before its answer.
 
 A model that runs here is read into memory when you choose it, and the box is
-shut while that happens. `u` gives that memory back; the next question reads it
-in again.
+dimmed while that happens, as it is while an answer is arriving. `esc` stops
+either one. "release the model" in the command list gives that memory
+back, as does `r` on its row in `ctrl+o`; the next question reads it in again.
+
+When something goes wrong badly enough to end the program, what happened is
+written to a file under the state directory rather than to a screen that is
+about to be cleared: `crash-<when>.log`, and `engine.log` beside it, which is
+what the inference library itself was saying at the time.
 
 ## Elsewhere
 
