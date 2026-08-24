@@ -3,6 +3,7 @@ package export
 import (
 	"archive/zip"
 	"bytes"
+	"database/sql/driver"
 	"errors"
 	"io"
 	"math"
@@ -98,6 +99,13 @@ func TestAValueIsWrittenWholeOrNotAtAll(t *testing.T) {
 		{"a fraction", 3.5, "3.5"},
 		{"a small fraction", float32(2.5), "2.5"},
 		{"a truth", true, "true"},
+		{"a column of values", []any{"a", "b"}, "{a,b}"},
+		{"a column of none", []any{}, "{}"},
+		{"a column with a gap in it", []any{"a", nil}, "{a,NULL}"},
+		{"a column needing quotes", []any{"a,b", "c d", ""}, `{"a,b","c d",""}`},
+		{"a column of columns", []any{[]any{1, 2}, []any{3}}, `{"{1,2}","{3}"}`},
+		{"a value that writes itself", valuer{held: "12.34"}, "12.34"},
+		{"a value that will not say", valuer{err: errors.New("no")}, "unreadable"},
 		{"something else", struct{ A int }{1}, "{1}"},
 	} {
 		t.Run(want.name, func(t *testing.T) {
@@ -123,6 +131,8 @@ func TestANumberStaysANumber(t *testing.T) {
 		{"a string", "a", "a"},
 		{"text bytes", []byte("a"), "a"},
 		{"a time", time.Date(2026, 8, 23, 0, 0, 0, 0, time.UTC), "2026-08-23T00:00:00Z"},
+		{"a column of values", []any{"a", "b"}, "{a,b}"},
+		{"a value that writes itself", valuer{held: "12.34"}, "12.34"},
 		{"something else", struct{ A int }{1}, "{1}"},
 	} {
 		t.Run(want.name, func(t *testing.T) {
@@ -450,3 +460,14 @@ func TestXLSXSaysSoWhenItCannotRollOntoAnotherSheet(t *testing.T) {
 		t.Error("a sheet that cannot be named must be an error")
 	}
 }
+
+// valuer is a value that knows how to write itself as a standard type, which
+// is what every type a database driver invents for itself does.
+type valuer struct {
+	held any
+	err  error
+}
+
+func (v valuer) Value() (driver.Value, error) { return v.held, v.err }
+
+func (v valuer) String() string { return "unreadable" }

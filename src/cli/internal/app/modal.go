@@ -14,9 +14,9 @@ import (
 const (
 	modalWidth = 52
 
-	// statementWidth is what a dialog needs when it is showing the statement it
-	// is about, because a statement wrapped at fifty columns is a statement
-	// nobody can read before answering a question about it.
+	// statementWidth is what a dialog needs when it is showing the statement it is
+	// about, because a statement wrapped at fifty columns is a statement nobody can
+	// read before answering a question about it.
 	statementWidth = 76
 )
 
@@ -36,15 +36,18 @@ type modal struct {
 	ticked bool
 	needs  string
 
-	// code is the statement the dialog is about, drawn the way a statement is
-	// drawn everywhere else: highlighted, with the line numbers a person points
-	// at when they talk about it.
+	// code is the statement the dialog is about, drawn the way a statement is drawn
+	// everywhere else: highlighted, with the line numbers a person points at when
+	// they talk about it.
 	code string
 
 	// chart is a picture of the numbers the question turns on, drawn above the
-	// sentence rather than instead of it. A share of a machine is something you
-	// see at a glance and read twice as a sentence.
+	// sentence rather than instead of it.
 	chart string
+
+	// reply turns what was typed into the message the answer sends, for a
+	// dialog that asks for a name rather than for a yes.
+	reply func(string) tea.Msg
 }
 
 func ask(theme *ui.Theme, title, body string, action tea.Msg) *modal {
@@ -60,11 +63,31 @@ func askTyped(theme *ui.Theme, title, body, word string, action tea.Msg) (*modal
 	return dialog, dialog.input.Focus()
 }
 
+// askName raises a question answered by typing a name, which is what saving
+// something that has never had one needs.
+func askName(theme *ui.Theme, title, body string, reply func(string) tea.Msg) (*modal, tea.Cmd) {
+	dialog := ask(theme, title, body, nil)
+	dialog.reply = reply
+	dialog.input = input(theme, "", false)
+	return dialog, dialog.input.Focus()
+}
+
 func (d modal) ready() bool {
 	if d.needs != "" && !d.ticked {
 		return false
 	}
+	if d.reply != nil {
+		return strings.TrimSpace(d.input.Value()) != ""
+	}
 	return d.confirm == "" || strings.TrimSpace(d.input.Value()) == d.confirm
+}
+
+// answer is the message the dialog sends once it is answered.
+func (d modal) answer() tea.Msg {
+	if d.reply != nil {
+		return d.reply(strings.TrimSpace(d.input.Value()))
+	}
+	return d.action
 }
 
 // warning turns a refusal into a question with a way through: the danger is
@@ -75,7 +98,7 @@ func (d *modal) warning(text, tick string) {
 
 func (d *modal) toggle() { d.ticked = !d.ticked }
 
-func (d modal) typing() bool { return d.confirm != "" }
+func (d modal) typing() bool { return d.confirm != "" || d.reply != nil }
 
 func (d *modal) edit(msg tea.KeyPressMsg) tea.Cmd {
 	updated, cmd := d.input.Update(msg)
@@ -163,7 +186,7 @@ func (m Model) modalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if !m.modal.ready() {
 			return m, nil
 		}
-		answered := m.modal.action
+		answered := m.modal.answer()
 		m.modal = nil
 		return m, func() tea.Msg { return answered }
 	}

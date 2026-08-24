@@ -118,9 +118,9 @@ func (t tally) balance() string {
 	return ui.Dotted(parts...)
 }
 
-// balanced puts each block in the shorter column rather than in alternate
-// ones, because the groups are not the same height and alternating them leaves
-// one column half empty while the other runs off the screen.
+// balanced puts each block in the shorter column rather than in alternate ones,
+// because the groups are not the same height and alternating them leaves one
+// column half empty while the other runs off the screen.
 func balanced(blocks []string) (left, right []string) {
 	tall, short := 0, 0
 	for _, block := range blocks {
@@ -244,14 +244,7 @@ func (m Model) editorPane(width, height int) string {
 	return ui.Fit(strings.Join(sections, "\n"), height)
 }
 
-// statementView colours the statement as it is typed. The textarea cannot
-// colour what is inside it, so what it draws is taken apart instead: the gutter
-// it drew is kept exactly as it is, and the text after it, which the textarea
-// leaves plain, is coloured a line at a time.
-//
-// The cursor is the terminal's own rather than one the textarea draws, which is
-// what makes this possible: a drawn cursor is a styled cell in the middle of
-// the text, and colouring around it would mean taking the text apart again.
+// statementView colours the statement as it is typed.
 func (m Model) statementView(int) string {
 	if strings.TrimSpace(m.statement()) == "" {
 		return m.editor.View()
@@ -264,10 +257,8 @@ func (m Model) statementView(int) string {
 	return strings.Join(m.withGhost(drawn), "\n")
 }
 
-// withGhost writes the rest of the word being suggested after the cursor, in
-// the grey of something that has not been typed. It is drawn over the blank
-// the editor pads its lines with, so nothing already written is covered, and
-// only when there is nothing after the cursor to cover in the first place.
+// withGhost writes the rest of the word being suggested after the cursor, in the
+// grey of something that has not been typed.
 func (m Model) withGhost(drawn []string) []string {
 	ghost := m.suggest.ghost()
 	at := m.editor.Cursor()
@@ -388,8 +379,7 @@ func (m Model) where() string {
 }
 
 // verdict says how the statement would be classified, without shouting at
-// someone who is still typing it. An empty editor has nothing to classify, and
-// the empty result underneath already says there is nothing here yet.
+// someone who is still typing it.
 func (m Model) verdict(width int) string {
 	if m.inflight {
 		return m.elapsed()
@@ -437,8 +427,7 @@ func Launch(session cli.Session, workspace cli.Workspace) error {
 }
 
 // withAssistant hands the model a way to start a conversation when one is
-// configured. A section that is switched off leaves the screen saying so rather
-// than pretending the key does nothing.
+// configured.
 func withAssistant(m Model, session cli.Session) Model {
 	if !session.AI.Enabled {
 		return m
@@ -447,12 +436,6 @@ func withAssistant(m Model, session cli.Session) Model {
 }
 
 // launch runs the interface and catches it falling over.
-//
-// The panic catching the library does restores the terminal and prints a stack
-// to a screen that has just been cleared, which is a stack nobody reads. This
-// does the same restoring and writes the account to a file instead, so that
-// what is left of a crash is a path rather than a memory of something scrolling
-// past.
 func launch(session cli.Session, workspace cli.Workspace, options ...tea.ProgramOption) (err error) {
 	program := tea.NewProgram(withAssistant(NewModel(session, workspace), session),
 		append(options, tea.WithoutCatchPanics())...)

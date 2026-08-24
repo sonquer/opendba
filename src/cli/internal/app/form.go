@@ -33,8 +33,7 @@ type field struct {
 	hint  string
 
 	// section is the heading this field belongs under, announced once when it
-	// changes. A form of fifteen rows with no headings is a wall: the eye has
-	// nowhere to stop and no way to tell which of them belong together.
+	// changes.
 	section  string
 	kind     fieldKind
 	input    textinput.Model

@@ -1,11 +1,5 @@
 // Package chats keeps conversations with the assistant, so that one is still
 // there tomorrow.
-//
-// What is kept is every message, tool results included. A conversation stored
-// without them reads back as a transcript and cannot be carried on: the model
-// would answer the next question without the rows it read to answer the last
-// one. That means the rows an assistant looked at are written to a file, which
-// is why keeping them is a setting and why clearing them is a screen.
 package chats
 
 import (
@@ -49,8 +43,6 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );`
 
 // Chat is one conversation: what it was about, and everything that was said.
-// Messages is empty in a listing, because a list of conversations does not need
-// what is in them.
 type Chat struct {
 	ID             int64
 	ConnectionID   string
@@ -61,10 +53,7 @@ type Chat struct {
 	UpdatedAt      time.Time
 	Messages       []ai.Message
 
-	// asked is how many questions were put in this conversation. It is written
-	// down rather than counted from the messages, because a listing does not
-	// read them and a list that cannot say how long a conversation was is a
-	// list of titles.
+	// asked is how many questions were put in this conversation.
 	asked int
 }
 
@@ -93,8 +82,7 @@ func (c Chat) Snippet(width int) string {
 }
 
 // Title is what a conversation is called: the first thing that was asked in it,
-// cut short. A conversation nobody has asked anything in yet has no name, and
-// saying so beats inventing one.
+// cut short.
 func Title(messages []ai.Message, width int) string {
 	for _, message := range messages {
 		if message.Role != ai.RoleUser || strings.TrimSpace(message.Content) == "" {
@@ -138,10 +126,7 @@ func (s *Store) Close() error {
 	return nil
 }
 
-// Save writes a conversation and hands back what it is called by. Everything a
-// conversation holds is written at once, inside a transaction: saving after
-// every turn then costs nothing to get wrong, because a save that fails leaves
-// what was already there rather than half of what is there now.
+// Save writes a conversation and hands back what it is called by.
 func (s *Store) Save(ctx context.Context, chat Chat) (int64, error) {
 	if !s.settings.Enabled || len(chat.Messages) == 0 {
 		return chat.ID, nil
@@ -254,10 +239,7 @@ func (s *Store) trim(ctx context.Context) error {
 	return nil
 }
 
-// listing reads a conversation without what was said in it. Every listing is
-// ordered by when it was last touched and then by id, because two conversations
-// saved in the same millisecond are a tie, and a tie broken differently on every
-// read is a list that shuffles itself while somebody is looking at it.
+// listing reads a conversation without what was said in it.
 const listing = `SELECT id, connection_id, connection_name, instance, title, questions, started_at, updated_at
 	FROM chats`
 

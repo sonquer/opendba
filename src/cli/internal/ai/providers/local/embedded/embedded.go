@@ -1,10 +1,4 @@
 // Package embedded carries the inference library inside the program.
-//
-// purego opens a shared library by path, and there is no way on any of these
-// systems to open one straight out of memory, so the bytes still reach the disk
-// once. What they do not do is reach the network: they come out of the binary
-// that was built and signed, rather than out of a release that could have been
-// replaced under the tag it was published on.
 package embedded
 
 import (

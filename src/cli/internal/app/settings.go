@@ -62,14 +62,12 @@ type aiSettings struct {
 	progress  local.Progress
 	warmed    bool
 
-	// memory is what this machine has to run a model in, as the inference
-	// library reports it. It is nought until the library has been asked, and a
-	// fit worked out without it is about the disk alone.
+	// memory is what this machine has to run a model in, as the inference library
+	// reports it.
 	memory int64
 
 	// since and first are what a rate is worked out from: when bytes started
-	// arriving and how many were already there. A download resumed at three
-	// gigabytes has not just done three gigabytes in no time.
+	// arriving and how many were already there.
 	since time.Time
 	first int64
 
@@ -98,12 +96,7 @@ type libraryState struct {
 
 func newAISettings(theme *ui.Theme) aiSettings { return aiSettings{theme: theme} }
 
-// read4AI gathers what the screen shows. It is called when the screen is opened
-// and after anything that changes what is on disk, because a list built once at
-// start would go stale the moment a model finished arriving.
-//
-// It reports the trouble the session carries, so anything the screen has to say
-// about a download of its own is set after it rather than before.
+// read4AI gathers what the screen shows.
 func (m Model) read4AI() Model {
 	assistant := m.session.AI
 	m.ai.instances = assistant.Settings.Instances
@@ -208,9 +201,8 @@ func (m Model) arrived4AI() string {
 }
 
 // rate4AI is how fast bytes are arriving, worked out over the whole download
-// rather than between the last two reports: reports come every few megabytes,
-// so the gap between two of them says more about the buffer than about the
-// line.
+// rather than between the last two reports: reports come every few megabytes, so
+// the gap between two of them says more about the buffer than about the line.
 func (m Model) rate4AI() string {
 	if m.ai.first < 0 || m.ai.progress.Bytes <= m.ai.first {
 		return ""
@@ -236,9 +228,7 @@ func (m Model) left4AI() string {
 	return waiting(time.Duration(float64(told.Total-told.Bytes) / rate * float64(time.Second)))
 }
 
-// waiting is how long is left, in whole units. A download has no business
-// reporting hundredths of a second, and the number is an estimate off an
-// average rate: the decimals would be precision about a guess.
+// waiting is how long is left, in whole units.
 func waiting(left time.Duration) string {
 	switch {
 	case left >= time.Hour:
@@ -320,11 +310,7 @@ func (m Model) models4AIView(width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// state4Model is the right hand side of a row on this screen. It says nothing
-// about a model that fits and is not here, because that is every model until
-// somebody fetches one, and a column of the word "fits" is a column nobody
-// reads. This screen has the room to spell the rest out, which is the
-// difference between it and the modal.
+// state4Model is the right hand side of a row on this screen.
 func (m Model) state4Model(row model4AI) string {
 	switch {
 	case row.installed:
@@ -395,9 +381,7 @@ func (m Model) chose4AI() (tea.Model, tea.Cmd) {
 	return m.fetchModel()
 }
 
-// activate4AI switches to the instance under the cursor. The writing down and
-// the letting go of the open conversation are the same on this screen as they
-// are in the modal, so they are done in one place.
+// activate4AI switches to the instance under the cursor.
 func (m Model) activate4AI() (tea.Model, tea.Cmd) {
 	if len(m.ai.instances) == 0 {
 		return m, nil
@@ -471,11 +455,6 @@ type warmedMsg struct {
 
 // warming writes the inference library to disk the first time the conversation
 // is opened.
-//
-// It is not done when the program starts: somebody who never asks a question
-// should not pay for it, and the bytes are twenty megabytes of copying. It is
-// not left until a model is chosen either, because by then somebody is waiting,
-// and this can happen while they are still reading the list.
 func (m Model) warming() (Model, tea.Cmd) {
 	assistant := m.session.AI
 	if assistant.Library == nil || m.ai.warmed {
@@ -495,9 +474,7 @@ func (m Model) warming() (Model, tea.Cmd) {
 	})
 }
 
-// warmed takes the library having arrived, or not. A failure is written down
-// rather than raised: nothing was asked for yet, and every hosted back-end
-// works without it.
+// warmed takes the library having arrived, or not.
 func (m Model) warmed(msg warmedMsg) (tea.Model, tea.Cmd) {
 	m.ai.memory = msg.memory
 	read := m.read4AI()
@@ -510,10 +487,7 @@ func (m Model) warmed(msg warmedMsg) (tea.Model, tea.Cmd) {
 	return read, nil
 }
 
-// started4AI runs a download and returns the command that watches it. What is
-// happening is kept as a verb and a subject rather than as one sentence,
-// because the modal draws them on separate lines and taking a sentence apart
-// again to do it would be a sentence pretending to be two fields.
+// started4AI runs a download and returns the command that watches it.
 func (m Model) started4AI(what job4AI, doing, subject string,
 	run func(context.Context, chan<- local.Progress) error,
 ) (tea.Model, tea.Cmd) {
@@ -591,19 +565,7 @@ func (m Model) doneFetching(msg fetchEndedMsg) (tea.Model, tea.Cmd) {
 	return m.read4AI(), m.notify("done")
 }
 
-// continued carries on with what somebody asked for. Choosing a model that is
-// not here fetches the library first and the weights second, and the point of
-// the whole errand is a working assistant, not a full disk: when the last piece
-// lands the instance is written and made the one that answers.
-//
-// The weights are fetched once. A download that reported no failure and left
-// nothing the store will admit to is a fault worth saying out loud, and asking
-// for it again would be a loop that downloads gigabytes for ever without ever
-// saying why.
-//
-// It ends in the conversation rather than in the list it was started from: what
-// was wanted was something to ask, and by the time that screen is drawn the
-// model is already being read into memory.
+// continued carries on with what somebody asked for.
 func (m Model) continued() (tea.Model, tea.Cmd) {
 	wanted := m.pending
 	entry, err := local.Offered(wanted)
@@ -636,9 +598,7 @@ func reason4Model(store *local.Store, id string) string {
 	return "it is there now"
 }
 
-// troubled4AI puts a failure where it will be read. The modal is what somebody
-// is looking at when a download ends, so a screen behind it is the wrong place
-// to leave the only account of what went wrong.
+// troubled4AI puts a failure where it will be read.
 func (m Model) troubled4AI(what string) Model {
 	read := m.read4AI()
 	read.ai.trouble = what

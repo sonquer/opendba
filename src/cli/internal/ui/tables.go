@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2/table"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/tui4db/src/cli/internal/export"
 	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
 )
 
@@ -58,23 +59,20 @@ func (t *Theme) Counts(healthy, warnings, failing int) string {
 	return strings.Join(parts, t.Muted.Render(" · "))
 }
 
-// List is how a catalogue screen wants its rows drawn: where the cursor is,
-// how wide the screen is, and which column the rows were sorted by so the
-// heading can say so.
+// List is how a catalogue screen wants its rows drawn: where the cursor is, how
+// wide the screen is, and which column the rows were sorted by so the heading
+// can say so.
 type List struct {
 	Cursor int
 	Width  int
 
-	// Sort is the column the rows are already in the order of, counted from
-	// the name at zero through the facts to the bar. A list nobody sorted
-	// leaves it negative.
+	// Sort is the column the rows are already in the order of, counted from the
+	// name at zero through the facts to the bar.
 	Sort     int
 	Reversed bool
 
-	// Busiest is the scans of the busiest index on each table, measured before
-	// any filter was applied. Without it a list narrowed to one index would
-	// draw that index at the full width of the bar, because it would be the
-	// busiest thing left.
+	// Busiest is the scans of the busiest index on each table, measured before any
+	// filter was applied.
 	Busiest map[string]int64
 }
 
@@ -165,8 +163,7 @@ func (t *Theme) IndexList(indexes []driver.Index, list List) string {
 }
 
 // Busiest is the scans of the busiest index on each table, which is what every
-// bar in the list is measured against. It is computed before a filter narrows
-// the list, because the busiest of one index is always itself.
+// bar in the list is measured against.
 func Busiest(indexes []driver.Index) map[string]int64 {
 	busiest := map[string]int64{}
 	for _, index := range indexes {
@@ -289,10 +286,7 @@ func Cell(value any) string {
 	if value == nil {
 		return "∅"
 	}
-	text := fmt.Sprintf("%v", value)
-	if bytes, ok := value.([]byte); ok {
-		text = string(bytes)
-	}
+	text := export.Text(value)
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\n", " "), "\t", " ")
 	return Truncate(text, maxCellWidth)
 }

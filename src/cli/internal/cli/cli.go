@@ -72,22 +72,15 @@ type Session struct {
 	Guard        sqlguard.Guard
 	Theme        *ui.Theme
 
-	// History is where the statements that have been run are kept, or nil when
-	// the settings say not to keep them or the file could not be opened. It is
-	// nil rather than an error because a history that cannot be written is a
-	// reason to say so, not a reason to refuse to open a database.
+	// History is where the statements that have been run are kept, or nil when the
+	// settings say not to keep them or the file could not be opened.
 	History *history.Store
 
 	// Chats is where conversations with the assistant are kept, or nil when the
-	// settings say not to keep them or the file could not be opened. Nil rather
-	// than an error, for the same reason History is.
+	// settings say not to keep them or the file could not be opened.
 	Chats *chats.Store
 
-	// Dialect is what parses a statement into its parts. The guard has one of
-	// its own and keeps it to itself, which is right for a guard; the editor
-	// needs the same parse to know which statement of a script the cursor is
-	// in, and asking the guard to hand its own out would widen the one API in
-	// this program that is deliberately narrow.
+	// Dialect is what parses a statement into its parts.
 	Dialect sqldialect.Dialect
 }
 
@@ -114,9 +107,7 @@ type options struct {
 	schema     string
 	limit      int
 
-	// yes answers the question a statement that changes data would otherwise
-	// raise. There is no dialog in a pipe, so the answer has to arrive with the
-	// statement or the statement does not run.
+	// yes answers the question a statement that changes data would otherwise raise.
 	yes bool
 }
 
@@ -353,9 +344,7 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 	}, nil
 }
 
-// chats opens where conversations with the assistant are kept. Like the
-// history, a store that will not open is a sentence rather than a refusal: the
-// database is what somebody came here for.
+// chats opens where conversations with the assistant are kept.
 func (a App) chats(settings config.Settings) (*chats.Store, string) {
 	if !settings.Chats.Enabled {
 		return nil, ""
@@ -367,10 +356,7 @@ func (a App) chats(settings config.Settings) (*chats.Store, string) {
 	return store, ""
 }
 
-// history opens the store the statements you have run are kept in. A store that
-// will not open is worth a sentence on the screen and nothing more: the
-// database is what somebody came here for, and a read-only state directory is
-// not a reason to be turned away from it.
+// history opens the store the statements you have run are kept in.
 func (a App) history(settings config.Settings) (*history.Store, string) {
 	if !settings.History.Enabled {
 		return nil, ""
@@ -479,9 +465,7 @@ func (a App) connections() int {
 	return ExitOK
 }
 
-// Application is what a connection tells the server it is. It is the same name
-// the dashboard sifts its own sessions out by, worked out in one place so the
-// list and the sifting cannot disagree.
+// Application is what a connection tells the server it is.
 func Application(connection config.Connection) string {
 	return driver.Config{Application: connection.Name}.ApplicationName()
 }

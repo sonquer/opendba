@@ -78,12 +78,6 @@ func (s Setup) Save(connection config.Connection, password []byte) error {
 
 // StoreKey puts an assistant's key in the operating system keychain and hands
 // back the reference that goes in settings.toml.
-//
-// Unlike storeSecret it does not fall back to the encrypted vault. The vault
-// needs a passphrase, and the only way this program has of asking for one reads
-// the terminal directly, which is wrong inside a screen that is already reading
-// it. A machine with no keychain is told so and pointed at an environment
-// variable, which needs no prompt and works everywhere.
 func (s Setup) StoreKey(name string, key []byte) (secretref.Ref, error) {
 	if s.Secrets == nil {
 		return secretref.Ref{}, fmt.Errorf("there is nowhere to keep a key on this machine")
@@ -109,9 +103,7 @@ func (s Setup) storeSecret(id string, password []byte) (secretref.Ref, error) {
 }
 
 // Password resolves the secret a saved profile refers to, so a screen editing
-// that profile can test the connection without making anyone retype it. A
-// reference nobody can resolve here, a prompt or a pgpass file, comes back
-// empty and lets the driver deal with it.
+// that profile can test the connection without making anyone retype it.
 func (s Setup) Password(ctx context.Context, connection config.Connection) []byte {
 	if strings.TrimSpace(connection.Secret) == "" {
 		return nil

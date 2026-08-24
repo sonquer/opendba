@@ -2,10 +2,7 @@ package local
 
 import "unicode/utf8"
 
-// Pieces reassembles what a model emits into text. A token is a run of bytes
-// rather than a character, so one rune can arrive split across two of them, and
-// printing each piece as it lands would put a replacement character on screen
-// in the middle of a word.
+// Pieces reassembles what a model emits into text.
 type Pieces struct {
 	pending []byte
 }

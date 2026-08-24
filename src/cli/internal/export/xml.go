@@ -7,8 +7,7 @@ import (
 )
 
 // writeXML holds the column name in an attribute rather than in the element
-// name. A column can be called count(*) or 2024, and neither is a name XML
-// allows an element to have; an attribute takes any of them.
+// name.
 type writeXML struct {
 	raw     io.Writer
 	out     *xml.Encoder

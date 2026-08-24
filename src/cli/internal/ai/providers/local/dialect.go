@@ -11,36 +11,18 @@ import (
 )
 
 // A dialect is the shape a model writes a tool call in.
-//
-// There is more than one because a model writes what it was trained to write.
-// Telling it otherwise in a system prompt works with the fine-tunes that were
-// taught to follow instructions about it and fails with the ones that have a
-// format of their own in the weights: Gemma 4 answers a question about the
-// database with <|tool_call>call:list_schemas{}<tool_call|> whatever it has
-// been asked to do, because that is what a tool call looks like to it.
-//
-// So both are read. What a model writes is understood rather than corrected,
-// and the only thing that would be gained by insisting on one shape is a
-// program that puts the model's own words on the screen and calls no tools.
 type dialect struct {
 	name  string
 	open  string
 	close string
 	parse func(body string, index int) (ai.ToolCall, error)
 
-	// resultOpen and resultClose are how a tool's answer is handed back. They
-	// belong with the call because they are the other half of the same
-	// conversation: a model shown its own shape asks in it, and a model shown
-	// ours asks in ours and then invents both sides of a dialogue it has never
-	// seen. That last part is not a guess — it is what one of them did.
+	// resultOpen and resultClose are how a tool's answer is handed back.
 	resultOpen  string
 	resultClose string
 
-	// thinkOpen and thinkClose bracket what a model says to itself on its way
-	// to an answer. It is not the answer and was never meant to be read: a
-	// model that writes it and is not understood produces three paragraphs of
-	// its own deliberation with the brackets still around them, above the two
-	// lines that were the reply.
+	// thinkOpen and thinkClose bracket what a model says to itself on its way to an
+	// answer.
 	thinkOpen  string
 	thinkClose string
 
@@ -54,8 +36,7 @@ type dialect struct {
 }
 
 // GemmaOpen and GemmaClose bracket a call in the dialect the Gemma family
-// writes. The brackets are not a typo: the opening one is <| … > and the
-// closing one is < … |>.
+// writes.
 const (
 	GemmaOpen  = "<|tool_call>"
 	GemmaClose = "<tool_call|>"
@@ -100,9 +81,7 @@ func dialects() []dialect {
 	}
 }
 
-// Spoken is the dialect a model writes in, named by the catalogue. A model that
-// has one of its own is talked to in it; everything else is given ours, which
-// the instructions describe and which most fine-tunes will follow.
+// Spoken is the dialect a model writes in, named by the catalogue.
 func Spoken(name string) dialect {
 	for _, spoken := range dialects() {
 		if spoken.name == name {
@@ -176,10 +155,6 @@ func Openers() []string {
 // which the screen has to watch for so that a model's deliberation is folded
 // away rather than printed as its reply, and so that neither bracket is drawn
 // one character at a time on its way to being recognised.
-//
-// A family with nothing to say about it contributes nothing: a marker invented
-// for a model that has never been seen writing it is a parser that eats text
-// nobody asked it to.
 func Thinking() []string {
 	markers := make([]string, 0, 2)
 	for _, spoken := range dialects() {
@@ -211,13 +186,8 @@ func thinkingOpens(text string) (dialect, int) {
 }
 
 // decodeGemma reads a call written the way the Gemma family writes one:
-//
-//	call:read_table{table:<|"|>orders<|"|>,limit:20}
-//
-// The arguments are a small language of its own rather than JSON. Strings are
-// bracketed instead of quoted and are not escaped, keys are bare words, and
-// anything that is not one of the words true, false or null and does not begin
-// with a bracket is a number.
+// call:read_table{table:<|"|>orders<|"|>,limit:20} The arguments are a small
+// language of its own rather than JSON.
 func decodeGemma(body string, index int) (ai.ToolCall, error) {
 	body = strings.TrimSpace(body)
 	if !strings.HasPrefix(body, gemmaCall) {
@@ -243,8 +213,6 @@ func decodeGemma(body string, index int) (ai.ToolCall, error) {
 }
 
 // gemmaObject reads a braced list of pairs and returns what is left after it.
-// Keys are bare at every level in what this dialect writes, and bracketed keys
-// are read as well because the format allows them.
 func gemmaObject(text string, quotedKeys bool) (map[string]any, string, error) {
 	rest, ok := strings.CutPrefix(strings.TrimSpace(text), "{")
 	if !ok {
@@ -305,11 +273,6 @@ func gemmaString(text string) (string, string, error) {
 }
 
 // gemmaValue reads one value and returns what is left after it.
-//
-// A bare word is what this dialect writes for anything it has no other shape
-// for, and it is written without spaces. One with a space in it is a value that
-// has run into whatever was meant to come after it — a missing comma, most
-// likely — which is a call to refuse rather than a string to invent.
 func gemmaValue(text string) (any, string, error) {
 	text = strings.TrimSpace(text)
 	switch {

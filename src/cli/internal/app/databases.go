@@ -227,8 +227,7 @@ func scope(schemas []string) string {
 }
 
 // remember writes the place you moved to back to the profile, so the next run
-// opens where you left off. Failing to write it is worth saying and nothing
-// more: the session is already there.
+// opens where you left off.
 func (m Model) remember(database, schema string, schemas []string) tea.Cmd {
 	workspace := m.workspace
 	name := m.session.Connection.Name

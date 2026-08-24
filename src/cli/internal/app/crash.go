@@ -13,20 +13,12 @@ import (
 )
 
 // crash is what is left behind when the program ends in a way nobody planned.
-//
-// A full screen program that falls over has already cleared the screen it fell
-// over on, and whatever it printed on the way out goes with it. So it is
-// written to a file instead: what failed, where in the code, and the last that
-// was heard from the inference library, which is the part of this program that
-// can end the process without leaving a Go stack at all.
 type crash struct {
 	paths   config.Paths
 	version string
 }
 
-// wrote records a failure and returns the path it was written to. A failure to
-// write the account of a failure is not worth reporting on: the caller is
-// already telling somebody that something went wrong.
+// wrote records a failure and returns the path it was written to.
 func (c crash) wrote(doing string, cause any, stack []byte) string {
 	if c.paths.State == "" {
 		return ""
@@ -53,9 +45,7 @@ func (c crash) account(doing string, cause any, stack []byte) string {
 	return strings.Join(said, "\n")
 }
 
-// engineLog is the end of what llama.cpp wrote. The end is the part that
-// matters: a library that ends the process says why in its last line or two,
-// and the rest is the account of a model loading normally.
+// engineLog is the end of what llama.cpp wrote.
 func (c crash) engineLog() string {
 	read, err := os.ReadFile(c.paths.EngineLog())
 	if err != nil {
@@ -73,9 +63,7 @@ const engineLogTail = 40
 // stamp names a crash by when it happened, so one does not overwrite the last.
 func stamp() string { return time.Now().Format("20060102-150405") }
 
-// crashedMsg is a piece of work that fell over. It carries the file rather than
-// the stack, because a stack on a screen is unreadable and a path is something
-// to hand over.
+// crashedMsg is a piece of work that fell over.
 type crashedMsg struct {
 	doing string
 	cause string
@@ -83,11 +71,6 @@ type crashedMsg struct {
 }
 
 // guard runs work that must not take the program down with it.
-//
-// Everything the assistant does happens away from the screen — a model
-// generating, a download running, a tool being called — and a panic on one of
-// those goroutines ends the process with the screen still in raw mode. Caught
-// here, it becomes a sentence on the screen and a file to look in.
 func (m Model) guard(doing string, work func() tea.Msg) tea.Cmd {
 	report := crash{paths: m.workspace.Setup().Store.Paths, version: m.session.Version}
 	return func() (msg tea.Msg) {

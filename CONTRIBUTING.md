@@ -60,7 +60,6 @@ committed, so nobody else needs one.
   `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 - Explain *why* in the body. The diff already shows what.
 - One logical change per pull request.
-- Update `CHANGELOG.md` under `Unreleased` when the change is user visible.
 
 ## Releases
 

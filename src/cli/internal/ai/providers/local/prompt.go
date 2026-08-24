@@ -34,11 +34,6 @@ These are the tools:
 
 // SystemPrompt is what a local model is told before anything else: the caller's
 // own instructions, then the tools and the single shape a call may take.
-//
-// The shape is the dialect the model itself writes. Showing it ours when it has
-// one of its own is how a model ends up writing an entire imagined
-// conversation: it never sees a call it recognises, so it carries on producing
-// the transcript it thinks it is reading, tool answers and all.
 func SystemPrompt(instructions string, tools []ai.Tool, speaks string) (string, error) {
 	spoken := Spoken(speaks)
 	instructions = strings.TrimSpace(instructions)
@@ -77,9 +72,6 @@ func describe(tools []ai.Tool) (string, error) {
 }
 
 // spoken turns a message into the role and the text a chat template understands.
-// A template knows a user and an assistant. A tool result is neither, so it is
-// handed over as something the user said, wrapped so the model can see what it
-// is looking at.
 func turn4Message(message ai.Message, spoken dialect) (string, string) {
 	switch message.Role {
 	case ai.RoleTool:
@@ -125,9 +117,7 @@ func said(message ai.Message, spoken dialect) string {
 	return strings.Join(parts, "\n")
 }
 
-// written is one call in the dialect it will be read back in. A call that
-// cannot be written down at all is left out rather than written down as
-// something else.
+// written is one call in the dialect it will be read back in.
 func written(call ai.ToolCall, spoken dialect) (string, bool) {
 	if _, err := json.Marshal(call.Arguments); err != nil {
 		return "", false
@@ -150,9 +140,7 @@ type Turn struct {
 }
 
 // Conversation lays the messages out the way a chat template reads them, with
-// the tools and the rules for calling them put in front. It is here rather than
-// beside the adapter so that the one file which touches the native library has
-// nothing in it that is worth testing on its own.
+// the tools and the rules for calling them put in front.
 func Conversation(messages []ai.Message, system string, tools []ai.Tool, speaks string) ([]Turn, error) {
 	spoken := Spoken(speaks)
 	instructions, err := SystemPrompt(system, tools, speaks)

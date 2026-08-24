@@ -1,7 +1,4 @@
-// Package ollama speaks to a daemon the user runs themselves. It is the one
-// back-end that answers in newline delimited json rather than an event stream,
-// and the one whose models are already on the machine, so it can say what it
-// has rather than being told.
+// Package ollama speaks to a daemon the user runs themselves.
 package ollama
 
 import (
@@ -49,9 +46,7 @@ type client struct {
 	transport *ai.Transport
 }
 
-// Capabilities reports what this back-end offers. A daemon on this machine
-// sends nothing anywhere, which is what decides whether a turn has to be
-// approved before it is sent.
+// Capabilities reports what this back-end offers.
 func (c *client) Capabilities() ai.Capabilities {
 	return ai.Capabilities{
 		Tools:     true,

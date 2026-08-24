@@ -42,10 +42,6 @@ type stopMsg struct {
 type tickMsg struct{ generation int }
 
 // activity is what the server is doing right now, and the means to stop it.
-// activity holds ours: how many of the sessions the server reported were made
-// by this program and are not being drawn. It is counted rather than dropped
-// quietly, because a list that hides rows without saying so is a list nobody
-// can trust the length of.
 type activity struct {
 	theme    *ui.Theme
 	sessions []driver.Session
@@ -93,10 +89,7 @@ func (a activity) resize(width int) activity {
 	return a.rebuild()
 }
 
-// rebuild draws the table, including when there is nothing in it. An empty
-// table with its column names still on it says what the dashboard would show
-// and that there is nothing to show; a sentence where the table was makes the
-// screen jump every time the last statement finishes.
+// rebuild draws the table, including when there is nothing in it.
 func (a activity) rebuild() activity {
 	at := a.cursor
 	a.table = table.New(
@@ -225,9 +218,7 @@ func (a activity) view(width int, focused bool) string {
 }
 
 // count says how much of the server this list is, which is worth knowing and is
-// the only thing worth putting beside the heading. How long ago the list was
-// read is not: it refreshes on its own every few seconds, so the answer is
-// always the same and always nothing.
+// the only thing worth putting beside the heading.
 func (a activity) count() string {
 	if len(a.sessions) == 0 && a.ours == 0 {
 		return ""
@@ -370,8 +361,6 @@ func (m Model) confirmStop(terminate bool) (tea.Model, tea.Cmd) {
 }
 
 // mayChange says whether the profile expects this program to change the server.
-// It is a warning rather than a wall: the person in front of it decides, once,
-// per action.
 func (m Model) mayChange() bool {
 	return m.session.Connection.Mode == config.ReadWrite
 }
@@ -397,10 +386,7 @@ func (m Model) stopped(msg stoppedMsg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(m.readSessions(), m.notify(verb+" session "+msg.id))
 }
 
-// showingOwn changes whether the dashboard draws the sessions this program
-// made. What is on screen is left as it is: the next beat is a few seconds
-// away and redrawing the list from a setting rather than from the server would
-// be showing a count nobody measured.
+// showingOwn changes whether the dashboard draws the sessions this program made.
 func (a activity) showingOwn(own bool) activity {
 	a.own = own
 	return a

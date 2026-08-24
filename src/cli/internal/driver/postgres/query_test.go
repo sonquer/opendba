@@ -2,13 +2,16 @@ package postgres
 
 import (
 	"context"
+	sqldriver "database/sql/driver"
 	"errors"
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pashagolub/pgxmock/v5"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
@@ -619,3 +622,51 @@ func TestStreamGivesUpWhenTheTimeoutWillNotLift(t *testing.T) {
 		t.Errorf("the transaction must be given back: %v", err)
 	}
 }
+
+// A number the server sends is a number by the time a screen or a file sees it.
+// pgx hands back a type of its own for anything Go has no name for, and a row
+// printed with %v would show its fields.
+func TestTheDriversOwnTypesComeOffTheRow(t *testing.T) {
+	for _, want := range []struct {
+		name  string
+		value any
+		held  any
+	}{
+		{"a fraction", pgtype.Numeric{Int: big.NewInt(59800), Exp: -4, Valid: true}, "5.9800"},
+		{"a whole number", pgtype.Numeric{Int: big.NewInt(42), Valid: true}, "42"},
+		{"a negative", pgtype.Numeric{Int: big.NewInt(-7), Exp: -1, Valid: true}, "-0.7"},
+		{"nothing", pgtype.Numeric{}, nil},
+		{"a string", "plain", "plain"},
+		{"a whole number Go has a name for", int64(3), int64(3)},
+		{"nothing at all", nil, nil},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if got := native(want.value); got != want.held {
+				t.Errorf("native = %#v, want %#v", got, want.held)
+			}
+		})
+	}
+}
+
+func TestAColumnOfValuesComesOffTheRowToo(t *testing.T) {
+	got, ok := native([]any{pgtype.Numeric{Int: big.NewInt(5), Valid: true}, "b"}).([]any)
+	if !ok || len(got) != 2 {
+		t.Fatalf("native = %#v", got)
+	}
+	if got[0] != "5" || got[1] != "b" {
+		t.Errorf("native = %#v, want [5 b]", got)
+	}
+}
+
+// A value that cannot say what it is stays as it was, rather than becoming an
+// error message in the middle of a result.
+func TestAValueThatWillNotSayIsLeftAlone(t *testing.T) {
+	held := refusing{}
+	if got := native(held); got != any(held) {
+		t.Errorf("native = %#v, want the value back", got)
+	}
+}
+
+type refusing struct{}
+
+func (refusing) Value() (sqldriver.Value, error) { return nil, errors.New("no") }

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	sqldriver "database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -51,9 +52,35 @@ func (r *resultSet) Next() bool {
 		r.err = fmt.Errorf("read a row: %w", err)
 		return false
 	}
-	r.values = values
+	r.values = natives(values)
 	r.seen++
 	return true
+}
+
+// natives is a row with the driver's own types taken off it.
+func natives(values []any) []any {
+	for i, value := range values {
+		values[i] = native(value)
+	}
+	return values
+}
+
+// native is a value as the rest of the program understands it.
+func native(value any) any {
+	switch held := value.(type) {
+	case nil, string, bool, int16, int32, int64, float32, float64, []byte, time.Time:
+		return held
+	case []any:
+		return natives(held)
+	case sqldriver.Valuer:
+		written, err := held.Value()
+		if err != nil {
+			return value
+		}
+		return written
+	default:
+		return value
+	}
 }
 
 func (r *resultSet) Close() error {
@@ -64,18 +91,13 @@ func (r *resultSet) Close() error {
 	return nil
 }
 
-// Query runs a statement inside a transaction of its own. On a read only
-// profile the transaction is opened read only, which is a layer rather than a
-// repetition: the session is already set that way, and this holds whether or
-// not that setting took.
+// Query runs a statement inside a transaction of its own.
 func (c *connection) Query(ctx context.Context, statement string) (driver.ResultSet, error) {
 	return c.open(ctx, statement, rowLimit(c.config.RowLimit), false)
 }
 
 // Stream reads every row, and lifts the statement timeout for the length of its
-// transaction. The session sets that timeout for the sake of a screen nobody
-// wants to watch hang; a file being written is watched, is counted, and is
-// stopped by whoever asked for it.
+// transaction.
 func (c *connection) Stream(ctx context.Context, statement string) (driver.ResultSet, error) {
 	return c.open(ctx, statement, unlimited, true)
 }
@@ -84,8 +106,6 @@ func (c *connection) Stream(ctx context.Context, statement string) (driver.Resul
 const unlimited = 0
 
 // NoStatementTimeout lifts the session timeout for the rest of a transaction.
-// It is LOCAL, so it is given back when the transaction ends whatever happens
-// to the connection afterwards.
 const NoStatementTimeout = "SET LOCAL statement_timeout = 0"
 
 func (c *connection) open(ctx context.Context, statement string, limit int, patient bool) (driver.ResultSet, error) {

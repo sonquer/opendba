@@ -66,12 +66,13 @@ func TestPathsRequireAHome(t *testing.T) {
 }
 
 func TestFileNames(t *testing.T) {
-	paths := Paths{Config: "/c", State: "/s"}
+	paths := Paths{Config: "/c", State: "/s", Data: "/d"}
 	cases := map[string]string{
 		paths.ProfilesFile(): "profiles.toml",
 		paths.SettingsFile(): "settings.toml",
 		paths.VaultFile():    "secrets.age",
 		paths.HistoryFile():  "history.db",
+		paths.SQLDir():       "sql",
 	}
 	for path, want := range cases {
 		if filepath.Base(path) != want {
@@ -606,5 +607,50 @@ func TestMouseIsWantedUnlessItIsTurnedOff(t *testing.T) {
 	}
 	if DefaultSettings().Appearance.Mouse != MouseOn {
 		t.Error("the default is to take the mouse")
+	}
+}
+
+// A workspace root is somewhere a file can be found again tomorrow, which a
+// path from wherever the program happened to start is not.
+func TestARelativeWorkspaceRootIsRefused(t *testing.T) {
+	for _, want := range []struct {
+		name   string
+		root   string
+		refuse bool
+	}{
+		{"empty means the data directory", "", false},
+		{"a full path", filepath.Join(string(filepath.Separator), "srv", "sql"), false},
+		{"a relative path", filepath.Join("sql", "here"), true},
+		{"a bare name", "sql", true},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			settings := DefaultSettings()
+			settings.Workspace.Root = want.root
+			err := settings.Validate()
+			if want.refuse != (err != nil) {
+				t.Errorf("Validate = %v, want a refusal: %v", err, want.refuse)
+			}
+		})
+	}
+}
+
+func TestTheWorkspaceRootSurvivesTheFile(t *testing.T) {
+	root := t.TempDir()
+	paths := Paths{Config: filepath.Join(root, "config"), State: filepath.Join(root, "state")}
+	if err := paths.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(paths)
+	settings := DefaultSettings()
+	settings.Workspace.Root = filepath.Join(root, "statements")
+	if err := store.SaveSettings(settings); err != nil {
+		t.Fatalf("SaveSettings: %v", err)
+	}
+	held, err := store.LoadSettings()
+	if err != nil {
+		t.Fatalf("LoadSettings: %v", err)
+	}
+	if held.Workspace.Root != settings.Workspace.Root {
+		t.Errorf("root = %q, want %q", held.Workspace.Root, settings.Workspace.Root)
 	}
 }

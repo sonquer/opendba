@@ -40,9 +40,7 @@ type ToolCall struct {
 	Arguments map[string]any
 }
 
-// ToolResult is what a tool returned, on its way back to the model. Failed says
-// the tool refused or errored, which the model is told about rather than being
-// left to infer from the text.
+// ToolResult is what a tool returned, on its way back to the model.
 type ToolResult struct {
 	ID      string
 	Name    string
@@ -87,9 +85,7 @@ type Request struct {
 	Thinking    bool
 }
 
-// ChunkKind is what a piece of a stream is. Content blocks are bracketed by a
-// start and an end rather than arriving as a flat run of text, because that is
-// what lets a renderer know when a block is finished and can be laid out.
+// ChunkKind is what a piece of a stream is.
 type ChunkKind string
 
 const (
@@ -139,9 +135,6 @@ type Usage struct {
 }
 
 // VisibleOutput is the part of the output that was text rather than reasoning.
-// It is the one place a subtraction happens, and it is clamped because a
-// provider that reports more reasoning than output would otherwise produce a
-// negative number.
 func (u Usage) VisibleOutput() int { return max(u.Output-u.Reasoning, 0) }
 
 // Balanced reports whether the disjoint parts of the input add up to the
@@ -182,9 +175,7 @@ type Instance struct {
 }
 
 // JSON renders the schema the way every provider spells it, which is JSON
-// Schema. The shape is built here once rather than in each protocol, because
-// the protocols disagree about the name of the field they put it in and about
-// nothing else.
+// Schema.
 func (s Schema) JSON() map[string]any {
 	kind := s.Type
 	if kind == "" {

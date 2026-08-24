@@ -65,9 +65,7 @@ const (
 	oldCheckpointQuery = `SELECT checkpoints_timed, checkpoints_req FROM pg_stat_bgwriter`
 )
 
-// Snapshot is everything the server was willing to say about itself. A group
-// the server refused is recorded in Refused rather than failing the report,
-// because a locked down role should still see the rest.
+// Snapshot is everything the server was willing to say about itself.
 type Snapshot struct {
 	CacheHitRatio float64
 	TempFiles     int64
@@ -148,9 +146,8 @@ func (c *connection) Health(ctx context.Context) ([]driver.Finding, error) {
 	return Findings(snapshot), nil
 }
 
-// checkpoints reads the counter that moved out of pg_stat_bgwriter in
-// PostgreSQL 17. Asking the newer view first and falling back costs one failed
-// query on an older server and no version bookkeeping.
+// checkpoints reads the counter that moved out of pg_stat_bgwriter in PostgreSQL
+// 17.
 func (c *connection) checkpoints(ctx context.Context, snapshot *Snapshot) {
 	if err := c.db.QueryRow(ctx, checkpointsQuery).
 		Scan(&snapshot.TimedCheckpoints, &snapshot.ForcedCheckpoints); err == nil {
@@ -560,9 +557,7 @@ func indexCacheFinding(snapshot Snapshot) driver.Finding {
 	return finding.Measure(snapshot.IndexHitRatio, 100)
 }
 
-// idleFinding is the session that opened a transaction and walked away. It
-// holds its locks and it holds the oldest row every cleaner has to read past,
-// so one of these left overnight is worth more trouble than a slow query.
+// idleFinding is the session that opened a transaction and walked away.
 func idleFinding(snapshot Snapshot) driver.Finding {
 	idle := time.Duration(snapshot.IdleSeconds * float64(time.Second))
 	finding := driver.Finding{
@@ -589,9 +584,7 @@ func idleFinding(snapshot Snapshot) driver.Finding {
 
 const stuckTransaction = 5 * time.Minute
 
-// vacuumFinding is whether the cleaner has been round. Every update and delete
-// leaves the old row on disk until it has, and nothing else on this dashboard
-// gets better while it has not.
+// vacuumFinding is whether the cleaner has been round.
 func vacuumFinding(snapshot Snapshot) driver.Finding {
 	since := time.Duration(snapshot.VacuumSeconds * float64(time.Second))
 	finding := driver.Finding{
@@ -626,9 +619,7 @@ const (
 	staleVacuum = 30 * 24 * time.Hour
 )
 
-// walFinding is how much write ahead log is on disk. It grows when checkpoints
-// fall behind or a replication slot stops consuming, and it is the one thing
-// that fills a disk without any table getting bigger.
+// walFinding is how much write ahead log is on disk.
 func walFinding(snapshot Snapshot) driver.Finding {
 	if snapshot.WalSize < 0 {
 		return driver.Finding{
@@ -661,10 +652,7 @@ func walFinding(snapshot Snapshot) driver.Finding {
 // saying so. The directory routinely holds more than one checkpoint's worth.
 const walRunway = 2
 
-// serverFinding is everything the instance holds, not just this database. It is
-// the closest a SQL connection can get to how full the machine is: no built in
-// function reports free disk space, and the ones that come near it are for
-// superusers and answer about files rather than about the filesystem.
+// serverFinding is everything the instance holds, not just this database.
 func serverFinding(snapshot Snapshot) driver.Finding {
 	return driver.Finding{
 		Group:     driver.GroupStorage,

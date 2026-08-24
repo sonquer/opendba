@@ -29,7 +29,6 @@ archives:
       - ../../LICENSE
       - ../../LICENSE-MIT
       - ../../LICENSE-APACHE
-      - ../../CHANGELOG.md
 
 checksum:
   name_template: checksums.txt

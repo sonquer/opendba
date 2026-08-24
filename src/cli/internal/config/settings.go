@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -22,23 +23,13 @@ type AppearanceSettings struct {
 	Theme  string `toml:"theme"`
 	Accent string `toml:"accent"`
 
-	// Bar is the shape a measurement is drawn with. How well a glyph draws is
-	// the font's business and a terminal program cannot choose the font it is
-	// rendered in, so this is a choice rather than a constant.
+	// Bar is the shape a measurement is drawn with.
 	Bar string `toml:"bar,omitempty"`
 
-	// Mouse is whether the program asks the terminal to report the mouse. It is
-	// a choice because a terminal that is reporting the mouse to a program is a
-	// terminal that is not selecting text with it, and copying a value out of a
-	// result matters more to some people than clicking a tab does. "on" is the
-	// default; "off" gives the mouse back to the terminal.
+	// Mouse is whether the program asks the terminal to report the mouse.
 	Mouse string `toml:"mouse,omitempty"`
 
-	// OwnSessions is whether the dashboard draws the connections this program
-	// made. It is off by default: reading the health of a server and listing
-	// what it is running are themselves two sessions running two statements,
-	// and a dashboard mostly showing its own reflection is a dashboard that
-	// buries the one query somebody wanted to see.
+	// OwnSessions is whether the dashboard draws the connections this program made.
 	OwnSessions bool `toml:"own_sessions,omitempty"`
 }
 
@@ -58,17 +49,14 @@ type HistorySettings struct {
 }
 
 // ChatSettings is what becomes of a conversation with the assistant once it is
-// over. Keeping one means keeping everything that was said, the rows a tool
-// read included, because a conversation stored without them reads back but
-// cannot be carried on.
+// over.
 type ChatSettings struct {
 	Enabled bool `toml:"enabled"`
 	Limit   int  `toml:"limit"`
 }
 
 // AIInstance is one configured way to reach a model: which back-end, which
-// model, and where the key is kept. Key holds a reference to a secret and never
-// a secret, which is the same discipline a connection password is held to.
+// model, and where the key is kept.
 type AIInstance struct {
 	Name     string `toml:"name"`
 	Kind     string `toml:"kind"`
@@ -90,9 +78,7 @@ type AISettings struct {
 	Token string `toml:"token,omitempty"`
 
 	// Provider, Model and Endpoint are what this section held before it could
-	// describe more than one instance. They are still read, and folded into an
-	// instance when there are none, so that a file written by an older version
-	// keeps working. Once there are instances they decide nothing.
+	// describe more than one instance.
 	Provider string `toml:"provider"`
 	Model    string `toml:"model"`
 	Endpoint string `toml:"endpoint,omitempty"`
@@ -101,17 +87,23 @@ type AISettings struct {
 // KnownKinds are the back-ends an instance may name.
 var KnownKinds = []string{"anthropic", "openai", "gemini", "ollama", "compatible", "local"}
 
-// KnownSecretSchemes are the ways a key may be kept. A key written into the
-// file itself is refused rather than tidied up, because a secret that has been
-// on disk in the clear cannot be untold.
+// KnownSecretSchemes are the ways a key may be kept.
 var KnownSecretSchemes = []string{"keyring", "vault", "env", "command"}
 
 type Settings struct {
 	Appearance AppearanceSettings `toml:"appearance"`
 	Safety     SafetySettings     `toml:"safety"`
+	Workspace  WorkspaceSettings  `toml:"workspace"`
 	History    HistorySettings    `toml:"history"`
 	Chats      ChatSettings       `toml:"chats"`
 	AI         AISettings         `toml:"ai"`
+}
+
+// WorkspaceSettings is where the statements you keep are kept.
+type WorkspaceSettings struct {
+	// Root is the directory the files list reads, with one of its own under it
+	// per connection. Empty means the data directory, worked out at startup.
+	Root string `toml:"root,omitempty"`
 }
 
 func DefaultSettings() Settings {
@@ -151,6 +143,9 @@ func (s Settings) Validate() error {
 	}
 	if s.Chats.Limit < 0 {
 		return fmt.Errorf("conversation limit cannot be negative, got %d", s.Chats.Limit)
+	}
+	if s.Workspace.Root != "" && !filepath.IsAbs(s.Workspace.Root) {
+		return fmt.Errorf("the workspace root must be a full path, got %q", s.Workspace.Root)
 	}
 	return s.AI.validate()
 }
@@ -199,8 +194,6 @@ func (i AIInstance) validateKey() error {
 }
 
 // reference refuses a secret written into the file instead of a pointer to one.
-// A key that has been on disk in the clear cannot be untold, so it is refused
-// rather than tidied up.
 func reference(what, written string) error {
 	if written == "" {
 		return nil

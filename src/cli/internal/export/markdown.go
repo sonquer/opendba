@@ -7,9 +7,7 @@ import (
 )
 
 // writeMarkdown is the format a result is pasted into a document or a message
-// as. A cell is written on one line, because a markdown table has no way to
-// hold a second one, and the bar that separates columns is escaped so a value
-// containing one does not become two columns.
+// as.
 type writeMarkdown struct {
 	out     io.Writer
 	columns int

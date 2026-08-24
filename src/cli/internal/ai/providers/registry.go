@@ -70,10 +70,7 @@ func (r *Registry) Names() []string {
 	return names
 }
 
-// All is every back-end this program can reach, assembled in one place. It is
-// here rather than higher up because a factory belongs with the things it
-// makes: adding a back-end is a package beside this one and a line in here, and
-// no screen above learns a new name.
+// All is every back-end this program can reach, assembled in one place.
 func All(models local.Models) *Registry {
 	registry := NewRegistry()
 	registry.Register(anthropic.New())

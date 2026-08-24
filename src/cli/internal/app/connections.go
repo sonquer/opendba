@@ -31,10 +31,8 @@ type removedMsg struct {
 	err  error
 }
 
-// connections is the list of profiles, with what is known about each one
-// beside it. Only the connection in use can say what it is doing: the rest are
-// names on disk, and opening every one of them to draw a list would be a list
-// that costs a round trip per row to look at.
+// connections is the list of profiles, with what is known about each one beside
+// it.
 type connections struct {
 	picker
 	failure string
@@ -147,9 +145,7 @@ func (m Model) askToRemove() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// chosen answers enter. On another connection it opens that one. On the
-// connection already in use there is nothing to open, so it goes a level in
-// instead, to the database and schemas that connection is reading.
+// chosen answers enter. On another connection it opens that one.
 func (m Model) chosen() (tea.Model, tea.Cmd) {
 	connection, ok := m.list.selected()
 	if !ok {
@@ -194,9 +190,7 @@ func (m Model) configure() (tea.Model, tea.Cmd) {
 	return m, wizard.Init()
 }
 
-// created applies what the wizard did. A new connection is opened. An edited
-// one is opened again only when it is the connection this session is already
-// on, because saving somebody else's profile is not a reason to leave yours.
+// created applies what the wizard did.
 func (m Model) created(done SetupDone) (tea.Model, tea.Cmd) {
 	editing := m.wizard != nil && m.wizard.editing.ID != ""
 	mine := done.Connection.ID == m.session.Connection.ID

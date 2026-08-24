@@ -4,9 +4,7 @@ package embedded
 
 import "embed"
 
-// libraries is empty on a machine nobody publishes a build for. The field
-// exists so that the package compiles everywhere and the caller can ask
-// rather than having to know.
+// libraries is empty on a machine nobody publishes a build for.
 var libraries embed.FS
 
 const dir = ""

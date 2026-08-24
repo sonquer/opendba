@@ -24,9 +24,8 @@ import (
 const (
 	promptRows = 3
 
-	// stepWidth is how much of a tool call is shown on the line that says one
-	// was made. The arguments are there to tell you what was looked at, not to
-	// be read in full.
+	// stepWidth is how much of a tool call is shown on the line that says one was
+	// made.
 	stepWidth = 64
 )
 
@@ -34,15 +33,11 @@ const (
 // the machine.
 var errRefused = errors.New("you did not allow this to be sent")
 
-// conversation is what the Ask screen talks to. It is an interface rather than
-// the agent itself so that the screen can be driven in a test by something that
-// answers without a model, a key or a network.
+// conversation is what the Ask screen talks to.
 type conversation interface {
 	Ask(ctx context.Context, question string, out chan<- agent.Event) error
 
 	// Warm makes the back-end ready before a question rather than during one.
-	// A model that runs here is gigabytes off a disk, and the wait belongs
-	// where it can be seen rather than in the middle of an answer.
 	Warm(ctx context.Context) error
 
 	// Close lets go of what the back-end is holding, which for a model running
@@ -51,10 +46,7 @@ type conversation interface {
 }
 
 // remembering is a conversation that can hand back what has been said and take
-// it back again, which is what keeping one and opening it later needs. It is
-// separate from conversation, the way Warmer and Prober are separate from
-// Client: the screen works without it, and a test driving the screen should not
-// have to implement it to say nothing.
+// it back again, which is what keeping one and opening it later needs.
 type remembering interface {
 	Messages() []ai.Message
 	Resume(messages []ai.Message)
@@ -66,14 +58,7 @@ func recalls(talk conversation) (remembering, bool) {
 	return held, ok
 }
 
-// approval is a question the assistant asks the screen and waits for. The
-// assistant runs in a goroutine, so a question has to travel out as a message
-// and come back as one.
-//
-// There are two of them and one channel, because they are the same question
-// from the screen's point of view: something is about to happen, and it is
-// waiting on an answer. One is a turn that would leave the machine; the other
-// is a statement that would run against the database.
+// approval is a question the assistant asks the screen and waits for.
 type approval struct {
 	outbound  *agent.Outbound
 	statement string
@@ -96,9 +81,7 @@ func (g gate) Allow(ctx context.Context, outbound agent.Outbound) error {
 	return g.ask(ctx, approval{outbound: &outbound})
 }
 
-// Statement asks whether a statement the assistant wrote may run. The guard has
-// already refused it if it would change anything, so this is a person deciding
-// whether to read that, now, rather than a safety net.
+// Statement asks whether a statement the assistant wrote may run.
 func (g gate) Statement(ctx context.Context, statement string) error {
 	return g.ask(ctx, approval{statement: statement})
 }
@@ -147,9 +130,7 @@ type askAnswerMsg struct {
 	token  int
 }
 
-// exchange is one question and what came back. The answer is kept as plain text
-// while it is arriving and rendered as markdown once it is finished, because a
-// code fence that has been opened and not yet closed is not markdown yet.
+// exchange is one question and what came back.
 type exchange struct {
 	question  string
 	answer    string
@@ -171,52 +152,35 @@ type chat struct {
 	trouble   string
 	running   stream
 
-	// loading is a model on its way into memory. The box is not typed into
-	// while it is true: a question written now would sit there until the load
-	// finished anyway, and a box that takes words and does nothing with them
-	// reads as a program that has stopped.
+	// loading is a model on its way into memory.
 	loading bool
 
 	// loaded is a back-end that is ready, which is what makes letting go of it
 	// something there is any point offering.
 	loaded bool
 
-	// waiting is a question asked while the model it is for is still being
-	// read into memory. It is kept rather than sent, because there is nothing
-	// to send it to yet.
+	// waiting is a question asked while the model it is for is still being read
+	// into memory.
 	waiting string
 
-	// bottom is where the end of the conversation was the last time it was
-	// looked at, which is how following it is told apart from having been left
-	// there. Somebody who has walked back is not dragged to the end every time
-	// another word arrives.
+	// bottom is where the end of the conversation was the last time it was looked
+	// at, which is how following it is told apart from having been left there.
 	bottom int
 
-	// thinking is whether the reasoning a model shows its working in is opened
-	// out. It is one setting for the whole conversation rather than one per
-	// answer: somebody either wants to see the working or does not.
+	// thinking is whether the reasoning a model shows its working in is opened out.
 	thinking bool
 
-	// asks is how the assistant reaches the person for permission. It belongs
-	// to the screen rather than to the assistant, because the screen is what
-	// can put the question somewhere it will be read.
+	// asks is how the assistant reaches the person for permission.
 	asks chan approval
 
-	// pending is a turn waiting to be allowed out. The assistant is blocked in
-	// a goroutine until it is answered, which is why refusing has to send an
-	// answer rather than simply forgetting the question.
+	// pending is a turn waiting to be allowed out.
 	pending *approval
 
 	// id is what this conversation is kept under, and started is when it began.
-	// A conversation nothing has been asked in yet has no id, because it is not
-	// a conversation until somebody says something.
 	id      int64
 	started time.Time
 
-	// thread counts the conversations this screen has held. A save is slower
-	// than beginning another one, so the name a save comes back with belongs to
-	// the conversation it was for and not to whichever is on screen when it
-	// lands.
+	// thread counts the conversations this screen has held.
 	thread int
 }
 
@@ -257,11 +221,6 @@ type readyMsg struct {
 
 // load4Talk builds the conversation and makes it ready, which for a model that
 // runs here is the whole of reading it off the disk.
-//
-// It happens when the first question is asked, and not before. Opening the
-// conversation to read what was said yesterday should not put four gigabytes
-// into memory, and choosing a model is saying which one to use rather than
-// asking for it now.
 func (m Model) load4Talk() (Model, tea.Cmd) {
 	if m.build == nil || m.assistant != nil || m.talk.loading || !m.local4Talk() {
 		return m, nil
@@ -286,9 +245,7 @@ func (m Model) load4Talk() (Model, tea.Cmd) {
 }
 
 // local4Talk is whether what answers runs on this machine, which is the only
-// case where being ready takes long enough to be worth showing. A back-end
-// somewhere else is opened when the first question is asked, because opening it
-// is building a struct.
+// case where being ready takes long enough to be worth showing.
 func (m Model) local4Talk() bool {
 	instance, ok := m.session.Settings.AI.Instance(m.talk.instance)
 	return ok && ai.Kind(instance.Kind) == ai.KindLocal
@@ -315,10 +272,7 @@ func (m Model) ready(msg readyMsg) (tea.Model, tea.Cmd) {
 	return m, m.talk.prompt.Focus()
 }
 
-// released lets go of the model. It is the other half of loading one: a model
-// that runs here holds gigabytes for as long as it is loaded, and somebody who
-// is done asking questions should be able to have them back without leaving the
-// program.
+// released lets go of the model.
 func (m Model) released() (Model, tea.Cmd) {
 	if m.stopLoad != nil {
 		m.stopLoad()
@@ -338,9 +292,6 @@ func (m Model) released() (Model, tea.Cmd) {
 }
 
 // started opens a turn and returns the command that reads it.
-//
-// A model that runs here is read into memory first, with the question kept
-// where it was typed until there is something to ask it.
 func (m Model) started(question string) (Model, tea.Cmd) {
 	if m.build == nil {
 		chosen, cmd := m.choosing()
@@ -399,9 +350,7 @@ func (m Model) asked(msg askEventMsg) (tea.Model, tea.Cmd) {
 	return m.pinned(), waitForAsk(m.talk.running, msg.token)
 }
 
-// approving puts the question of whether a turn may be sent on the screen. The
-// assistant is waiting on the answer, so a turn that is no longer the current
-// one is refused rather than left hanging.
+// approving puts the question of whether a turn may be sent on the screen.
 func (m Model) approving(msg askApprovalMsg) (tea.Model, tea.Cmd) {
 	if msg.token != m.talk.token {
 		msg.request.answer <- errRefused
@@ -433,9 +382,7 @@ func (m Model) finished(msg askEndedMsg) (tea.Model, tea.Cmd) {
 	return m.pinned(), tea.Batch(m.talk.prompt.Focus(), m.keep())
 }
 
-// keep writes the conversation down at the end of a turn. It never fails a
-// conversation: somewhere to put one is worth having and not worth losing an
-// answer over, so a failure is a sentence rather than an error.
+// keep writes the conversation down at the end of a turn.
 func (m Model) keep() tea.Cmd {
 	held, ok := m.kept()
 	if !ok {
@@ -500,10 +447,7 @@ func (m Model) wasKept(msg keptMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// scroll4Ask walks the conversation. It cannot use the scrolling every other
-// screen shares, because that one measures the whole body against the window
-// and this body is a fixed height: the transcript has a window of its own and
-// is the only part of it that moves.
+// scroll4Ask walks the conversation.
 func (m Model) scroll4Ask(msg tea.KeyPressMsg) Model {
 	rows := m.transcriptRows()
 	if msg.String() == "pgup" {
@@ -513,8 +457,7 @@ func (m Model) scroll4Ask(msg tea.KeyPressMsg) Model {
 }
 
 // rolled4Ask walks the conversation by a number of rows, from a key or from a
-// wheel. The end is noted as it goes, so that walking back to it starts
-// following the answer again.
+// wheel.
 func (m Model) rolled4Ask(step int) Model {
 	limit := ui.MaxOffset(m.askTranscript(ui.TextWidth(m.width)), m.transcriptRows())
 	m.offset = min(max(m.offset+step, 0), limit)
@@ -522,14 +465,7 @@ func (m Model) rolled4Ask(step int) Model {
 	return m
 }
 
-// pinned keeps the newest words on screen. Someone who has walked back is left
-// where they are, because dragging the view away mid-read is worse than missing
-// the last line.
-//
-// Being at the end is remembered rather than guessed at: the end moves with
-// every word that arrives, so an offset compared against where the end was a
-// moment ago is the only way to tell somebody following along from somebody
-// reading something further up.
+// pinned keeps the newest words on screen.
 func (m Model) pinned() Model {
 	limit := ui.MaxOffset(m.askTranscript(ui.TextWidth(m.width)), m.transcriptRows())
 	if m.offset >= m.talk.bottom {
@@ -640,9 +576,7 @@ func (m Model) halted() Model {
 	return m
 }
 
-// waitForAsk reads one thing from a running turn. It is issued again for every
-// piece, which is how a blocking read becomes something a screen can wait on
-// while staying answerable.
+// waitForAsk reads one thing from a running turn.
 func waitForAsk(running stream, token int) tea.Cmd {
 	return func() tea.Msg {
 		select {
@@ -690,12 +624,6 @@ func (a *chat) record(event agent.Event) {
 
 // transcript draws a conversation that was kept, by replaying it through the
 // same recorder a live one goes through.
-//
-// It could have read the messages and built the exchanges directly, and then
-// there would be two sets of rules for what a conversation looks like and one
-// day they would disagree. Turning the messages back into the events they were
-// drawn from means there is one set, in record, and a conversation opened
-// tomorrow reads exactly as it did today.
 func transcript(messages []ai.Message) []exchange {
 	var held chat
 	for _, message := range messages {
@@ -783,12 +711,8 @@ func (m Model) transcriptRows() int {
 	return max(ui.BodyHeight(m.height)-boxRows-4, 3)
 }
 
-// askBody lays the screen out: the conversation above, the box to type in at
-// the bottom, and the conversation windowed so that the box never scrolls away.
-//
-// The transcript is padded to the room it has rather than left to be as tall as
-// it happens to be, which is what keeps the box on the last line of the screen
-// instead of floating up under a short answer.
+// askBody lays the screen out: the conversation above, the box to type in at the
+// bottom, and the conversation windowed so that the box never scrolls away.
 func (m Model) askBody() string {
 	width := ui.FrameWidth(m.width)
 	inner := ui.TextWidth(m.width)
@@ -807,13 +731,9 @@ func (m Model) askBody() string {
 }
 
 // foot is the box you type in, with what is answering written inside it rather
-// than beside it: the eye is already there when a question is about to be
-// typed, and a model named in the corner of a screen reads as a fact about the
-// database instead.
-//
-// The border is the box. It takes the accent colour while the box has the keys
-// and the plain border colour when something else does, which is the only place
-// on this screen that says where typing goes.
+// than beside it: the eye is already there when a question is about to be typed,
+// and a model named in the corner of a screen reads as a fact about the database
+// instead.
 func (m Model) foot(width int) string {
 	inner := width - 4
 	if m.talk.pending != nil {
@@ -879,11 +799,6 @@ func (m Model) asked4Permission(waiting approval, inner int) string {
 
 // boxed draws the box: a bar down the left and a ground behind the whole of it,
 // rather than a border around it.
-//
-// The bar is what says where typing goes, and it is the only part that changes
-// colour: lit while the box has the keys, plain while a model is being read in
-// or is answering. A border would draw a rectangle around three blank lines,
-// which is a lot of furniture for a place to type.
 func (m Model) boxed(content string, inner int) string {
 	ground := lipgloss.NewStyle().Background(m.theme.P.Surface)
 	bar := ground.Foreground(m.theme.P.Border)
@@ -932,16 +847,11 @@ func (m Model) hint4Meta() string {
 }
 
 // shut is whether the box is closed to typing: while a model is being read in,
-// and while it is answering. What it says in the meantime is on the line under
-// it, once, rather than in two places at once.
+// and while it is answering.
 func (m Model) shut() bool { return m.talk.loading || m.talk.busy }
 
 // model4Meta is the model the instance answers with, which is the part somebody
 // actually recognises when two instances share a provider.
-//
-// A model that runs here is named the way the catalogue names it, because
-// "Gemma 4 E4B" is what it is called everywhere else in this program and
-// gemma-4-e4b-qat is a directory on a disk.
 func (m Model) model4Meta() string {
 	instance, ok := m.session.Settings.AI.Instance(m.talk.instance)
 	if !ok {
@@ -993,9 +903,7 @@ func (m Model) exchangeView(said exchange, width int, current bool) string {
 }
 
 // asked4View is the question, drawn as the thing that was said rather than
-// labelled as it. A bar down the side and a ground behind it is what tells one
-// side of a conversation from the other at a glance, which is work a word like
-// "you" at the top of every block does badly.
+// labelled as it.
 func (m Model) asked4View(question string, width int) string {
 	room := max(width-2, 1)
 	body := lipgloss.NewStyle().Background(m.theme.P.Surface).Foreground(m.theme.P.OnSelection)
@@ -1008,13 +916,7 @@ func (m Model) asked4View(question string, width int) string {
 	return strings.Join(drawn, "\n")
 }
 
-// thinking4View is the working a model showed. It is folded away by default and
-// opened with a key, because it is worth having and is not the answer: three
-// paragraphs of deliberation above two lines of reply would bury the reply.
-//
-// While it is the only thing that has arrived it is shown regardless, as its
-// last few lines. A model that has been reasoning for thirty seconds and shown
-// nothing is indistinguishable from one that has hung.
+// thinking4View is the working a model showed.
 func (m Model) thinking4View(said exchange, width int, current bool) string {
 	if said.reasoning == "" {
 		return ""
@@ -1045,8 +947,7 @@ func tail(text string, lines int) string {
 const thoughtLines = 3
 
 // answerView draws an answer that is still arriving as plain text and one that
-// has finished as markdown. Rendering markdown that is half written puts an
-// unterminated code fence through a parser that has every right to refuse it.
+// has finished as markdown.
 func (m Model) answerView(said exchange, width int, current bool) string {
 	if said.answer == "" {
 		if current && m.talk.busy {
@@ -1060,9 +961,8 @@ func (m Model) answerView(said exchange, width int, current bool) string {
 	return strings.TrimRight(m.theme.Markdown(width).Render(said.answer), "\n")
 }
 
-// consentBody is the panel that says what would be sent and asks whether to
-// send it. It names classes rather than bytes, because that is the question
-// somebody can actually answer.
+// consentBody is the panel that says what would be sent and asks whether to send
+// it.
 func consentBody(outbound agent.Outbound) string {
 	classes := make([]string, 0, len(outbound.Classes))
 	for _, class := range outbound.Classes {
@@ -1081,6 +981,5 @@ func size(value int) string {
 }
 
 // releaseMsg is the command that gives back the memory a local model is loaded
-// into. It is a command rather than a key on the conversation screen: every
-// letter there is a letter somebody is typing into the box.
+// into.
 type releaseMsg struct{}

@@ -10,8 +10,6 @@ import (
 
 // row is one line of any list in this program: a connection, a database, a
 // table, a command.
-// row is one line of any list. cap is the key the row answers to, drawn on a
-// keycap at the far right so it is never confused with the prose beside it.
 type row struct {
 	key     string
 	label   string
@@ -26,10 +24,6 @@ type row struct {
 
 // picker is the list every screen shares: a cursor that wraps, sections that
 // announce themselves once, and one way of drawing a row.
-//
-// caps is how wide the column of keys is, measured once from the rows it was
-// given. Without it a row ending in a key and a row ending in a sentence end in
-// the same place, and the keys stop being a column anybody can read down.
 type picker struct {
 	theme  *ui.Theme
 	rows   []row
@@ -119,17 +113,9 @@ func (p picker) line(item row, width int, active bool) string {
 	return ui.SplitLine(left, right, width)
 }
 
-// aside is what sits at the right of a row: what the row is about, then the
-// word for the row that is the one in use, then the key it answers to on a cap
-// of its own. They are drawn apart on purpose. A column where one row holds a
-// keystroke and the next holds a sentence is a column the eye cannot run down,
-// and a key printed as plain text beside prose does not read as something to
-// press.
-//
-// The word used to be a dot after the name, which said nothing to anybody who
-// had not been told what it meant, and said it twice over for a row that was
-// already drawn in the accent. It is never cut: which row you are already on
-// matters more than the rest of the line it shares.
+// aside is what sits at the right of a row: what the row is about, then the word
+// for the row that is the one in use, then the key it answers to on a cap of its
+// own.
 func (p picker) aside(item row, room int) string {
 	held := ""
 	if item.current {

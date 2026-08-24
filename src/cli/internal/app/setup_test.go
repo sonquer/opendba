@@ -22,7 +22,11 @@ func newSetup(t *testing.T) (cli.Setup, config.Store) {
 	t.Helper()
 	keyring.MockInit()
 	root := t.TempDir()
-	paths := config.Paths{Config: filepath.Join(root, "config"), State: filepath.Join(root, "state")}
+	paths := config.Paths{
+		Config: filepath.Join(root, "config"),
+		State:  filepath.Join(root, "state"),
+		Data:   filepath.Join(root, "data"),
+	}
 	if err := paths.Ensure(); err != nil {
 		t.Fatal(err)
 	}

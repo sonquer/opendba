@@ -15,9 +15,7 @@ import (
 )
 
 // Assistant is everything the conversation screen needs, gathered when the
-// session opened. The zero value means there is no assistant, which is what a
-// disabled or unconfigured [ai] section produces, and what every screen above
-// treats as nothing to talk to.
+// session opened.
 type Assistant struct {
 	Enabled  bool
 	Instance ai.Instance
@@ -31,15 +29,11 @@ type Assistant struct {
 	// only account of itself it leaves when it ends the process.
 	Log string
 
-	// Token is the resolved Hugging Face token, for the repositories that want
-	// one. It is resolved here so that nothing above ever handles the reference
-	// and mistakes it for the secret.
+	// Token is the resolved Hugging Face token, for the repositories that want one.
 	Token []byte
 }
 
-// NewAssistant gathers what the conversation needs. A problem reading a key or
-// naming a back-end is carried rather than returned: a database session is not
-// worth refusing over an assistant nobody has asked for yet.
+// NewAssistant gathers what the conversation needs.
 func NewAssistant(ctx context.Context, paths config.Paths, settings config.Settings, secrets *secretref.Store) Assistant {
 	models := local.NewStore(paths.ModelsDir())
 	assistant := Assistant{
@@ -84,9 +78,6 @@ func (a Assistant) Open() (ai.Client, error) {
 // Memory is what the inference library reports for the largest device it found,
 // which is the number a model has to fit in: the video memory of a graphics
 // card, or the unified memory of a machine that has one pool for both.
-//
-// It is zero until the library is on disk, and asking loads it, so this is
-// called once from a command rather than from anything that draws.
 func (a Assistant) Memory() int64 {
 	if a.Library == nil || !a.Library.Present() {
 		return 0
@@ -100,9 +91,7 @@ func (a Assistant) Memory() int64 {
 	return largest
 }
 
-// Downloader is the client a download uses. It carries no timeout because a
-// model is gigabytes and a connection somewhere is slow, and it will not carry
-// a token across a redirect to another host.
+// Downloader is the client a download uses.
 func Downloader() *http.Client { return &http.Client{CheckRedirect: local.KeepTokenHome} }
 
 // replyTimeout is how long a whole answer may take. It is generous because a
@@ -110,8 +99,7 @@ func Downloader() *http.Client { return &http.Client{CheckRedirect: local.KeepTo
 const replyTimeout = 10 * time.Minute
 
 // AIInstance resolves a configured instance into one that can be opened,
-// fetching the key from wherever the profile says it is kept. The key is never
-// read out of the settings file, because it is never written there.
+// fetching the key from wherever the profile says it is kept.
 func AIInstance(ctx context.Context, settings config.Settings, secrets *secretref.Store, name string) (ai.Instance, error) {
 	if name == "" {
 		name = settings.AI.Active
@@ -167,12 +155,8 @@ type Hosted struct {
 	Note  string
 }
 
-// Hosts are the back-ends that are reached over the network, in the order a
-// list should offer them.
-//
-// The model beside each one is a starting point rather than a claim about what
-// is best: it is what the instance is created with, and the ai screen changes
-// it. Ollama has none because the daemon is asked what it has.
+// Hosts are the back-ends that are reached over the network, in the order a list
+// should offer them.
 func Hosts() []Hosted {
 	return []Hosted{
 		{Kind: ai.KindAnthropic, Title: "Anthropic", Model: "claude-sonnet-5", Env: "ANTHROPIC_API_KEY", Note: "needs a key"},
@@ -183,9 +167,7 @@ func Hosts() []Hosted {
 }
 
 // FromEnvironment reports the key a host is already configured with, as a
-// reference rather than as the key. Somebody who has exported it has already
-// decided where it lives, and copying it into a keychain would only make a
-// second place for it to leak from.
+// reference rather than as the key.
 func FromEnvironment(host Hosted, look func(string) string) (string, bool) {
 	if host.Env == "" || look == nil {
 		return "", false
@@ -197,8 +179,7 @@ func FromEnvironment(host Hosted, look func(string) string) (string, bool) {
 }
 
 // AddInstance writes an instance into the settings and makes it the one that
-// answers. It returns the settings it saved so that a screen holding a copy is
-// not left with a stale one.
+// answers.
 func AddInstance(store config.Store, settings config.Settings, instance config.AIInstance) (config.Settings, error) {
 	if instance.Name == "" {
 		return settings, fmt.Errorf("an instance needs a name")
@@ -235,9 +216,7 @@ func replaced(instances []config.AIInstance, instance config.AIInstance) []confi
 	return append(instances, instance)
 }
 
-// InstanceName is what an instance built from a host or a model is called. It
-// is the kind for a host and the model's own name for a local one, because
-// those are the words somebody would use for them out loud.
+// InstanceName is what an instance built from a host or a model is called.
 func InstanceName(kind ai.Kind, model string) string {
 	if kind == ai.KindLocal {
 		return model

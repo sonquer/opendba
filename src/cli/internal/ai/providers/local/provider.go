@@ -38,9 +38,7 @@ func New(models Models) *Provider { return &Provider{models: models} }
 // Kind names this back-end.
 func (p *Provider) Kind() ai.Kind { return ai.KindLocal }
 
-// Open returns a client for an instance. The engine comes from the caller
-// rather than from here, so that one loaded library serves every instance and a
-// test can hand over one that loads nothing at all.
+// Open returns a client for an instance.
 func (p *Provider) Open(instance ai.Instance, deps ai.Deps) (ai.Client, error) {
 	if deps.Engine == nil {
 		return nil, fmt.Errorf("local inference needs an engine")
@@ -62,12 +60,7 @@ type client struct {
 	loaded  string
 }
 
-// Capabilities reports what a local model can do. Tools are answered with a
-// grammar rather than with a provider's own tool protocol, which is why the
-// grammar is advertised alongside them. Reasoning is read out of the stream
-// rather than handed over by a protocol, which is why it is advertised at all:
-// a model that brackets its deliberation is understood here the same way a
-// remote one that labels it is.
+// Capabilities reports what a local model can do.
 func (c *client) Capabilities() ai.Capabilities {
 	return ai.Capabilities{
 		Tools:     true,
@@ -91,10 +84,7 @@ func (c *client) Probe(context.Context) error {
 	return nil
 }
 
-// Warm loads the model now rather than during the first question. The grammar
-// is worked out from the same tools the conversation will use, because it is
-// compiled into the sampler: warming without them would load the model once
-// here and again on the first question.
+// Warm loads the model now rather than during the first question.
 func (c *client) Warm(ctx context.Context, tools []ai.Tool) error {
 	grammar, err := grammarFor(tools)
 	if err != nil {
@@ -136,9 +126,7 @@ func grammarFor(tools []ai.Tool) (string, error) {
 	return Grammar(tools)
 }
 
-// sessionFor keeps one model loaded. The grammar is part of the sampler and so
-// part of the load, which is why a change of tools reloads: it is rare, and the
-// alternative is a sampler that no longer matches the tools on offer.
+// sessionFor keeps one model loaded.
 func (c *client) sessionFor(ctx context.Context, model, grammar string) (ai.Session, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -193,9 +181,7 @@ func (c *client) Close() error {
 	return err
 }
 
-// stream turns the tokens a session produces into chunks. Generation runs in a
-// goroutine because the loop is a blocking call into the library, and the
-// screen has to stay answerable while it runs.
+// stream turns the tokens a session produces into chunks.
 type stream struct {
 	tokens  <-chan ai.Token
 	failure <-chan error

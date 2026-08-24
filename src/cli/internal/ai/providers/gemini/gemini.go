@@ -1,7 +1,4 @@
-// Package gemini speaks the generative language protocol. It is the odd one of
-// the three: the key travels in the query string, the roles are named
-// differently, and an answer arrives as a stream of whole candidates rather
-// than as deltas, so what changed has to be worked out here.
+// Package gemini speaks the generative language protocol.
 package gemini
 
 import (
@@ -126,8 +123,7 @@ func (c *client) Chat(ctx context.Context, req ai.Request) (ai.Stream, error) {
 }
 
 // address puts the key in the query string, which is where this protocol wants
-// it. Nothing else is ever put there, because a query string is the part of a
-// request most likely to be written to a log.
+// it.
 func (c *client) address(path, alt string) string {
 	query := url.Values{}
 	if len(c.instance.Key) > 0 {
@@ -173,9 +169,7 @@ func (c *client) body(req ai.Request) map[string]any {
 	return body
 }
 
-// contents folds the conversation into the turns this protocol expects. The
-// assistant is called the model here, and a tool result is a part the user
-// sends, so consecutive results are gathered into one turn.
+// contents folds the conversation into the turns this protocol expects.
 func contents(from []ai.Message) []map[string]any {
 	out := make([]map[string]any, 0, len(from))
 	for _, message := range from {

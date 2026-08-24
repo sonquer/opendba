@@ -14,33 +14,26 @@ const (
 	// toastLife is how long one sentence stays on screen.
 	toastLife = 3 * time.Second
 
-	// toastsShown is how many are drawn at once. Past that the oldest goes:
-	// a corner filling up with things the program said a minute ago is a
-	// corner nobody reads and a screen nobody can see past.
+	// toastsShown is how many are drawn at once.
 	toastsShown = 3
 
-	// toastWidth is the widest a sentence is drawn before it wraps, and
-	// toastFrame is what the ground around it adds: a bar, and the room on
-	// either side of the words.
+	// toastWidth is the widest a sentence is drawn before it wraps, and toastFrame
+	// is what the ground around it adds: a bar, and the room on either side of the
+	// words.
 	toastWidth = 44
 	toastFrame = 5
 )
 
 type toastMsg struct{ sequence int }
 
-// note is one thing the program has said, and whether it was a complaint. Two
-// states rather than a scale: everything this program says in passing is either
-// news, in the accent it says everything else in, or something that went wrong.
+// note is one thing the program has said, and whether it was a complaint.
 type note struct {
 	text     string
 	alarm    bool
 	sequence int
 }
 
-// toaster is what the program says in passing, stacked in the top right. It is
-// a stack rather than one line because two things can happen at once — a file
-// finishes writing while a query fails — and a single line would have shown one
-// of them and thrown the other away without anybody knowing it existed.
+// toaster is what the program says in passing, stacked in the top right.
 type toaster struct {
 	notes    []note
 	sequence int
@@ -83,9 +76,8 @@ func (t toaster) text() string {
 	return t.notes[len(t.notes)-1].text
 }
 
-// render draws the stack, newest at the top, each on a ground of its own with
-// a bar in the colour of what it is about. There is no marker in front of the
-// words: a bullet is a list, and one sentence is not a list.
+// render draws the stack, newest at the top, each on a ground of its own with a
+// bar in the colour of what it is about.
 func (t toaster) render(theme *ui.Theme) string {
 	if len(t.notes) == 0 {
 		return ""
@@ -101,9 +93,7 @@ func (t toaster) render(theme *ui.Theme) string {
 }
 
 // one draws a single sentence: the words on their ground with room above and
-// below them, and a bar down the left in the colour of what it is about. The
-// bar is drawn as its own column so that the padding belongs to the block
-// rather than to every line of it.
+// below them, and a bar down the left in the colour of what it is about.
 func (t toaster) one(theme *ui.Theme, held note) string {
 	lines := strings.Split(lipgloss.NewStyle().Width(toastWidth).Render(held.text), "\n")
 	widest := 0

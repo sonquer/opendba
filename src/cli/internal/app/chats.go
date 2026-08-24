@@ -27,8 +27,7 @@ type openedChatMsg struct {
 }
 
 // chatList is the conversations that have been had, offered over the one on
-// screen. It is an overlay rather than a screen of its own because it is about
-// the conversation behind it: closing it should leave that exactly as it was.
+// screen.
 type chatList struct {
 	theme   *ui.Theme
 	chats   []chats.Chat
@@ -134,9 +133,7 @@ func (m Model) chatsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openChat reads a conversation back and carries on from it. The assistant is
-// handed the same messages the screen is drawn from, so the next question is
-// answered with what was said rather than from nothing.
+// openChat reads a conversation back and carries on from it.
 func (m Model) openChat() (tea.Model, tea.Cmd) {
 	held, ok := m.chats.selected()
 	if !ok {

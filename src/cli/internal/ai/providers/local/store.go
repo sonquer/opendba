@@ -10,9 +10,7 @@ import (
 
 const manifestName = "manifest.json"
 
-// Manifest is what was fetched, written beside it. It records the revision and
-// the checksum so that a file which changed under the same name is noticed
-// rather than run.
+// Manifest is what was fetched, written beside it.
 type Manifest struct {
 	ID       string `json:"id"`
 	Repo     string `json:"repo"`
@@ -138,8 +136,7 @@ func (s *Store) Write(manifest Manifest) error {
 }
 
 // installed puts the settings the catalogue holds together with the file on
-// disk. A model that is not in the catalogue still runs: someone who has put a
-// file there themselves gets sensible defaults rather than a refusal.
+// disk.
 func installed(id, path string) Installed {
 	model := Installed{
 		ID:        id,

@@ -1,7 +1,4 @@
-// Package openai speaks the chat completions protocol. It is the one protocol
-// that is not a single vendor: an endpoint the user runs themselves, a hosted
-// gateway and OpenAI itself all answer the same requests, and the only thing
-// that separates them is a base address and a key.
+// Package openai speaks the chat completions protocol.
 package openai
 
 import (
@@ -62,9 +59,7 @@ type client struct {
 	transport *ai.Transport
 }
 
-// Capabilities reports what this protocol offers. Nothing is probed: an
-// endpoint that answers chat completions answers tools and a stream, and one
-// that does not will say so when it is asked.
+// Capabilities reports what this protocol offers.
 func (c *client) Capabilities() ai.Capabilities {
 	return ai.Capabilities{
 		Tools:     true,

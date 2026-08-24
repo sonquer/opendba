@@ -21,9 +21,7 @@ type explainedMsg struct {
 	err       error
 }
 
-// plan is what the server says it would do with a statement. It is an overlay
-// rather than a screen because it is about the statement in the tab behind it,
-// and closing it should leave that tab exactly as it was.
+// plan is what the server says it would do with a statement.
 type plan struct {
 	theme     *ui.Theme
 	root      driver.PlanNode
@@ -34,10 +32,7 @@ type plan struct {
 	trouble   string
 }
 
-// explain asks the server what it would do. ANALYZE is a separate question
-// because it does not ask: it runs the statement, and a statement that has
-// already been run once is not a statement to run again by pressing a key that
-// says "explain".
+// explain asks the server what it would do.
 func (m Model) explain(msg explainMsg) (tea.Model, tea.Cmd) {
 	if !m.session.Capabilities.Explain {
 		return m, m.notify("this server cannot explain a statement")
@@ -149,8 +144,6 @@ func (p plan) hints() []ui.Hint {
 }
 
 // body draws the plan as the tree it is, with what each step costs beside it.
-// A server that reports no cost gets no bar rather than a bar of nought, which
-// would read as a step that costs nothing.
 func (p plan) body(width int) string {
 	drawn := p.branch()
 	for _, child := range p.root.Children {
@@ -192,9 +185,7 @@ func (p plan) label(node driver.PlanNode, width int) string {
 	return ui.SplitLine(ui.Truncate(name, width-24), p.theme.Subtle.Render(said), width-6)
 }
 
-// trimmed4Plan is what the detail adds to the name. A driver whose detail
-// starts with the name it already gave has nothing to add, and saying it twice
-// is how a plan ends up reading "SCAN SCAN users".
+// trimmed4Plan is what the detail adds to the name.
 func trimmed4Plan(node driver.PlanNode) string {
 	detail := strings.TrimSpace(node.Detail)
 	if node.Name == "" || !strings.HasPrefix(detail, node.Name) {

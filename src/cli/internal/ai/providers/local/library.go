@@ -13,20 +13,10 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local/embedded"
 )
 
-// Build is the llama.cpp release this program is written against. It is a
-// number rather than "latest" on purpose: the binding declares the shape of
-// llama.cpp's structures in Go and nothing checks that declaration at build
-// time, so a library that moved underneath it is memory corruption inside an
-// inference loop rather than an error anybody sees. Moving this is a deliberate
-// step, taken with the smoke test that generates tokens against it.
+// Build is the llama.cpp release this program is written against.
 const Build = "b10587"
 
-// Binding is the version of the Go binding that Build was chosen for. The two
-// have to move together: the binding declares llama.cpp's structures in Go and
-// the compatibility window is a table in its README, so a version of one that
-// has never been seen beside the other is a guess. A test reads go.mod and
-// fails when they drift apart, which is what makes this a guarantee rather than
-// a note.
+// Binding is the version of the Go binding that Build was chosen for.
 const Binding = "v1.24.0"
 
 // ErrNoAsset is what a machine this program carries no build for reports.
@@ -41,17 +31,10 @@ func NewLibrary(dir string) *Library { return &Library{dir: dir} }
 // Dir is where the library is kept, which is what the engine is opened with.
 func (l *Library) Dir() string { return l.dir }
 
-// Present reports whether enough of the library is here to load a model. Only
-// the two that every backend needs are required: a machine without Metal has no
-// libggml-metal and is not broken.
+// Present reports whether enough of the library is here to load a model.
 func (l *Library) Present() bool { return len(l.Missing()) == 0 }
 
 // Missing lists the libraries that have to be there and are not.
-//
-// The versioned name counts as much as the plain one. A library that is there
-// under its plain name and not under the name its neighbours link against opens
-// and then fails to find them, which is a library that is not installed however
-// it looks in a directory listing.
 func (l *Library) Missing() []string {
 	absent := []string{}
 	for _, name := range []string{"llama", "ggml-base"} {
@@ -67,17 +50,8 @@ func (l *Library) Missing() []string {
 	return absent
 }
 
-// alias is the second name a library has to answer to, or nothing where a
-// system does not use one.
-//
-// These builds are made with a shared object version, so every library on unix
-// declares itself as libfoo.0.dylib or libfoo.so.0 and links against its
-// neighbours by that name. Writing only the plain names produces a directory
-// that looks complete and opens to "no such file" on the first neighbour.
-//
-// The processor variants of the compute backend are left alone: ggml finds
-// those by looking for their plain names, and a second name in the directory is
-// a second candidate for the same backend.
+// alias is the second name a library has to answer to, or nothing where a system
+// does not use one.
 func alias(name string) string {
 	if strings.Contains(name, "ggml-cpu-") {
 		return ""
@@ -116,16 +90,6 @@ func libraryFile(name string) string {
 }
 
 // Install puts the inference library where it can be opened.
-//
-// The bytes come out of this program: purego opens a library by path and cannot
-// open one out of memory, so they are written once and then loaded from disk.
-// What they are not is fetched, which is the difference that matters — a
-// release asset can be replaced under the tag it was published on, and these
-// bytes are the ones this program was built and tested against.
-//
-// A machine this program carries nothing for has no local inference, and says
-// so. There is no fetching to fall back to: a library pulled off the network at
-// run time is the thing embedding was chosen to avoid.
 func (l *Library) Install(ctx context.Context, out chan<- Progress) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -163,9 +127,7 @@ func (l *Library) Install(ctx context.Context, out chan<- Progress) error {
 	return report(ctx, out, Progress{ID: "the inference library", Bytes: total, Total: total, Done: true})
 }
 
-// also gives a library the second name its neighbours link against. It is a
-// link where a system has them and a copy where it does not, because what
-// matters is that the name resolves, not how.
+// also gives a library the second name its neighbours link against.
 func (l *Library) also(name string) error {
 	second := alias(name)
 	if second == "" {

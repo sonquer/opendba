@@ -9,8 +9,7 @@ import (
 )
 
 // ParseCalls reads the tool calls out of a model's output and returns them with
-// whatever text was not part of one. Both dialects are read, because what a
-// model writes is what a model was trained to write.
+// whatever text was not part of one.
 func ParseCalls(output string) ([]ai.ToolCall, string, error) {
 	var calls []ai.ToolCall
 	var prose strings.Builder
@@ -38,8 +37,6 @@ func ParseCalls(output string) ([]ai.ToolCall, string, error) {
 }
 
 // opening finds the first tool call in any dialect, and says which one it is.
-// The longest opener wins where two of them begin at the same place, so that a
-// marker which is a prefix of another cannot swallow it.
 func opening(text string) (dialect, int) {
 	found, at := dialect{}, -1
 	for _, spoken := range dialects() {

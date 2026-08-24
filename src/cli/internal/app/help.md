@@ -18,6 +18,13 @@ The schema of the current database sits beside the editor. `enter` on a table
 opens its rows in a tab of its own, with the statement that read them written
 into it. `i` writes a name into the statement, `space` opens a table's columns.
 
+Under the schema is FILES: the `.sql` files kept beside this connection.
+`enter` or a click opens one in a tab of its own, or moves to the tab it is
+already in. `ctrl+s` writes the tab back to its file, asking for a name the
+first time; a tab holding something its file does not is marked with a `*`.
+`ctrl+x` removes a file after asking. They live in `sql/<connection>/` under the
+data directory unless "sql files" in the settings names somewhere else.
+
 The statement is coloured as you type it. What could finish the word is drawn
 after the cursor in grey: tables, the columns of the tables the statement
 already names, and SQL keywords. `tab` takes it, `↑↓` walk the other ways to

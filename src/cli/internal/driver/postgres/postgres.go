@@ -88,16 +88,10 @@ func poolConfig(config driver.Config) (*pgxpool.Config, error) {
 	return settings, nil
 }
 
-// maxConns is how many connections one session opens. Three rather than two,
-// because a read that streams a whole table to a file holds one for as long as
-// it takes, and the dashboard still has to be able to ask the server what it is
-// doing while that happens.
+// maxConns is how many connections one session opens.
 const maxConns = 3
 
-// cancelRequests makes a cancelled context reach the server. The default
-// handler only sets a deadline on the socket and throws the connection away,
-// which leaves the query running on the server after the person who asked for
-// it has said to stop.
+// cancelRequests makes a cancelled context reach the server.
 func cancelRequests(conn *pgconn.PgConn) ctxwatch.Handler {
 	return &pgconn.CancelRequestContextWatcherHandler{
 		Conn:          conn,

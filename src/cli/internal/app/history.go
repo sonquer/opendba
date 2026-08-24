@@ -17,9 +17,7 @@ type recalledMsg struct {
 	err     error
 }
 
-// recall is the list of statements that have been run. It is a list rather than
-// a screen of its own making: what somebody wants from a history is to find the
-// statement they ran an hour ago and run it again, which is a search and a key.
+// recall is the list of statements that have been run.
 type recall struct {
 	theme   *ui.Theme
 	entries []history.Entry
@@ -31,14 +29,10 @@ type recall struct {
 
 func newRecall(theme *ui.Theme) recall { return recall{theme: theme} }
 
-// keeping reports whether there is anywhere to keep what has been run. The
-// command stays in the list either way: a command that disappears when a
-// setting is off reads as a program that has lost a feature.
+// keeping reports whether there is anywhere to keep what has been run.
 func (m Model) keeping() bool { return m.session.History != nil }
 
-// remember writes down what a statement did. It never fails a query: a history
-// that cannot be written is worth saying once, and the result is what the
-// person asked for.
+// remember writes down what a statement did.
 func (m Model) wroteDown(msg queriedMsg) tea.Cmd {
 	if !m.keeping() || strings.TrimSpace(msg.statement) == "" {
 		return nil

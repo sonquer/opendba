@@ -81,7 +81,6 @@ func WriteReportFile(path string, s Summary, opts ReportOptions) error {
 // WriteReport writes one self-contained HTML document in the shape Istanbul
 // uses: a summary of the whole run, a table of packages and files, and the
 // source of every file it can resolve with covered and uncovered lines marked.
-// It needs no javascript and no external assets.
 func WriteReport(w io.Writer, s Summary, opts ReportOptions) error {
 	if opts.Title == "" {
 		opts.Title = "coverage"

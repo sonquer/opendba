@@ -13,19 +13,17 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
-// sheetKind says what a tab was opened for. Both kinds hold a statement and its
-// result, because a tab that reads a table without showing the statement it
-// sent would be the one place in this program where something runs unseen.
+// sheetKind says what a tab was opened for.
 type sheetKind int
 
 const (
 	sheetQuery sheetKind = iota
 	sheetTable
+	sheetFile
 )
 
 // worksheet is one tab: a statement, what it returned, and how the pane was
-// arranged while it was being written. Everything here belongs to the tab it is
-// in, which is why it is a type rather than more fields on the model.
+// arranged while it was being written.
 type worksheet struct {
 	kind    sheetKind
 	title   string
@@ -35,14 +33,22 @@ type worksheet struct {
 	split   int
 	zoomed  bool
 
-	// began, stopQuery and token are what a statement that is still running is
-	// made visible, interruptible and identifiable by. The token is stamped
-	// from a counter on the model, so a result can find the tab that asked for
-	// it however many tabs have been opened since.
+	// began, stopQuery and token are what a statement that is still running is made
+	// visible, interruptible and identifiable by.
 	began     time.Time
 	stopQuery context.CancelFunc
 	inflight  bool
 	token     int
+
+	// file is the name this tab was read from and ctrl+s writes back to, and saved
+	// is the statement as the file holds it.
+	file  string
+	saved string
+}
+
+// dirty says whether the tab holds something its file does not.
+func (s worksheet) dirty() bool {
+	return s.file != "" && s.editor.Value() != s.saved
 }
 
 func newWorksheet(theme *ui.Theme, kind sheetKind, title string) worksheet {
@@ -54,10 +60,7 @@ func newWorksheet(theme *ui.Theme, kind sheetKind, title string) worksheet {
 	}
 }
 
-// stow writes the tab being worked in back into the list of tabs. The model
-// embeds the active worksheet, so the entry in sheets for the active tab is
-// stale by design; this is the one place that makes it true again, and every
-// path that changes which tab is active goes through it.
+// stow writes the tab being worked in back into the list of tabs.
 func (m Model) stow() Model {
 	if m.sheet < 0 || m.sheet >= len(m.sheets) {
 		return m
@@ -152,9 +155,9 @@ func (m Model) label(sheet worksheet, index int) string {
 	return "query " + strconv.Itoa(index+1)
 }
 
-// mentionedFirst is the first table of this database the statement names, in
-// the order the statement names them rather than the order the catalogue holds
-// them, so a tab is called after what the statement is mostly about.
+// mentionedFirst is the first table of this database the statement names, in the
+// order the statement names them rather than the order the catalogue holds them,
+// so a tab is called after what the statement is mostly about.
 func (m Model) mentionedFirst(statement string) string {
 	lowered := strings.ToLower(statement)
 	first, at := "", -1
@@ -174,8 +177,7 @@ const maxTabWidth = 18
 
 // tabBar draws the tabs across the whole width, above the schema tree and the
 // editor together, because a tab holds a statement and its result rather than
-// half the screen. The one being worked in is a block of colour and the rest
-// are not, which is what a tab looks like when it cannot be drawn with corners.
+// half the screen.
 func (m Model) tabBar(width int) string {
 	drawn := make([]string, 0, len(m.sheets))
 	for i := range m.sheets {
@@ -189,11 +191,12 @@ func (m Model) tabBar(width int) string {
 }
 
 // tab is one tab: the key that reaches it, its name, and a dot while its
-// statement is still running. The key is on the tab rather than in a list
-// somewhere because a tab nobody can get to without counting along is a tab
-// nobody uses.
+// statement is still running.
 func (m Model) tab(sheet worksheet, index int) string {
 	name := ui.Truncate(m.label(sheet, index), maxTabWidth)
+	if sheet.dirty() {
+		name += " *"
+	}
 	if sheet.inflight {
 		name += " •"
 	}
@@ -206,9 +209,7 @@ func (m Model) tab(sheet worksheet, index int) string {
 }
 
 // jumpLabel is the key that reaches a tab, written the way the keyboard prints
-// it. Past the ninth there is no key left to print, so the number stands on its
-// own and the command list is the way there.
-// jumpCap is the key a tab answers to, or nothing for the tabs past the digits.
+// it.
 func jumpCap(index int) string {
 	if index >= maxJumpTabs {
 		return ""
@@ -238,16 +239,14 @@ func clip4Tabs(strip string, width int) string {
 }
 
 // workbenchHeight is what the editor screen has to draw in, once the tab strip
-// above it has had its rows. One of them was the blank row every screen leaves
-// under its header, so the strip costs the editor the rest.
+// above it has had its rows.
 func (m Model) workbenchHeight() int {
 	return max(ui.BodyHeight(m.height)-(ui.TabStripRows-1), 1)
 }
 
 // answered puts a result in the tab that asked for it, which is not always the
 // tab in front: a statement left running in one tab while another is worked in
-// still belongs to the tab it was typed in. A result whose token matches no tab
-// is the answer to a statement that was given up on, and is dropped.
+// still belongs to the tab it was typed in.
 func (m Model) returned(msg queriedMsg) (tea.Model, tea.Cmd) {
 	if msg.token == m.token {
 		m.stopQuery, m.inflight = nil, false
@@ -269,9 +268,7 @@ func (m Model) returned(msg queriedMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// focused puts the cursor in the editor of whichever tab is now in front. The
-// textarea has to be told, because focus lives inside it rather than in the
-// model that holds it.
+// focused puts the cursor in the editor of whichever tab is now in front.
 func focused(m Model) (tea.Model, tea.Cmd) {
 	m.focus = focusEditor
 	return m, m.editor.Focus()
@@ -295,10 +292,7 @@ type closeSheetMsg struct{}
 // command somebody runs by mistake looking for something else.
 type askCloseMsg struct{}
 
-// confirmClose asks before a tab goes. What it says depends on what is in the
-// tab, because "are you sure?" about an empty tab and about a statement
-// somebody spent ten minutes on are not the same question, and a dialog that
-// asks them the same way is one people learn to dismiss without reading.
+// confirmClose asks before a tab goes.
 func (m Model) confirmClose() (tea.Model, tea.Cmd) {
 	sheet := m.worksheet
 	name := m.label(sheet, m.sheet)
@@ -321,6 +315,10 @@ func (m Model) loss(sheet worksheet) string {
 	switch {
 	case sheet.inflight:
 		return "the result will not arrive, and the statement below is not kept anywhere"
+	case sheet.dirty():
+		return "what is below has not been written to " + sheet.file + " since it was changed"
+	case sheet.file != "":
+		return sheet.file + " keeps what is below, so closing the tab loses nothing"
 	case strings.TrimSpace(sheet.editor.Value()) == "":
 		return "there is nothing in this tab"
 	case sheet.results.present:
@@ -354,9 +352,7 @@ func (m Model) commands() []command {
 	return tabs
 }
 
-// show4Tabs puts the editor in front. A command that opens or moves between
-// tabs is a command about the editor, so it says so from wherever it was run
-// rather than changing something nobody can see.
+// show4Tabs puts the editor in front.
 func (m Model) show4Tabs(cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	if m.view == viewQuery {
 		return m, cmd

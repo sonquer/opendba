@@ -10,9 +10,6 @@ import (
 // writeJSON writes an array of objects a row at a time rather than building the
 // whole document and marshalling it, so the size of a result is the size of the
 // file and not also the size of the memory it took to write it.
-//
-// The fields are written one by one rather than through a map, because a map
-// has no order and the columns of a result do.
 type writeJSON struct {
 	out     io.Writer
 	columns []string

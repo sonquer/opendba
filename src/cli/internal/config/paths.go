@@ -26,17 +26,18 @@ func (p Paths) HistoryFile() string { return filepath.Join(p.State, "history.db"
 // than config: it is what the program has done, not how it was told to behave.
 func (p Paths) ChatsFile() string { return filepath.Join(p.State, "chats.db") }
 
-// ModelsDir is where downloaded models are kept. They are data rather than
-// configuration and rather than cache: they are gigabytes, they are worth
-// keeping, and a cleaner that empties caches must not take them.
+// ModelsDir is where downloaded models are kept.
 func (p Paths) ModelsDir() string { return filepath.Join(p.Data, "models") }
+
+// SQLDir is where the statements you keep are kept, unless the settings name
+// somewhere else. Data rather than state: they are yours.
+func (p Paths) SQLDir() string { return filepath.Join(p.Data, "sql") }
 
 // LibDir is where the inference library is unpacked.
 func (p Paths) LibDir() string { return filepath.Join(p.Data, "lib") }
 
 // EngineLog is where the inference library's own account of what it is doing is
-// written. It is in the state directory because it is worth nothing after the
-// run it belongs to, except in the minutes after that run ended badly.
+// written.
 func (p Paths) EngineLog() string { return filepath.Join(p.State, "engine.log") }
 
 // CrashFile is where an account of a failure that ended the program is written,
@@ -83,9 +84,7 @@ func PathsFor(env Environment) (Paths, error) {
 }
 
 // Ensure makes the directories and tightens them when another user can read
-// them. A directory that was left empty is skipped rather than created at the
-// root: PathsFor always names all of them, so an empty one means a caller
-// deliberately wanted only the rest.
+// them.
 func (p Paths) Ensure() error {
 	for _, dir := range []string{p.Config, p.State, p.Data} {
 		if dir == "" {

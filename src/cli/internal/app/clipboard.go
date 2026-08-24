@@ -18,11 +18,6 @@ type copyMsg struct {
 
 // copied puts rows on the clipboard, written by the same code that writes them
 // to a file so the two cannot disagree about what a value looks like.
-//
-// It goes out as OSC 52, which the terminal may refuse without saying so: tmux
-// wants set-clipboard on, and some terminals ask first. The toast says what was
-// copied rather than that it arrived, because arriving is not something this
-// program is told about.
 func (m Model) copied(msg copyMsg) (tea.Model, tea.Cmd) {
 	if !m.results.present || m.results.failure != "" || len(m.results.rows) == 0 {
 		return m, m.notify("there is nothing to copy yet")

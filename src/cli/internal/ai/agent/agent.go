@@ -1,6 +1,6 @@
-// Package agent runs one conversation: it asks a model, runs the tools the
-// model asks for, and asks again with what they returned, until the model has
-// an answer or the round limit is reached.
+// Package agent runs one conversation: it asks a model, runs the tools the model
+// asks for, and asks again with what they returned, until the model has an
+// answer or the round limit is reached.
 package agent
 
 import (
@@ -19,9 +19,7 @@ type Tools interface {
 	Call(ctx context.Context, call ai.ToolCall) ai.ToolResult
 }
 
-// Consent decides whether a turn may leave the machine. It is asked once per
-// turn rather than once per request, and again whenever a turn would send a
-// class of data that has not been approved yet.
+// Consent decides whether a turn may leave the machine.
 type Consent interface {
 	Allow(ctx context.Context, outbound Outbound) error
 }
@@ -103,11 +101,8 @@ func New(client ai.Client, tools Tools, consent Consent, instance ai.Instance, s
 func (a *Agent) Messages() []ai.Message { return a.messages }
 
 // Resume takes a conversation that was had earlier and carries on from it, so
-// that a question asked after opening a saved conversation is answered with
-// what was already said rather than from nothing.
-//
-// The messages are copied. A caller that keeps its own slice and appends to it
-// must not find itself editing the conversation this is now having.
+// that a question asked after opening a saved conversation is answered with what
+// was already said rather than from nothing.
 func (a *Agent) Resume(messages []ai.Message) {
 	a.messages = append([]ai.Message(nil), messages...)
 }
@@ -133,8 +128,6 @@ func (a *Agent) Close() error {
 }
 
 // Ask puts a question and runs the turn to its end, sending events as it goes.
-// The channel is closed by the caller, not here: a caller that has stopped
-// reading has cancelled the context, and this returns rather than blocking.
 func (a *Agent) Ask(ctx context.Context, question string, out chan<- Event) error {
 	if strings.TrimSpace(question) == "" {
 		return fmt.Errorf("there is nothing to ask")
@@ -196,9 +189,7 @@ func (a *Agent) permit(ctx context.Context) error {
 	return nil
 }
 
-// classes reads what the conversation is carrying. A tool that returned rows is
-// what makes the difference between sending the shape of a database and sending
-// what is in it.
+// classes reads what the conversation is carrying.
 func (a *Agent) classes() []Class {
 	found := map[Class]bool{ClassQuestion: true}
 	for _, message := range a.messages {
@@ -239,9 +230,7 @@ type answer struct {
 	stop    ai.StopReason
 }
 
-// turn is one request and the stream it produces. A conversation that no longer
-// fits is compacted and tried again, because the alternative is telling someone
-// their conversation is over.
+// turn is one request and the stream it produces.
 func (a *Agent) turn(ctx context.Context, out chan<- Event) (answer, error) {
 	for {
 		built, err := a.stream(ctx, out)
@@ -319,9 +308,7 @@ func (a *Agent) work(ctx context.Context, calls []ai.ToolCall, out chan<- Event)
 	return nil
 }
 
-// compact makes room by emptying the oldest tool result. The message itself
-// stays, because a provider that was told about a call and never told what it
-// returned will refuse the whole conversation.
+// compact makes room by emptying the oldest tool result.
 func (a *Agent) compact() bool {
 	for i, message := range a.messages {
 		if message.Result == nil || message.Result.Content == droppedResult {

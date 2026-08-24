@@ -1,7 +1,4 @@
-// Package anthropic speaks the messages protocol. It differs from chat
-// completions in the shape rather than the substance: an answer is a list of
-// content blocks that are opened, filled and closed, which is closer to what
-// the interface above wants than a flat run of deltas is.
+// Package anthropic speaks the messages protocol.
 package anthropic
 
 import (
@@ -153,8 +150,7 @@ func budget(maxTokens int) int {
 }
 
 // messages folds the conversation into the alternating turns this protocol
-// expects. A tool result is not a turn of its own here: it is content the user
-// sends back, so consecutive results are gathered into one turn.
+// expects.
 func messages(from []ai.Message) []map[string]any {
 	out := make([]map[string]any, 0, len(from))
 	for _, message := range from {

@@ -50,10 +50,7 @@ type results struct {
 	column int
 
 	// first is the row at the top of the pane and cursor is the row under the
-	// cursor, counted from the top of the whole result. The table is only ever
-	// given the rows between them: handing a table with fifty thousand rows in
-	// it fifty thousand rows on every frame is what made scrolling a large
-	// result feel like the program had stopped.
+	// cursor, counted from the top of the whole result.
 	first  int
 	cursor int
 
@@ -61,9 +58,8 @@ type results struct {
 	// dragged. What lies between it and the cursor is what a release copies.
 	anchor int
 
-	// widths is how wide each column wants to be, measured once from the rows
-	// that arrived rather than from the ones on screen. Measuring the visible
-	// rows instead would make every column change width while scrolling.
+	// widths is how wide each column wants to be, measured once from the rows that
+	// arrived rather than from the ones on screen.
 	widths []int
 
 	width     int
@@ -72,9 +68,7 @@ type results struct {
 	columns   []string
 
 	// rows are the values the driver returned, and cells are those values as a
-	// table can draw them. Both are kept: what is drawn is folded onto one line
-	// and cut to the width of a column, which is right on a screen and wrong in
-	// a file or on the clipboard.
+	// table can draw them.
 	rows      [][]any
 	cells     [][]string
 	duration  time.Duration
@@ -105,11 +99,7 @@ func newResults(theme *ui.Theme, msg queriedMsg, width, height int) results {
 	return result.rebuild()
 }
 
-// sample is the rows a column width is measured from. Every row would be more
-// accurate and would also walk a whole result to draw the first screen of it;
-// the rows people look at are at the top, and a value wider than the column is
-// cut the same way whether the column was measured from ten rows or ten
-// thousand.
+// sample is the rows a column width is measured from.
 func sample(cells [][]string) [][]string {
 	if len(cells) <= sampleRows {
 		return cells
@@ -227,9 +217,9 @@ func (r results) shift(step int) results {
 	return r.rebuild()
 }
 
-// place4Row says where the cursor is in a result taller than the pane, because
-// a table showing rows nine hundred to nine hundred and twenty with no way to
-// tell is a table nobody knows their way around.
+// place4Row says where the cursor is in a result taller than the pane, because a
+// table showing rows nine hundred to nine hundred and twenty with no way to tell
+// is a table nobody knows their way around.
 func (r results) place4Row() string {
 	if picked, ok := r.picked(); ok && len(picked) > 1 {
 		return fmt.Sprintf("%d selected", len(picked))
@@ -270,7 +260,6 @@ func (r results) record() (details, bool) {
 		title: "row " + fmt.Sprintf("%d of %d", at+1, len(r.rows)),
 		tag:   ui.Plural(len(r.columns), "column", "columns"),
 		pairs: pairs,
-		code:  r.statement,
 	}, true
 }
 

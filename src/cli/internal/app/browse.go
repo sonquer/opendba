@@ -13,8 +13,7 @@ import (
 )
 
 // browse is what has been done to one of the two catalogue lists: what it has
-// been narrowed to, and what it has been put in the order of. There is one per
-// screen, because a search for an index is not a search for a table.
+// been narrowed to, and what it has been put in the order of.
 type browse struct {
 	filter   textinput.Model
 	typing   bool
@@ -38,8 +37,8 @@ func (b browse) needle() string {
 func (b browse) active() bool { return b.needle() != "" }
 
 // turn moves to the next column, wrapping, and starts each new column in the
-// order that column is usually wanted in: a name from the top, a number from
-// the largest.
+// order that column is usually wanted in: a name from the top, a number from the
+// largest.
 func (b browse) turn() browse {
 	b.column = (b.column + 1) % columns
 	b.reversed = b.column != 0
@@ -148,9 +147,7 @@ func ordering(at browse, less func(i, j int) bool) func(i, j int) bool {
 	return less
 }
 
-// browseKey answers the two catalogue screens. While the filter has focus it
-// takes the arrows and nothing else, because every other binding here answers
-// to a letter as well and a letter typed into a filter is a letter.
+// browseKey answers the two catalogue screens.
 func (m Model) browseKey(msg tea.KeyPressMsg) (Model, tea.Cmd, bool) {
 	at := m.which()
 	if m.lists[at].typing {

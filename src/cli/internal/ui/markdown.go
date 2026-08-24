@@ -19,13 +19,8 @@ const (
 	codeTheme        = "nord"
 )
 
-// Markdown renders documents the program writes: the help page, the details of
-// a table, the statement that produced a result.
-//
-// A renderer is bound to the width it was built with, because word wrapping is
-// fixed when Glamour builds it, and parsing markdown on every frame is far too
-// slow for a view function. Both facts are handled here: one renderer per
-// width, and a cache of what has already been rendered.
+// Markdown renders documents the program writes: the help page, the details of a
+// table, the statement that produced a result.
 type Markdown struct {
 	theme    *Theme
 	renderer *glamour.TermRenderer
@@ -75,10 +70,6 @@ func (m *Markdown) Render(document string) string {
 }
 
 // SQL renders a statement the way a code block in a document would be rendered.
-//
-// Tabs are spaces first. A terminal moves a tab to the next tab stop, while
-// every width in this program counts it as one cell, so a statement written
-// with tabs draws wider than anything measuring it believes.
 func (m *Markdown) SQL(statement string) string {
 	statement = strings.TrimRight(strings.Trim(untab(statement), "\n"), " ")
 	if strings.TrimSpace(statement) == "" {
@@ -93,9 +84,6 @@ func untab(text string) string { return strings.ReplaceAll(text, "\t", tabStop) 
 
 // Statement draws SQL the way the editor draws it: highlighted, with the line
 // numbers a person points at when they talk about a query.
-//
-// Each line of the statement is rendered on its own, so a line too long for the
-// panel wraps under its own number instead of taking the next one.
 func (t *Theme) Statement(sql string, width int) string {
 	sql = strings.TrimSpace(untab(sql))
 	if sql == "" {

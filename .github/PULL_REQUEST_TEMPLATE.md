@@ -8,4 +8,3 @@
 - [ ] No comment explains code; anything new that is exported is documented
 - [ ] Tests were written with the code, not after it
 - [ ] Changes to the SQL classifier come with new golden table cases
-- [ ] `CHANGELOG.md` updated when the change is user visible

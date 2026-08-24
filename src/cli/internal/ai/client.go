@@ -19,19 +19,12 @@ type Stream interface {
 }
 
 // Warmer is a client that can be made ready before it is asked anything.
-//
-// It exists for the local back-end, where being ready means reading gigabytes
-// off a disk into memory. Doing that during the first question makes the
-// program look hung; doing it when the model is chosen makes it a thing that is
-// visibly happening. The tools are part of it because a grammar is compiled
-// into the sampler, and a model made ready without them would be loaded twice.
 type Warmer interface {
 	Warm(ctx context.Context, tools []Tool) error
 }
 
-// Prober answers whether an instance is usable, which is what the test action
-// on the settings screen asks. A back-end that cannot be probed without
-// spending tokens does not implement it.
+// Prober answers whether an instance is usable, which is what the test action on
+// the settings screen asks.
 type Prober interface {
 	Probe(ctx context.Context) error
 }

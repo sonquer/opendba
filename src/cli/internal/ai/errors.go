@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// Reason classifies a failure. A caller decides what to do from this rather
-// than from a message, because the message is a string a provider may change
-// and the four providers do not agree on any of them.
+// Reason classifies a failure. A caller decides what to do from this rather than
+// from a message, because the message is a string a provider may change and the
+// four providers do not agree on any of them.
 type Reason string
 
 const (
@@ -52,8 +52,7 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.Err }
 
 // Retryable reports whether the same request could succeed if it were sent
-// again. It is a property of the failure rather than a decision each back-end
-// makes for itself, so there is one retry policy instead of four.
+// again.
 func (e *Error) Retryable() bool {
 	switch e.Reason {
 	case ReasonRateLimit, ReasonProvider, ReasonUnavailable:
@@ -88,10 +87,7 @@ func Retryable(err error) bool {
 	return false
 }
 
-// Classify turns an HTTP status and whatever the body said into a reason. The
-// status alone is not enough: every provider returns 400 both for a request
-// that was malformed and for one that was simply too long, and only the message
-// separates them.
+// Classify turns an HTTP status and whatever the body said into a reason.
 func Classify(status int, body string) Reason {
 	switch {
 	case status == http.StatusUnauthorized, status == http.StatusForbidden:
@@ -135,9 +131,7 @@ var overflowExclusions = []string{
 }
 
 // IsContextOverflow reports whether a message says the conversation no longer
-// fits. No two providers phrase it the same way and none of them give it a
-// code, so it is read out of the text, with the phrases that only look similar
-// excluded first.
+// fits.
 func IsContextOverflow(message string) bool {
 	lowered := strings.ToLower(message)
 	for _, phrase := range overflowExclusions {

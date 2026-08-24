@@ -52,9 +52,7 @@ type building struct {
 	arguments strings.Builder
 }
 
-// stream reads chat completion frames and turns them into chunks. Tool
-// arguments arrive as fragments of a JSON string spread over many frames, so
-// they are gathered per index and only parsed once the answer is finished.
+// stream reads chat completion frames and turns them into chunks.
 type stream struct {
 	instance string
 	events   *ai.Events
@@ -234,10 +232,7 @@ func (s *stream) close() []ai.Chunk {
 	return append(chunks, ai.Chunk{Kind: ai.ChunkDone, Stop: s.stop, Usage: s.usage})
 }
 
-// arguments reads the JSON a model wrote a fragment at a time. A model that
-// wrote something unreadable is not a reason to lose the call: the name is
-// still known, and the tool will refuse the empty arguments with a message the
-// model can act on.
+// arguments reads the JSON a model wrote a fragment at a time.
 func arguments(written string) map[string]any {
 	if strings.TrimSpace(written) == "" {
 		return map[string]any{}

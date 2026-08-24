@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sonquer/tui4db/src/cli/internal/export"
+	"github.com/sonquer/tui4db/src/cli/internal/sqlfiles"
 )
 
 // exporting drives the dialog to the end and hands back the model and the path
@@ -222,8 +223,8 @@ func TestATabNameDoesNotBecomeADirectory(t *testing.T) {
 		{"-edges-", "edges"},
 	} {
 		t.Run(want.name, func(t *testing.T) {
-			if got := clean4Path(want.name); got != want.cleaned {
-				t.Errorf("clean4Path(%q) = %q, want %q", want.name, got, want.cleaned)
+			if got := sqlfiles.Clean(want.name); got != want.cleaned {
+				t.Errorf("sqlfiles.Clean(%q) = %q, want %q", want.name, got, want.cleaned)
 			}
 		})
 	}

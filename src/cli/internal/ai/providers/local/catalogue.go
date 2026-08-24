@@ -11,9 +11,7 @@ import (
 //go:embed models.toml
 var catalogue []byte
 
-// Entry is one model the program knows how to fetch and how to run. Bytes is
-// the measured size of the file rather than a size worked out from a parameter
-// count, because quantisation and per-layer embeddings both make that sum wrong.
+// Entry is one model the program knows how to fetch and how to run.
 type Entry struct {
 	ID          string  `toml:"id"`
 	Title       string  `toml:"title"`
@@ -30,9 +28,7 @@ type Entry struct {
 	TopK        int     `toml:"top_k"`
 	Note        string  `toml:"note"`
 
-	// Layers, KVHeads and HeadDim are what the cache arithmetic needs. They are
-	// left at zero when they have not been read out of the file itself, and the
-	// estimate says so rather than pretending.
+	// Layers, KVHeads and HeadDim are what the cache arithmetic needs.
 	Layers  int `toml:"layers,omitempty"`
 	KVHeads int `toml:"kv_heads,omitempty"`
 	HeadDim int `toml:"head_dim,omitempty"`

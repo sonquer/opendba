@@ -27,8 +27,7 @@ const (
 )
 
 // IdentityLine says where you are, in the shape of a shell prompt: a path, cut
-// by slashes, the way a shell writes where it is. The colour of the environment
-// is the line across the top, not a mark in the text.
+// by slashes, the way a shell writes where it is.
 func (t *Theme) IdentityLine(env EnvColor, name, server, mode string) string {
 	line := t.Prompt.Render("→ ") + t.Muted.Render("~ ") + t.Title.Render(truncate(name, identityName))
 	if server != "" {
@@ -40,9 +39,7 @@ func (t *Theme) IdentityLine(env EnvColor, name, server, mode string) string {
 	return line
 }
 
-// pathSeparator cuts the parts of the header apart. A chevron points from where
-// you are to what is inside it, which is what the header is: a path, not a list
-// and not a file name.
+// pathSeparator cuts the parts of the header apart.
 const pathSeparator = " › "
 
 // Slashed joins the parts of a path, leaving out the ones a driver does not
@@ -58,10 +55,9 @@ func (t *Theme) Mode(mode string) string {
 	return t.BadgeStyle.Background(t.P.Warn).Render(mode)
 }
 
-// Headline is the one line someone who does not run databases for a living
-// reads and stops at: a word for the state on a badge, what it is about, and
-// how much came back fine. The badge carries the weight, because a glyph in
-// front of a sentence is a sentence.
+// Headline is the one line someone who does not run databases for a living reads
+// and stops at: a word for the state on a badge, what it is about, and how much
+// came back fine.
 func (t *Theme) Headline(severity Severity, subject, balance string, width int) string {
 	badge := t.BadgeStyle.Background(t.Severity(severity).GetForeground()).Render(verdictWord(severity))
 	left := badge + "  " + t.Value.Render(subject)
@@ -83,17 +79,14 @@ func verdictWord(severity Severity) string {
 	}
 }
 
-// Section names a block inside a screen. It is drawn quietly on purpose: a
-// heading is a label for what is under it rather than something to read, and a
-// screen where the labels are the brightest thing on it is a screen where the
-// eye goes to the wrong place.
+// Section names a block inside a screen.
 func (t *Theme) Section(title, tag string, width int) string {
 	return SplitLine(t.SectionHead.Render(strings.ToUpper(title)), tag, width)
 }
 
-// Screen names a whole screen rather than a block inside one, so it is not
-// drawn like the blocks: the accent, and a rule under the word itself, which is
-// what separates a title from the headings underneath it.
+// Screen names a whole screen rather than a block inside one, so it is not drawn
+// like the blocks: the accent, and a rule under the word itself, which is what
+// separates a title from the headings underneath it.
 func (t *Theme) Screen(title, tag string, width int) string {
 	title = strings.ToUpper(title)
 	return SplitLine(t.Accent.Bold(true).Render(title), tag, width) + "\n" +
@@ -115,8 +108,7 @@ func SplitLine(left, right string, width int) string {
 const gaugeWidth = 20
 
 // Gauge is a measurement drawn as a bar, filled to the ratio and coloured by
-// what the reading means. What the bar is made of is a style, because how well
-// a glyph draws is the font's business and fonts differ.
+// what the reading means.
 func (t *Theme) Gauge(ratio float64, sev Severity) string {
 	return t.draw(ratio, sev, gaugeWidth)
 }
@@ -138,9 +130,7 @@ type Reading struct {
 	Cursor   bool
 }
 
-// Columns are the widths readings line up on. Measuring every reading on the
-// screen once, rather than each block on its own, is what keeps separate groups
-// in the same columns.
+// Columns are the widths readings line up on.
 type Columns struct {
 	Label int
 	Value int
@@ -157,8 +147,7 @@ func Measure(readings []Reading) Columns {
 }
 
 // Readings draws a group as aligned rows: what it is, where it sits on its
-// scale, the number, and one word for what that means. The sentence behind the
-// word is on the page, which is what enter is for.
+// scale, the number, and one word for what that means.
 func (t *Theme) Readings(readings []Reading, width int, at Columns) string {
 	labels, values := at.Label, at.Value
 	if labels == 0 && values == 0 {
@@ -221,15 +210,11 @@ func Dotted(parts ...string) string { return join(" · ", parts) }
 // Hint is one key and what pressing it does.
 type Hint struct{ Key, Does string }
 
-// Hints is the row of keys a dialog offers, each on the same grey cap the
-// footer of every screen puts them on. A bare letter beside a word does not
-// read as something to press, and a dialog has no footer to learn that from.
+// Hints is the row of keys a dialog offers, each on the same grey cap the footer
+// of every screen puts them on.
 func (t *Theme) Hints(hints ...Hint) string { return t.HintsOn(nil, hints...) }
 
-// HintsOn is the same row on a ground of its own. A run of text ends with a
-// reset, and a reset ends whatever was painted behind it, so a background put
-// around a line of hints from the outside would show through only in the gaps.
-// Every part carries it instead.
+// HintsOn is the same row on a ground of its own.
 func (t *Theme) HintsOn(ground color.Color, hints ...Hint) string {
 	muted, subtle, cap := t.Muted, t.Subtle, t.KeycapStyle
 	if ground != nil {
@@ -272,10 +257,7 @@ func (t *Theme) Badge(text string, sev Severity) string {
 	return t.Severity(sev).Bold(true).Render(text)
 }
 
-// pad fills a cell to the given width, clipping what does not fit. Widths come
-// from lipgloss so that wide runes and styled text are measured, not counted.
-// padLeft pushes a value to the right of its column, which is where numbers
-// belong when they are read down a list.
+// pad fills a cell to the given width, clipping what does not fit.
 func padLeft(s string, w int) string {
 	if w <= 0 {
 		return ""
@@ -422,9 +404,7 @@ type shape struct {
 	bars  bool
 }
 
-// listingColumns measures what every row has to fit into. The numbers keep
-// their width, because a number that is cut is wrong. What goes first on a
-// narrow window is the sentence, then the bar, and the name gives way last.
+// listingColumns measures what every row has to fit into.
 func listingColumns(list []Listing, head Head, width int) shape {
 	measured := shape{bars: true, name: lipgloss.Width(head.Name), note: lipgloss.Width(head.Note)}
 	for i, fact := range head.Facts {
@@ -473,15 +453,6 @@ const (
 
 // Fill paints a ground behind everything on a line that does not have one, and
 // pads the line out to a width.
-//
-// A rendered line is escapes and text, and every run of text ends with a reset.
-// A background wrapped around the whole line from the outside is therefore
-// visible until the first reset and no further, which is why a block with a
-// colour behind it cannot be made by putting a colour around it. The colour has
-// to be woven into every run that has none of its own.
-//
-// The runs that have one are left alone: a key on a grey cap keeps its cap, and
-// a cursor keeps whatever it is drawn as.
 func Fill(line string, width int, ground color.Color) string {
 	painted := strings.Builder{}
 	at := 0

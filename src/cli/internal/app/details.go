@@ -31,9 +31,7 @@ type pair struct {
 	value string
 }
 
-// state is the one word that says what a session is doing. It carries the
-// accent while the session is working, because that is the reason the page was
-// opened, and stays quiet once it is only holding a connection.
+// state is the one word that says what a session is doing.
 func (m Model) state(session driver.Session) string {
 	if session.Running() {
 		return m.theme.Accent.Render(session.State)
@@ -53,9 +51,7 @@ type details struct {
 	code   string
 	offset int
 
-	// ask says whether there is an assistant to carry the page into a
-	// conversation. A key that is drawn and does nothing is worse than one that
-	// is not drawn.
+	// ask says whether there is an assistant to carry the page into a conversation.
 	ask bool
 }
 
@@ -116,8 +112,8 @@ func (d details) view(width, height int) string {
 }
 
 // fill squares the page off: every line the same width, so the rule under the
-// title reaches the border and the panel cannot be widened by one long line
-// that a renderer measured differently.
+// title reaches the border and the panel cannot be widened by one long line that
+// a renderer measured differently.
 func square(page string, width int) string {
 	lines := strings.Split(page, "\n")
 	for i, line := range lines {

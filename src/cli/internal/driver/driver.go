@@ -70,14 +70,11 @@ func (c Config) Target() string {
 
 func (c Config) ReadOnly() bool { return !c.Mode.Writable() }
 
-// AppName is what this program calls itself to a server. Every connection it
-// makes says so, which is what lets a screen tell the work somebody asked for
-// apart from the work this program does to draw itself.
+// AppName is what this program calls itself to a server.
 const AppName = "tui4db"
 
-// ApplicationName is what a connection tells the server it is: this program,
-// and which of your profiles it opened. A server that cannot be told stays
-// silent about it, and the screens fall back to what they can see.
+// ApplicationName is what a connection tells the server it is: this program, and
+// which of your profiles it opened.
 func (c Config) ApplicationName() string {
 	if c.Application == "" {
 		return AppName
@@ -85,10 +82,7 @@ func (c Config) ApplicationName() string {
 	return AppName + "/" + c.Application
 }
 
-// Ours reports whether an application name is one of ours. It matches every
-// connection this program has open rather than only the one asking, because a
-// dashboard that hid one of its own reads and drew the other is a dashboard
-// showing noise it made itself.
+// Ours reports whether an application name is one of ours.
 func Ours(application string) bool {
 	return application == AppName || strings.HasPrefix(application, AppName+"/")
 }
@@ -145,8 +139,7 @@ func Duration(d time.Duration) string {
 }
 
 // Age writes how long ago something happened, at the precision a person says it
-// out loud. Duration is for how long something took and stops making sense past
-// an hour; this is for how long ago it was and starts making sense there.
+// out loud.
 func Age(d time.Duration) string {
 	switch {
 	case d < time.Minute:
@@ -256,8 +249,7 @@ func (t Table) Health() Severity {
 }
 
 // walked reports a table big enough to matter that most reads go through end to
-// end. A small table is walked because walking it is the cheapest way to read
-// it, which is the planner being right rather than a problem.
+// end.
 func (t Table) walked() bool {
 	share, ok := t.Indexed()
 	return ok && share < mostlyIndex && t.Size > smallTable
@@ -332,8 +324,7 @@ type Index struct {
 }
 
 // Idle reports an index the server has never read: disk and write time spent on
-// a lookup nothing asks for. A unique index is never idle, because it is there
-// to refuse duplicates rather than to be read.
+// a lookup nothing asks for.
 func (i Index) Idle() bool {
 	return i.Stats && i.Scans == 0 && !i.Unique && !i.Primary
 }
@@ -389,9 +380,8 @@ type Finding struct {
 	Value     string
 	Note      string
 
-	// Ratio is where this measurement sits between nothing and everything, for
-	// the checks that are a proportion of something. A check that is a count, a
-	// size or a word leaves it at zero and says so with Measured.
+	// Ratio is where this measurement sits between nothing and everything, for the
+	// checks that are a proportion of something.
 	Ratio    float64
 	Measured bool
 }
@@ -424,15 +414,12 @@ type Conn interface {
 	Stop(ctx context.Context, id string, terminate bool) error
 	Query(ctx context.Context, sql string) (ResultSet, error)
 
-	// Stream runs a statement with no row cap and no deadline of the client's,
-	// for a caller writing every row to a file rather than drawing it. A file
-	// that stops at the thousandth row is a file nobody asked for.
+	// Stream runs a statement with no row cap and no deadline of the client's, for
+	// a caller writing every row to a file rather than drawing it.
 	Stream(ctx context.Context, sql string) (ResultSet, error)
 
 	// Preview is the statement that reads a table, written the way this server
-	// quotes a name. It is a statement rather than a result because what a tab
-	// runs is shown and can be edited, and because quoting is the server's
-	// business and not the screen's.
+	// quotes a name.
 	Preview(schema, table string) string
 	Explain(ctx context.Context, sql string, analyze bool) (Plan, error)
 	Health(ctx context.Context) ([]Finding, error)

@@ -1,11 +1,4 @@
 // Package sqldialect turns SQL text into the facts a safety policy needs.
-//
-// Each dialect owns a grammar generated from the upstream ANTLR definition of
-// its database. Classification walks the parse tree with an allow-list of rules:
-// a statement whose shape is not on the list is reported as unrecognised rather
-// than guessed at, and a mutating rule found anywhere inside a statement marks
-// the whole statement as mutating, which is what catches writes hidden in
-// common table expressions.
 package sqldialect
 
 import (
@@ -53,10 +46,9 @@ type Statement struct {
 	Materializes bool
 	Refusal      string
 
-	// Text is the statement with its whitespace and its comments taken out,
-	// which is what the parser hands back and what a scan for the name of a
-	// function needs. It is not the statement as it was written, and it cannot
-	// be sent to a server. Slice is what gives that back.
+	// Text is the statement with its whitespace and its comments taken out, which
+	// is what the parser hands back and what a scan for the name of a function
+	// needs.
 	Text string
 
 	// Start and Stop are where the statement begins and ends in the request it
@@ -65,9 +57,8 @@ type Statement struct {
 	Stop  int
 }
 
-// Slice is the statement as it was written, cut out of the request it was
-// parsed from. A request holding several statements is how a script is written,
-// and this is what lets one of them be sent on its own.
+// Slice is the statement as it was written, cut out of the request it was parsed
+// from.
 func (s Statement) Slice(sql string) string {
 	runes := []rune(sql)
 	if s.Start < 0 || s.Stop < s.Start || s.Stop >= len(runes) {
@@ -102,9 +93,7 @@ type Analysis struct {
 }
 
 // At is the statement a position in the request falls inside, or the one before
-// it when the position is in the whitespace after a semicolon. Somebody whose
-// cursor is on the blank line after a statement is still working on that
-// statement.
+// it when the position is in the whitespace after a semicolon.
 func (a Analysis) At(offset int) (Statement, bool) {
 	found, ok := Statement{}, false
 	for _, statement := range a.Statements {

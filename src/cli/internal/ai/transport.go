@@ -18,9 +18,7 @@ const (
 	maxRetryWaitTime = 60 * time.Second
 )
 
-// Transport sends the requests of one instance. Retries, the wait a provider
-// asks for, and turning a failed response into a classified error all live here
-// so that every back-end gets the same behaviour instead of its own.
+// Transport sends the requests of one instance.
 type Transport struct {
 	HTTP     Doer
 	Instance string
@@ -44,10 +42,7 @@ func NewTransport(client Doer, instance string) *Transport {
 // request body is a reader and a retry needs a fresh one.
 type Build func() (*http.Request, error)
 
-// Response is what a back-end reads. It is deliberately not an http.Response:
-// the body of a streamed answer outlives the call that made it and belongs to
-// the stream that reads it, and handing back the whole response invites the
-// question of who closes what.
+// Response is what a back-end reads.
 type Response struct {
 	Status int
 	Header http.Header
@@ -55,8 +50,7 @@ type Response struct {
 }
 
 // Do sends a request, retrying the failures worth retrying, and returns a
-// response whose body the caller closes. A failed response is drained and
-// closed here and comes back as a classified error.
+// response whose body the caller closes.
 func (t *Transport) Do(ctx context.Context, build Build) (*Response, error) {
 	attempts := t.Attempts
 	if attempts < 1 {

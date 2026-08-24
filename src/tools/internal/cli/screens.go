@@ -40,9 +40,7 @@ var scripts = []script{
 
 var sizes = []string{"120x36", "80x24"}
 
-// screensDir is where rendered screens land when nobody says otherwise. It is
-// working output rather than a deliverable, so it is ignored by git and named
-// for what it holds.
+// screensDir is where rendered screens land when nobody says otherwise.
 const screensDir = ".screens"
 
 // screens renders every screen at every size, so a change can be looked at

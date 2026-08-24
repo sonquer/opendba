@@ -1,6 +1,4 @@
 // Package llama is the only code in this program that reaches into llama.cpp.
-// Everything above it talks to the ai.Engine interface, so the native library
-// is a detail of one package rather than a shape the whole program takes.
 package llama
 
 import (
@@ -32,9 +30,7 @@ type Engine struct {
 // New returns an engine that opens its library from a directory.
 func New(directory string) *Engine { return &Engine{directory: directory} }
 
-// LogTo is where llama.cpp's own account of what it is doing is written. It is
-// worth having because of how this library fails: it ends the process where it
-// stands, and what it wrote a moment earlier is the only evidence left.
+// LogTo is where llama.cpp's own account of what it is doing is written.
 func (e *Engine) LogTo(path string) *Engine {
 	e.log = path
 	return e
@@ -59,8 +55,7 @@ func (e *Engine) Ready() error {
 }
 
 // Devices reports the hardware the backend found and how much memory each part
-// of it has. A device that will not say returns a negative number, because zero
-// would mean measured and empty.
+// of it has.
 func (e *Engine) Devices() []ai.Device {
 	if e.Ready() != nil {
 		return nil
@@ -136,16 +131,6 @@ func (e *Engine) Open(_ context.Context, path string, opts ai.EngineOptions) (ai
 }
 
 // chatTemplate picks a chat format this build of llama.cpp can actually apply.
-//
-// The one in the model file is preferred and often cannot be used: a modern
-// file carries a Jinja template with macros and loops, and the applier here
-// understands a fixed set of known families rather than Jinja, so it refuses
-// the lot. Gemma 4 is eighteen kilobytes of exactly that. The catalogue names
-// the family each model belongs to for this reason, and chatml is the last
-// resort, being the format most fine-tunes are close to.
-//
-// Every candidate is tried rather than reasoned about, because the only thing
-// that knows what this build understands is this build.
 func chatTemplate(model llama.Model, named string) string {
 	for _, candidate := range []string{llama.ModelChatTemplate(model, ""), named, fallbackTemplate} {
 		if candidate != "" && applies(candidate) {
@@ -156,9 +141,6 @@ func chatTemplate(model llama.Model, named string) string {
 }
 
 // applies reports whether a template is one this build can lay a turn out with.
-// The buffer is small on purpose: a template that needs more room says so with
-// a length, and a template that cannot be applied at all says so with a
-// negative number, which is the only answer being asked for here.
 func applies(template string) bool {
 	probe := []llama.ChatMessage{llama.NewChatMessage("user", "?")}
 	return llama.ChatApplyTemplate(template, probe, true, make([]byte, probeBuffer)) >= 0
@@ -200,9 +182,7 @@ func sampler(model llama.Model, vocab llama.Vocab, opts ai.EngineOptions) llama.
 	return chain
 }
 
-// session is one loaded model with its context and sampler. llama.cpp allows
-// one decode at a time on a context, so the lock is what makes the session
-// usable from a screen that can ask again before the last answer is finished.
+// session is one loaded model with its context and sampler.
 type session struct {
 	mu        sync.Mutex
 	model     llama.Model
@@ -216,10 +196,7 @@ type session struct {
 	// shape it is shown its own past calls and the answers to them in.
 	dialect string
 
-	// window is how many tokens the context holds. It is kept because the
-	// library does not stop at the end of it politely: a decode with nowhere
-	// left to put the token ends the process, taking the program with it, so
-	// the end has to be seen coming from here.
+	// window is how many tokens the context holds.
 	window int
 }
 
@@ -253,9 +230,9 @@ func apply(template string, chat []llama.ChatMessage) (string, error) {
 	return string(buf[:written]), nil
 }
 
-// Generate runs the token loop, sending each piece of text as it is produced
-// and stopping the moment the context is cancelled, so that a cancelled answer
-// stops costing the machine anything rather than merely being ignored.
+// Generate runs the token loop, sending each piece of text as it is produced and
+// stopping the moment the context is cancelled, so that a cancelled answer stops
+// costing the machine anything rather than merely being ignored.
 func (s *session) Generate(ctx context.Context, prompt string, out chan<- ai.Token) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -298,11 +275,6 @@ func (s *session) Generate(ctx context.Context, prompt string, out chan<- ai.Tok
 }
 
 // feed reads the prompt into the context a chunk at a time.
-//
-// A batch has a size the library was built with, and handing it a prompt longer
-// than that is not a slow path but an assertion inside the library, which ends
-// the process rather than returning an error anybody can show. A schema put in
-// front of a model is easily longer than it.
 func (s *session) feed(ctx context.Context, tokens []llama.Token) error {
 	for at := 0; at < len(tokens); at += promptChunk {
 		if err := ctx.Err(); err != nil {

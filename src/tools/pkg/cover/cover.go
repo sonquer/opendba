@@ -2,12 +2,6 @@
 // does: a table of packages and files with statement, function and line
 // percentages plus the uncovered line ranges, a single self-contained HTML
 // document, and a markdown summary for continuous integration.
-//
-// Go instruments statements, not branches, so the function and line figures are
-// derived here: functions are found by parsing the source and asking whether any
-// covered block falls inside them, and lines are the statement lines a profile
-// mentions. There is deliberately no branch column, because the toolchain does
-// not produce one and inventing it would be a lie.
 package cover
 
 import (

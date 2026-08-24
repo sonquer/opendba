@@ -661,3 +661,59 @@ func TestAReadingDoesNotAnswerForAnother(t *testing.T) {
 		})
 	}
 }
+
+// Clicking a statement in the sidebar opens it, on the second click the way a
+// table does: the first click moves the cursor onto it.
+func TestClickingAFileOpensIt(t *testing.T) {
+	m, _ := seeded(t)
+	m.mouse = true
+	line, ok := lineOf4File(m, "daily.sql")
+	if !ok {
+		t.Fatal("the file is not drawn")
+	}
+	first, _ := m.Update(click(ui.Gutter+1, line))
+	picked := first.(Model)
+	if picked.focus != focusSidebar {
+		t.Fatalf("focus = %v", picked.focus)
+	}
+	if name, ok := picked.sidebar.file(); !ok || name != "daily.sql" {
+		t.Fatalf("the cursor is on %q", name)
+	}
+	if len(picked.sheets) != 1 {
+		t.Error("one click moves the cursor, it does not open anything")
+	}
+	updated, cmd := picked.Update(click(ui.Gutter+1, line))
+	opened := pump(t, updated.(Model), cmd)
+	if opened.file != "daily.sql" {
+		t.Errorf("the second click must open it, tab holds %q", opened.file)
+	}
+}
+
+func TestClickingTheFilesHeadingDoesNothing(t *testing.T) {
+	m, _ := seeded(t)
+	m.mouse = true
+	line, ok := lineOf4File(m, "daily.sql")
+	if !ok {
+		t.Fatal("the file is not drawn")
+	}
+	if _, hit := m.treeAt(ui.Gutter+1, line-2); hit {
+		t.Error("the heading above the files belongs to no row")
+	}
+}
+
+// lineOf4File finds the row of the screen a statement is drawn on.
+func lineOf4File(m Model, name string) (int, bool) {
+	for i, item := range m.sidebar.rows {
+		if item.key != "file:"+name {
+			continue
+		}
+		lines := m.sidebar.paint(m.sidebar.width(ui.FrameWidth(m.width)), false)
+		for at, line := range lines {
+			if line.row == i {
+				return ui.BodyTop(true) + treeTop + at -
+					m.sidebar.offset(lines, m.workbenchHeight()-2), true
+			}
+		}
+	}
+	return 0, false
+}

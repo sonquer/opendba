@@ -59,9 +59,7 @@ func (c completion) selected() (suggestion, bool) {
 
 // ghost is the rest of the word the chosen suggestion would finish, which is
 // what gets drawn after the cursor in the grey of something that is not there
-// yet. A suggestion that does not carry on from what has been typed has no
-// ghost: showing one would mean drawing text the tab key is not going to leave
-// behind.
+// yet.
 func (c completion) ghost() string {
 	item, ok := c.selected()
 	if !ok || c.prefix == "" {
@@ -266,11 +264,7 @@ func matches(candidate, prefix string) bool {
 	return prefix != "" && strings.HasPrefix(strings.ToLower(candidate), strings.ToLower(prefix))
 }
 
-// best keeps the suggestions closest to what was typed. Closest means fewest
-// characters added to it: on a catalogue where a dozen tables start with
-// `product`, `products` is the one being typed and the longest name is the one
-// least likely to be, so a list cut in the order the server listed them throws
-// away the answer and keeps the noise.
+// best keeps the suggestions closest to what was typed.
 func best(items []suggestion, prefix string, count int) []suggestion {
 	sort.SliceStable(items, func(i, j int) bool {
 		return extra(items[i].text, prefix) < extra(items[j].text, prefix)

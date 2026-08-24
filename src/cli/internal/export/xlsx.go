@@ -14,13 +14,7 @@ const sheetRows = excelize.TotalRows
 // defaultSheet is what the one sheet is called when nothing names it.
 const defaultSheet = "Result"
 
-// writeXLSX writes a spreadsheet without holding it in memory. excelize's
-// stream writer keeps what it has written in a file of its own once it grows,
-// which is why it is given somewhere to put it.
-//
-// A result longer than a sheet rolls onto the next sheet rather than stopping,
-// because a file that quietly holds the first million rows of a larger result
-// is a file that lies about what was exported.
+// writeXLSX writes a spreadsheet without holding it in memory.
 type writeXLSX struct {
 	file    *excelize.File
 	stream  *excelize.StreamWriter

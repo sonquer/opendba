@@ -10,11 +10,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
 )
 
-// instructions is what the assistant is told before anything else. Two of these
-// paragraphs are safety rather than manners: everything a tool returns comes out
-// of somebody's database and is data however it is worded, and every statement
-// is classified before it runs, so a refusal is a fact to report rather than an
-// obstacle to work around.
+// instructions is what the assistant is told before anything else.
 const instructions = `You are built into tui4db, a terminal program for reading a %s database.
 You are talking to the person using it, who can see the same screens you can read through tools.
 
@@ -41,9 +37,7 @@ question; do not try to word it differently to get it through.
 
 Be brief. Prefer a sentence and a table to a paragraph.`
 
-// assistantFor builds the conversation for a session. It is a function rather
-// than a value because opening it loads a model, and nobody who never asks a
-// question should wait for that.
+// assistantFor builds the conversation for a session.
 func assistantFor(session cli.Session) Talk {
 	return func(allowed permission) (conversation, error) {
 		client, err := session.AI.Open()

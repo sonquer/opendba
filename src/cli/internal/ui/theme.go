@@ -21,18 +21,14 @@ type Palette struct {
 	Inactive color.Color
 	OnEnv    color.Color
 
-	// Surface is the ground behind a block of content: the box a question is
-	// typed into, the question itself, the row under the cursor, the tab in
-	// front, a passing sentence in the corner. One colour, because they are one
-	// idea, and barely lifted off the black behind them: a surface that draws
-	// the eye is a surface competing with what it is holding.
+	// Surface is the ground behind a block of content: the box a question is typed
+	// into, the question itself, the row under the cursor, the tab in front, a
+	// passing sentence in the corner.
 	Surface     color.Color
 	OnSelection color.Color
 
 	// Keycap is a chip drawn on top of a surface rather than a surface itself,
-	// which is why it is not Surface. The cap on the tab you are in sits
-	// against that tab's own ground with nothing between them, and the only
-	// thing telling the two apart is that the cap is lighter.
+	// which is why it is not Surface.
 	Keycap  color.Color
 	Badge   color.Color
 	OnBadge color.Color
@@ -45,8 +41,7 @@ type Palette struct {
 }
 
 // DefaultPalette is dark, and says so to the terminal rather than adapting to
-// it. The interface paints its own background, so the colours on top of it
-// cannot be chosen by whatever theme the terminal happens to carry.
+// it.
 func DefaultPalette() Palette {
 	return Palette{
 		Bg:       lipgloss.Color("#000000"),
@@ -197,19 +192,12 @@ type Theme struct {
 	BadgeStyle  lipgloss.Style
 	Panel       lipgloss.Style
 
-	// Toast is the ground a passing sentence is drawn on. It has a background
-	// of its own because it sits over whatever screen it interrupted, and text
-	// with no ground under it reads as part of that screen rather than as
-	// something the program just said. It is the same ground as everything else
-	// that holds content, and it used to be the keycap colour, which is a chip
-	// worn at the size of a slab and read as a light band across the screen.
+	// Toast is the ground a passing sentence is drawn on.
 	Toast     lipgloss.Style
 	TableHead lipgloss.Style
 
-	// Tab and TabIdle are the two states of a tab, and TabKey is the cap the
-	// key that reaches one is printed on. The tab being worked in is a block of
-	// colour and the rest are not, which is the only way a terminal can draw
-	// the front sheet of a stack without corners to draw it with.
+	// Tab and TabIdle are the two states of a tab, and TabKey is the cap the key
+	// that reaches one is printed on.
 	Tab     lipgloss.Style
 	TabIdle lipgloss.Style
 	TabKey  lipgloss.Style
@@ -288,10 +276,7 @@ func NewTheme(p Palette) *Theme {
 }
 
 // Bar is the colour a measurement is drawn in, whichever half of the scale it
-// is. The glyph does the work: a solid block for what was measured and a weave
-// for the rest. Darkening the empty half instead loses it against the page, and
-// a background behind either half turns the scale into two slabs, because a
-// cell with a background is a filled cell whatever is printed on it.
+// is.
 func (t *Theme) Bar(s Severity) lipgloss.Style {
 	if style, ok := t.bars[s]; ok {
 		return style

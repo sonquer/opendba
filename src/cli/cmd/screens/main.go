@@ -1,6 +1,5 @@
 // Command screens renders the interface without a terminal, so a change can be
-// looked at rather than guessed at. It builds the same model the program runs,
-// feeds it keys, and prints what it draws.
+// looked at rather than guessed at.
 package main
 
 import (

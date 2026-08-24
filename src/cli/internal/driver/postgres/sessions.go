@@ -10,9 +10,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 )
 
-// sessionsQuery reads what the server is holding. The statement of another
-// user is only visible to a role in pg_monitor, and comes back empty for
-// everyone else, which the interface shows as a dash rather than an error.
+// sessionsQuery reads what the server is holding.
 const sessionsQuery = `SELECT pid, coalesce(usename, ''), coalesce(application_name, ''),
 	coalesce(host(client_addr), 'local'), coalesce(datname, ''), coalesce(state, ''),
 	coalesce(wait_event_type, ''),
@@ -47,9 +45,7 @@ func (c *connection) Sessions(ctx context.Context) ([]driver.Session, error) {
 	return sessions, nil
 }
 
-// Stop asks the server to end what a session is doing. Cancelling interrupts
-// the statement and leaves the connection; terminating takes the connection
-// with it. Both need pg_signal_backend, or the session to be the caller's own.
+// Stop asks the server to end what a session is doing.
 func (c *connection) Stop(ctx context.Context, id string, terminate bool) error {
 	query := "SELECT pg_cancel_backend($1::int)"
 	verb := "cancel"

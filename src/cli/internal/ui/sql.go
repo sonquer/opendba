@@ -25,12 +25,6 @@ type token struct {
 
 // Highlight colours one line of SQL for an editor that redraws it as it is
 // typed.
-//
-// It works a line at a time because that is how the editor hands its text over,
-// already wrapped. A string or a comment that runs past the end of a line is
-// therefore coloured to the end of that line and starts again plain on the
-// next, which is wrong only for text nobody writes in a statement they are
-// still typing.
 func (t *Theme) Highlight(line string) string {
 	if line == "" {
 		return ""
@@ -154,10 +148,7 @@ func punctuation(r rune) bool {
 	return strings.ContainsRune("(),;.*+-/<>=!%|&^~[]{}:?", r)
 }
 
-// Keyword reports whether a word is one of the words SQL reserves. The list is
-// what a person writing a statement types rather than every word every server
-// knows: a word coloured as a keyword that is not one is a lie, and a keyword
-// left plain is only a keyword left plain.
+// Keyword reports whether a word is one of the words SQL reserves.
 func Keyword(word string) bool {
 	_, ok := keywords[strings.ToUpper(word)]
 	return ok

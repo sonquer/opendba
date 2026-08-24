@@ -22,19 +22,13 @@ type quitMsg struct{}
 type removeMsg struct{ name string }
 
 // command is one thing the list can do: what it is called, the key it answers
-// to, and the message it sends. There is no sentence about what it does — a
-// list where some rows carry prose and others do not reads as a list somebody
-// gave up on halfway, and a command whose name does not say what it does wants
-// a better name rather than a footnote.
+// to, and the message it sends.
 type command struct {
 	title string
 	key   string
 	msg   tea.Msg
 
-	// where is the screens this command belongs to. A command that makes no
-	// sense where you are is worse than a command you have to search for:
-	// "close this tab" on the dashboard is an offer the program cannot keep.
-	// Empty means everywhere.
+	// where is the screens this command belongs to.
 	where []view
 }
 
@@ -100,6 +94,8 @@ func every4Palette(keys keymap) []command {
 			msg: explainMsg{}},
 		{title: "export the result", key: keys.Export.Help().Key, where: onEditor,
 			msg: exportMsg{}},
+		{title: "save the tab to a file", key: keys.Write.Help().Key, where: onEditor,
+			msg: saveFileMsg{}},
 		{title: "copy the result as csv", key: keys.CopyRow.Help().Key, where: onEditor,
 			msg: copyMsg{whole: true, format: export.FormatCSV}},
 		{title: "copy the result as json", where: onEditor,
@@ -129,10 +125,7 @@ func every4Palette(keys keymap) []command {
 	}
 }
 
-// withTabs adds the tabs to the command list. They are commands rather than
-// only keys because the tabs of the editor are the one part of this program
-// where what is on screen is a list that grows, and a list that grows is a list
-// worth being able to search rather than count along.
+// withTabs adds the tabs to the command list.
 func (p palette) withTabs(tabs []command) palette {
 	p.items = append(append([]command{}, p.items...), tabs...)
 	return p

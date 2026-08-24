@@ -492,3 +492,61 @@ func TestClosingARunningTabSaysWhatItGivesUp(t *testing.T) {
 		t.Error("enter with the box unticked must not close it")
 	}
 }
+
+// A tab that holds something its file does not says so on the tab itself, and
+// says it again when it is about to be closed.
+func TestADirtyFileTabSaysSo(t *testing.T) {
+	m, _ := seeded(t)
+	opened := pressed(t, onFile(t, m, "daily.sql"), "enter")
+	if strings.Contains(plain(opened.tabBar(110)), "*") {
+		t.Error("a file just opened matches what is on disk")
+	}
+	typed := typeInto(t, opened, " WHERE x")
+	if !strings.Contains(plain(typed.tabBar(110)), "*") {
+		t.Errorf("a changed tab must be marked:\n%s", plain(typed.tabBar(110)))
+	}
+	saved := pressed(t, typed, "ctrl+s")
+	if strings.Contains(plain(saved.tabBar(110)), "*") {
+		t.Errorf("a written tab is not changed any more:\n%s", plain(saved.tabBar(110)))
+	}
+}
+
+func TestATabWithNoFileIsNeverDirty(t *testing.T) {
+	m, _ := seeded(t)
+	typed := typeInto(t, m, "SELECT 1")
+	if typed.dirty() {
+		t.Error("a tab that has never been a file has nothing to differ from")
+	}
+}
+
+func TestClosingADirtyFileTabSaysWhatIsLost(t *testing.T) {
+	m, _ := seeded(t)
+	opened := pressed(t, onFile(t, m, "daily.sql"), "enter")
+	kept, _ := press(t, opened, "ctrl+w")
+	if kept.modal == nil || !strings.Contains(kept.modal.body, "daily.sql keeps what is below") {
+		t.Errorf("closing a saved file tab must say the file keeps it: %+v", kept.modal)
+	}
+	typed := typeInto(t, opened, " WHERE x")
+	asked, _ := press(t, typed, "ctrl+w")
+	if asked.modal == nil || !strings.Contains(asked.modal.body, "has not been written to daily.sql") {
+		t.Errorf("closing a changed file tab must say what is unsaved: %+v", asked.modal)
+	}
+}
+
+// A dialog that asks for a name will not take an empty one, because a file
+// called nothing is a file nobody finds again.
+func TestADialogThatAsksForANameWillNotTakeAnEmptyOne(t *testing.T) {
+	m, _ := seeded(t)
+	typed := typeInto(t, m, "SELECT 1")
+	asked := pressed(t, typed, "ctrl+s")
+	if asked.modal == nil {
+		t.Fatal("a tab with no file must be asked what to call it")
+	}
+	if asked.modal.ready() {
+		t.Error("an empty name is not an answer")
+	}
+	stays, _ := press(t, asked, "enter")
+	if stays.modal == nil {
+		t.Error("enter with nothing typed must leave the question up")
+	}
+}

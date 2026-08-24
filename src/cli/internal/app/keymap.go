@@ -47,9 +47,9 @@ type keymap struct {
 	Right       key.Binding
 	Terminate   key.Binding
 	Pick        key.Binding
-	// Commands carries a label as well as its key, because a screen where text
-	// is typed cannot offer the slash and its footer has to name the alias that
-	// does work there.
+	// Commands carries a label as well as its key, because a screen where text is
+	// typed cannot offer the slash and its footer has to name the alias that does
+	// work there.
 	Commands key.Binding
 	Above    key.Binding
 	Below    key.Binding
@@ -58,23 +58,23 @@ type keymap struct {
 	Order    key.Binding
 	Reverse  key.Binding
 
-	// NewTab, CloseTab, PrevTab and NextTab are the tabs of the editor. They
-	// take the control keys the textarea uses for moving a line and deleting a
-	// word, which the arrows and alt+backspace still do, because a tab is worth
-	// a key somebody can find and a second way to press down is not.
+	// NewTab, CloseTab, PrevTab and NextTab are the tabs of the editor.
 	NewTab   key.Binding
 	CloseTab key.Binding
 	PrevTab  key.Binding
 	NextTab  key.Binding
 
-	// Jump is the digits, which reach a tab by its place rather than by walking
-	// to it. A terminal that cannot send ctrl and a digit together sends alt
-	// and a digit instead, and both are accepted.
+	// Jump is the digits, which reach a tab by its place rather than by walking to
+	// it.
 	Jump key.Binding
 
 	// Export writes the result to a file. It takes the control key the textarea
 	// uses for the end of a line, which the end key still does.
 	Export key.Binding
+
+	// Write puts the tab in a file. Some terminals still hold ctrl+s for flow
+	// control, so the command list carries it as well.
+	Write key.Binding
 
 	// Copy and CopyRow put a value or a whole row on the clipboard, which is
 	// what a mouse is otherwise reached for.
@@ -89,9 +89,7 @@ type keymap struct {
 	// doing it.
 	Explain key.Binding
 
-	// Forget throws one kept thing away. It is a control key rather than a
-	// letter because the lists it works in are searched by typing, and a letter
-	// cannot both be typed and mean something.
+	// Forget throws one kept thing away.
 	Forget   key.Binding
 	enhanced bool
 }
@@ -147,6 +145,7 @@ func newKeymap() keymap {
 		NextTab:     tabBinding(false, 1),
 		Jump:        jumpBinding(),
 		Export:      binding("export", "ctrl+e"),
+		Write:       binding("save", "ctrl+s"),
 		Copy:        binding("copy", "y"),
 		CopyRow:     binding("copy the row", "Y"),
 		History:     binding("history", "ctrl+g"),
@@ -176,16 +175,14 @@ func (k keymap) Send() key.Binding { return relabel(k.Choose, "send") }
 
 func (k keymap) Stop() key.Binding { return relabel(k.Back, "stop or back") }
 
-// Conversations and NewConversation are the history and new-tab keys said in
-// the words of the ask screen, because opening what was said before and putting
-// the current one away are the same two ideas as on the editor screen.
+// Conversations and NewConversation are the history and new-tab keys said in the
+// words of the ask screen, because opening what was said before and putting the
+// current one away are the same two ideas as on the editor screen.
 func (k keymap) Conversations() key.Binding { return relabel(k.History, "conversations") }
 
 func (k keymap) NewConversation() key.Binding { return relabel(k.NewTab, "new conversation") }
 
-// Halt is esc once more, in the words of a statement that is still running. It
-// is only ever drawn while one is, so the key that goes back and the key that
-// gives up are never offered at the same time.
+// Halt is esc once more, in the words of a statement that is still running.
 func (k keymap) Halt() key.Binding { return relabel(k.Back, "cancel the query") }
 
 func relabel(from key.Binding, help string) key.Binding {
@@ -198,8 +195,6 @@ func binding(help string, keys ...string) key.Binding {
 }
 
 // runBinding accepts every way a terminal can send "run this statement".
-// Only terminals with keyboard enhancements can tell ctrl+enter apart from
-// ctrl+j, so ctrl+r is what gets advertised until the terminal says otherwise.
 func runBinding(enhanced bool) key.Binding {
 	label := ui.Keystroke("ctrl+r")
 	if enhanced {
@@ -212,9 +207,6 @@ func runBinding(enhanced bool) key.Binding {
 }
 
 // jumpBinding is every way a terminal can say a digit with a modifier on it.
-// Both are taken because ctrl and a digit is what the strip prints and what a
-// terminal speaking the Kitty protocol sends, while everything else sends alt
-// and a digit or nothing at all.
 func jumpBinding() key.Binding {
 	keys := make([]string, 0, 2*maxJumpTabs)
 	for i := 1; i <= maxJumpTabs; i++ {
@@ -239,8 +231,6 @@ func jumped(msg tea.KeyPressMsg) int {
 }
 
 // tabBinding accepts both ways a terminal can say "the tab beside this one".
-// Only a terminal with keyboard enhancements can send ctrl+tab at all, so the
-// page keys are what gets advertised until it says it can.
 func tabBinding(enhanced bool, step int) key.Binding {
 	keys, label := []string{"ctrl+pgup"}, ui.Keystroke("ctrl+pgup")
 	help := "previous tab"

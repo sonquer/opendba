@@ -24,9 +24,8 @@ type Frame struct {
 	Env    EnvColor
 	Header string
 
-	// Tabs is a strip of tabs to sit between the header and the rule under it,
-	// with a blank row above so it is not up against the header. A screen with
-	// no tabs leaves it empty and keeps the blank row it has always had.
+	// Tabs is a strip of tabs to sit between the header and the rule under it, with
+	// a blank row above so it is not up against the header.
 	Tabs   string
 	Body   string
 	Footer string
@@ -187,10 +186,8 @@ func At(background, content string, x, y int) string {
 // Gutter is the padding Chrome keeps on each side.
 const Gutter = gutter
 
-// TabTop, TabRows and the rows the body starts on are where Chrome draws
-// things, counted from the top of the window. They are constants rather than
-// something worked out from a rendered frame because the mouse has to know
-// where a click landed before the frame it landed on is drawn again.
+// TabTop, TabRows and the rows the body starts on are where Chrome draws things,
+// counted from the top of the window.
 const (
 	TabTop  = 4
 	TabRows = 1

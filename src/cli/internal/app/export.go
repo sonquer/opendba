@@ -14,6 +14,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/internal/export"
+	"github.com/sonquer/tui4db/src/cli/internal/sqlfiles"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
@@ -39,22 +40,14 @@ type running4Export struct {
 }
 
 // finished4Export is how an export ended: how many rows reached the file, and
-// what stopped it if anything did. The count travels with the outcome rather
-// than as a last word on the progress channel, because a last word nobody is
-// left to hear is a goroutine that never returns.
+// what stopped it if anything did.
 type finished4Export struct {
 	rows int
 	err  error
 }
 
-// exporter is the question a file is written from: what to write, where, and
-// how much of the result.
-//
-// The scope matters more than it looks. The rows on screen are capped at the
-// profile's row limit and have been folded onto one line and cut to the width
-// of a column; everything is the statement run again with the cap lifted. The
-// second is the default, and is the only one that gives the file what the
-// server would give it.
+// exporter is the question a file is written from: what to write, where, and how
+// much of the result.
 type exporter struct {
 	theme     *ui.Theme
 	form      form
@@ -75,9 +68,7 @@ const (
 	scopeOnScreen   = "what is on screen"
 )
 
-// export4Result raises the question. It refuses before it asks when there is no
-// result to write, because a dialog about nothing is worse than a sentence
-// saying so.
+// export4Result raises the question.
 func (m Model) export4Result() (tea.Model, tea.Cmd) {
 	if !m.results.present || m.results.failure != "" {
 		return m, m.notify("there is no result to export yet")
@@ -133,22 +124,7 @@ func (m Model) suggestedPath(format export.Format) string {
 	parts := []string{m.session.Connection.Name, m.label(m.worksheet, m.sheet)}
 	name := strings.Join(parts, "-") + "-" + time.Now().Format("20060102-150405") +
 		"." + format.Extension()
-	return filepath.Join(".", clean4Path(name))
-}
-
-// clean4Path takes out what a file name cannot hold, so a tab called
-// catalog.product_prices does not become a directory nobody meant.
-func clean4Path(name string) string {
-	cleaned := strings.Map(func(r rune) rune {
-		if strings.ContainsRune(`/\:*?"<>|`, r) || r < ' ' {
-			return '-'
-		}
-		if r == ' ' {
-			return '-'
-		}
-		return r
-	}, name)
-	return strings.Trim(cleaned, "-")
+	return filepath.Join(".", sqlfiles.Clean(name))
 }
 
 func (m Model) exportKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -179,8 +155,7 @@ func (m Model) exportKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // renamed follows the format with the file name, so choosing xlsx after typing
-// nothing does not write a spreadsheet called something.csv. A name that was
-// typed by hand is left alone.
+// nothing does not write a spreadsheet called something.csv.
 func (e exporter) renamed(name string) form {
 	format, ok := export.Named(name)
 	if !ok {
@@ -206,11 +181,7 @@ func key4Back(msg tea.KeyPressMsg) bool { return msg.String() == "esc" }
 
 type writeExportMsg struct{}
 
-// confirmExport says what is about to be written before it is written. An
-// export is the one thing this program does that reaches outside it: it puts a
-// file on the disk, and when the scope is everything it sends the statement to
-// the server a second time with no row cap and no timeout. Both are worth one
-// sentence and one key.
+// confirmExport says what is about to be written before it is written.
 func (m Model) confirmExport() (tea.Model, tea.Cmd) {
 	dialog := *m.exporter
 	if err := dialog.form.validate(); err != nil {
@@ -245,9 +216,9 @@ func said4Export(scope, format string, dialog exporter) string {
 		", however many that is; the result on screen stopped at the row limit and this will not"
 }
 
-// startExport writes the file. Nothing is written where something already is:
-// an export that silently replaced yesterday's would be a way to lose data with
-// a program that is otherwise not allowed to.
+// startExport writes the file. Nothing is written where something already is: an
+// export that silently replaced yesterday's would be a way to lose data with a
+// program that is otherwise not allowed to.
 func (m Model) startExport() (tea.Model, tea.Cmd) {
 	dialog := *m.exporter
 	if err := dialog.form.validate(); err != nil {
@@ -321,14 +292,11 @@ type job4Export struct {
 	progress  chan<- int
 }
 
-// tellEvery is how many rows go by between two words about it. Often enough
-// that a long export is visibly moving, rarely enough that saying so is not
-// most of the work.
+// tellEvery is how many rows go by between two words about it.
 const tellEvery = 2000
 
 // write4Export writes the file beside the one it is meant to be and renames it
-// when it is whole, which is how everything else this program writes is
-// written. An export that was given up on leaves nothing behind.
+// when it is whole, which is how everything else this program writes is written.
 func write4Export(ctx context.Context, job job4Export) (written int, err error) {
 	if _, err := os.Stat(job.path); err == nil {
 		return 0, fmt.Errorf("%s is already there", job.path)

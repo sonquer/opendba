@@ -1,7 +1,4 @@
-// Package tool is what an agent may do to a database. Everything here reads;
-// nothing writes. A statement the model wants to run is classified before it is
-// sent, so it is the guard that refuses rather than the prompt, and a model that
-// asks for a delete is told no by the same code that tells a person no.
+// Package tool is what an agent may do to a database.
 package tool
 
 import (
@@ -11,6 +8,7 @@ import (
 
 	"github.com/sonquer/tui4db/src/cli/internal/ai"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/tui4db/src/cli/internal/export"
 	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
 )
 
@@ -53,20 +51,10 @@ type Set struct {
 	approve  Approve
 }
 
-// Approve is asked before a statement the assistant wrote is run. Returning an
-// error stops it, and what the error says is what the model is told.
-//
-// It is optional because not every caller has somebody to ask: the command line
-// runs tools with nobody watching, and a screen has a person in front of it.
+// Approve is asked before a statement the assistant wrote is run.
 type Approve func(ctx context.Context, statement string) error
 
 // WithApproval puts a person between the statement and the database.
-//
-// The classifier is not what this replaces. A statement is refused by the guard
-// before anybody is asked about it, so what reaches the question is already a
-// read; the question is whether to read that, now, on this connection. It is
-// also what makes a model that writes its own SQL a reasonable thing to have:
-// whatever it thought of, somebody sees it before it runs.
 func (s *Set) WithApproval(approve Approve) *Set {
 	s.approve = approve
 	return s
@@ -366,9 +354,7 @@ func (s *Set) runSelect(ctx context.Context, statement string, limit int) (strin
 	return built, nil
 }
 
-// allowed is the whole safety story of this package. The statement goes through
-// the same classifier a person's statement goes through, in the same mode, and
-// what comes back is what the model is told.
+// allowed is the whole safety story of this package.
 func (s *Set) allowed(statement string) error {
 	if strings.TrimSpace(statement) == "" {
 		return fmt.Errorf("argument %q is required", "statement")
@@ -455,7 +441,7 @@ func cell(value any) string {
 	if value == nil {
 		return "null"
 	}
-	written := strings.ReplaceAll(fmt.Sprint(value), "\n", " ")
+	written := strings.ReplaceAll(export.Text(value), "\n", " ")
 	if len(written) > maxCell {
 		return written[:maxCell] + "…"
 	}
@@ -463,8 +449,7 @@ func cell(value any) string {
 }
 
 // table renders a result the way a model reads best: a header, a rule, and one
-// row per line. It is not aligned, because alignment costs tokens and buys the
-// reader nothing here.
+// row per line.
 func table(header []string, rows [][]string) string {
 	if len(rows) == 0 {
 		return "nothing to show"

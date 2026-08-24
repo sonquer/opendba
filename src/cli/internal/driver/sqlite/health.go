@@ -9,9 +9,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 )
 
-// Health reads what this file can say about itself. size comes last of the
-// storage checks for the same reason it does on the other driver: it is a
-// number that is always fine, and a group is read from the top.
+// Health reads what this file can say about itself.
 func (c *connection) Health(ctx context.Context) ([]driver.Finding, error) {
 	checks := []func(context.Context) (driver.Finding, error){
 		c.integrity,

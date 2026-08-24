@@ -48,9 +48,7 @@ type block struct {
 	arguments strings.Builder
 }
 
-// stream reads message events and turns them into chunks. The blocks are
-// already bracketed on the wire, so the work here is mostly to carry the
-// arguments of a tool block until the block closes and they can be read.
+// stream reads message events and turns them into chunks.
 type stream struct {
 	instance string
 	events   *ai.Events
@@ -198,9 +196,7 @@ func (s *stream) shut(index int) []ai.Chunk {
 	}
 }
 
-// count gathers the two halves of the accounting. The input is reported once at
-// the start and the output once at the end, and the parts that do not overlap
-// are worked out here so that nobody downstream has to subtract.
+// count gathers the two halves of the accounting.
 func (s *stream) count(from *tally) {
 	if from == nil {
 		return

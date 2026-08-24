@@ -6,7 +6,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
 )
 
-func TestReadmeSpotTheWrite(t *testing.T) {
+func TestSpotTheWrite(t *testing.T) {
 	guard := New(sqldialect.PostgreSQL())
 	cases := map[string]string{
 		"A": "SELECT * FROM users FOR UPDATE;",

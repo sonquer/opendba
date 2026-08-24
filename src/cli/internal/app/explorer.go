@@ -9,12 +9,18 @@ import (
 	"charm.land/lipgloss/v2/tree"
 
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/tui4db/src/cli/internal/sqlfiles"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
 const (
 	sidebarWidth    = 26
 	minSidebarWidth = 18
+)
+
+const (
+	sectionTables = "tables"
+	sectionFiles  = "files"
 )
 
 // explorer is the schema of the database you are writing against, drawn beside
@@ -25,6 +31,16 @@ type explorer struct {
 	cursor int
 	open   map[string]bool
 	hidden bool
+
+	// tabled and filed are the two blocks the pane is made of, kept apart so a
+	// catalogue read again does not blank the files and a directory read again does
+	// not blank the catalogue.
+	tabled []row
+	filed  []row
+
+	// trouble is what went wrong reading the directory, said under the heading
+	// of the block it is about rather than over the whole pane.
+	trouble string
 }
 
 func newExplorer(theme *ui.Theme) explorer {
@@ -38,14 +54,15 @@ func (e explorer) withTables(tables []driver.Table, fields map[string][]driver.C
 		if table.Schema != schema {
 			schema = table.Schema
 			if schema != "" {
-				rows = append(rows, row{key: "schema:" + schema, label: schema})
+				rows = append(rows, row{key: "schema:" + schema, label: schema, section: sectionTables})
 			}
 		}
 		rows = append(rows, row{
-			key:   "table:" + table.Qualified(),
-			label: table.Name,
-			note:  ui.Count(table.Rows),
-			depth: 1,
+			key:     "table:" + table.Qualified(),
+			label:   table.Name,
+			note:    ui.Count(table.Rows),
+			section: sectionTables,
+			depth:   1,
 		})
 		if !e.open[table.Qualified()] {
 			continue
@@ -59,11 +76,46 @@ func (e explorer) withTables(tables []driver.Table, fields map[string][]driver.C
 			})
 		}
 	}
+	e.tabled = rows
+	return e.rebuilt()
+}
+
+// withFiles is the statements kept beside this connection, or what went wrong
+// looking for them.
+func (e explorer) withFiles(files []sqlfiles.File, trouble string) explorer {
+	rows := make([]row, 0, len(files))
+	for _, file := range files {
+		rows = append(rows, row{
+			key:     "file:" + file.Name,
+			label:   file.Name,
+			section: sectionFiles,
+			depth:   1,
+		})
+	}
+	e.filed = rows
+	e.trouble = trouble
+	return e.rebuilt()
+}
+
+// rebuilt puts the two blocks end to end and keeps the cursor on the list.
+func (e explorer) rebuilt() explorer {
+	rows := make([]row, 0, len(e.tabled)+len(e.filed))
+	rows = append(rows, e.tabled...)
+	rows = append(rows, e.filed...)
 	e.rows = rows
 	if e.cursor >= len(rows) {
 		e.cursor = max(0, len(rows)-1)
 	}
 	return e
+}
+
+// file returns the name of the statement the cursor sits on, if it is on one.
+func (e explorer) file() (string, bool) {
+	item, ok := e.selected()
+	if !ok {
+		return "", false
+	}
+	return strings.CutPrefix(item.key, "file:")
 }
 
 func (e explorer) move(step int) explorer {
@@ -141,9 +193,7 @@ func (e explorer) width(available int) int {
 	}
 }
 
-// painted is one drawn line of the schema and the row it belongs to. A
-// heading, a blank line and the connectors the tree drew of its own accord
-// belong to no row, and say so with a row of minus one.
+// painted is one drawn line of the schema and the row it belongs to.
 type painted struct {
 	text string
 	row  int
@@ -152,18 +202,11 @@ type painted struct {
 // view draws the schema with lipgloss/tree, which owns the connectors, while
 // the cursor stays ours.
 func (e explorer) view(width, height int, focused bool) string {
-	head := e.theme.Section("tables", "", width)
-	if len(e.rows) == 0 {
-		return head + "\n\n" + e.theme.Muted.Render("nothing here")
-	}
+	head := e.theme.Section(sectionTables, "", width)
 	return head + "\n\n" + e.window(e.paint(width, focused), height-2)
 }
 
 // paint draws every line of the schema and says which row each one came from.
-// The picture and the mapping are built together on purpose: when they were
-// two functions, the one that found the cursor did it by searching the drawn
-// text for the marker that only appears while the pane has the focus, so the
-// schema silently stopped scrolling whenever the cursor was somewhere else.
 func (e explorer) paint(width int, focused bool) []painted {
 	lines := make([]painted, 0, len(e.rows))
 	var branch, table *tree.Tree
@@ -176,7 +219,7 @@ func (e explorer) paint(width int, focused bool) []painted {
 		lines = append(lines, painted{row: -1})
 		branch, table, members = nil, nil, nil
 	}
-	for i, item := range e.rows {
+	for i, item := range e.tabled {
 		label := e.label(item, width, i == e.cursor, focused)
 		switch item.depth {
 		case 0:
@@ -199,14 +242,37 @@ func (e explorer) paint(width int, focused bool) []painted {
 		}
 	}
 	flush()
-	return lines
+	if len(e.tabled) == 0 {
+		lines = append(lines, painted{text: e.theme.Muted.Render("nothing here"), row: -1})
+	}
+	return append(lines, e.painted4Files(width, focused)...)
 }
 
-// zip pairs the lines a tree drew with the rows they were built from. A tree
-// draws one line per node, so the two lists are the same length; when they are
-// not, the block is drawn without belonging to anything rather than pointing at
-// the wrong table, because a click that opens the wrong thing is worse than a
-// click that does nothing.
+// painted4Files draws the statements kept beside this connection, under a
+// heading of its own so an empty workspace still says where they would go.
+func (e explorer) painted4Files(width int, focused bool) []painted {
+	lines := []painted{
+		{row: -1},
+		{text: e.theme.Section(sectionFiles, "", width), row: -1},
+		{row: -1},
+	}
+	switch {
+	case e.trouble != "":
+		return append(lines, painted{text: e.theme.Muted.Render(" " + e.trouble), row: -1})
+	case len(e.filed) == 0:
+		return append(lines, painted{text: e.theme.Muted.Render(" nothing yet"), row: -1})
+	}
+	branch := e.branch()
+	members := make([]int, 0, len(e.filed))
+	for i := range e.filed {
+		at := len(e.tabled) + i
+		branch.Child(e.label(e.rows[at], width, at == e.cursor, focused))
+		members = append(members, at)
+	}
+	return append(lines, zip(branch.String(), members)...)
+}
+
+// zip pairs the lines a tree drew with the rows they were built from.
 func zip(drawn string, rows []int) []painted {
 	texts := strings.Split(strings.TrimRight(drawn, "\n"), "\n")
 	lines := make([]painted, 0, len(texts))
@@ -321,16 +387,26 @@ func (m Model) explorerKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Insert):
 		return m.insertTable()
 	case key.Matches(msg, m.keys.Choose):
-		return m.openTable()
+		return m.openedInSidebar()
+	case key.Matches(msg, m.keys.Reload):
+		return m, m.readFiles()
+	case key.Matches(msg, m.keys.Forget):
+		return m.confirmDeleteFile()
 	}
 	return m, nil
 }
 
+// openedInSidebar is what enter on the row under the cursor means, which
+// depends on which of the two blocks it is in.
+func (m Model) openedInSidebar() (tea.Model, tea.Cmd) {
+	if name, ok := m.sidebar.file(); ok {
+		return m, m.readFile(name)
+	}
+	return m.openTable()
+}
+
 // openTable opens the rows of whatever the tree has the cursor on, in a tab of
-// its own. The statement it runs is written into that tab rather than sent
-// behind it: a tab that read a table without showing how would be the one place
-// in this program where something reaches the server unseen, and it is also the
-// statement somebody will want to add a WHERE to.
+// its own.
 func (m Model) openTable() (tea.Model, tea.Cmd) {
 	name, ok := m.sidebar.table()
 	if !ok {
@@ -344,9 +420,7 @@ func (m Model) openTable() (tea.Model, tea.Cmd) {
 	return opened.attempt()
 }
 
-// split takes a qualified name apart. A name with nothing in front of the dot
-// belongs to whatever the server considers the default schema, which the driver
-// decides rather than this.
+// split takes a qualified name apart.
 func split(qualified string) (schema, table string) {
 	cut := strings.LastIndex(qualified, ".")
 	if cut < 0 {
@@ -395,7 +469,7 @@ func (m Model) indexesOf(table string) string {
 // whole reason the schema is on screen.
 func (m Model) insertTable() (tea.Model, tea.Cmd) {
 	item, ok := m.sidebar.selected()
-	if !ok || item.depth == 0 {
+	if !ok || item.depth == 0 || item.section == sectionFiles {
 		return m, nil
 	}
 	name := item.label
@@ -437,9 +511,7 @@ func (m Model) workbench() string {
 	)
 }
 
-// roll moves the cursor by a notch of the wheel. It stops at the ends rather
-// than wrapping the way the arrow keys do, because a list that jumps back to
-// the top when a wheel runs off the bottom reads as a list that lost its place.
+// roll moves the cursor by a notch of the wheel.
 func (e explorer) roll(step int) explorer {
 	if len(e.rows) == 0 {
 		return e

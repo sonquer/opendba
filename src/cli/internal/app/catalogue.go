@@ -53,8 +53,8 @@ func (m Model) repage(table string) Model {
 }
 
 // tablePage is what a table is and how it is being used: its columns, the
-// numbers the server keeps about it, and what those numbers mean for someone
-// who has to decide whether to do anything about them.
+// numbers the server keeps about it, and what those numbers mean for someone who
+// has to decide whether to do anything about them.
 func (m Model) tablePage(table driver.Table) details {
 	page := details{
 		theme: m.theme,

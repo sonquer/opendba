@@ -12,9 +12,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
-// tabAt says which tab a click landed on. The strip is drawn from the model, so
-// where every tab sits is worked out from the model too rather than read back
-// off the screen: what is drawn and what answers a click cannot then disagree.
+// tabAt says which tab a click landed on.
 func (m Model) tabAt(x, y int) (int, bool) {
 	if m.strip() == "" || y < ui.TabTop || y >= ui.TabTop+ui.TabRows {
 		return 0, false
@@ -34,9 +32,7 @@ func (m Model) tabAt(x, y int) (int, bool) {
 	return 0, false
 }
 
-// clicked is the mouse doing what a command does. Nothing here is the only way
-// to reach anything: every tab is in the command list and on a key as well, and
-// a terminal that reports no mouse loses nothing.
+// clicked is the mouse doing what a command does.
 func (m Model) clicked(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	if !m.mouse || msg.Button != tea.MouseLeft {
 		return m, nil
@@ -82,9 +78,7 @@ func (m Model) inEditor(x, y int) bool {
 	return y >= top && y < top+m.editorRows()
 }
 
-// caretAt puts the cursor where the pointer is. The textarea can be told which
-// column to sit in but not which line, so the line is walked to: the distance
-// is known, and walking it is what the arrow keys would have done anyway.
+// caretAt puts the cursor where the pointer is.
 func (m Model) caretAt(x, y int) (tea.Model, tea.Cmd) {
 	m.focus = focusEditor
 	cmd := m.editor.Focus()
@@ -102,12 +96,6 @@ func (m Model) caretAt(x, y int) (tea.Model, tea.Cmd) {
 }
 
 // readingAt says which reading of the dashboard a click landed on.
-//
-// The readings are laid out in two columns of grouped blocks, so where each one
-// ends up is the result of the whole layout rather than of anything countable.
-// Rather than working that out a second time and getting it wrong, the drawn
-// body is read back: the line under the pointer is taken, the half of it the
-// pointer is in is taken, and whichever reading is named there is the one.
 func (m Model) readingAt(x, y int) (int, bool) {
 	if m.view != viewDashboard || m.onSessions || m.wizard != nil {
 		return 0, false
@@ -131,8 +119,7 @@ func (m Model) readingAt(x, y int) (int, bool) {
 }
 
 // side4Dashboard is the half of a drawn line the pointer is in, which is which
-// column of readings it is over. A window too narrow for two columns has one,
-// and the whole line is the answer.
+// column of readings it is over.
 func side4Dashboard(line string, column, width int) string {
 	if width < twoColumns {
 		return bare4Reading(line)
@@ -152,9 +139,7 @@ func bare4Reading(line string) string {
 	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "▌"))
 }
 
-// named4Reading reports whether a drawn line is the one this reading is on. The
-// label has to be followed by something rather than only begin the line, or
-// every reading whose name starts the same way would answer for the first.
+// named4Reading reports whether a drawn line is the one this reading is on.
 func named4Reading(said, label string) bool {
 	if label == "" || !strings.HasPrefix(said, label) {
 		return false
@@ -170,10 +155,7 @@ type hit struct {
 	text string
 }
 
-// hintAt says which of the keys in the footer a click landed on. Where each one
-// sits is measured by drawing them one at a time with the same help model that
-// draws the row, so what is on screen and what answers a click are the same
-// thing measured twice rather than two guesses.
+// hintAt says which of the keys in the footer a click landed on.
 func (m Model) hintAt(x, y int) (hit, bool) {
 	if y != ui.FooterRow(m.height, m.view == viewQuery && !m.zoomed) {
 		return hit{}, false
@@ -261,13 +243,11 @@ func (m Model) treeAt(x, y int) (int, bool) {
 		y-ui.BodyTop(true), m.focus == focusSidebar)
 }
 
-// pickedInTree puts the cursor on the row that was clicked, and opens it when
-// it was already there. Two clicks rather than a double click: telling one
-// double click from two single ones needs a clock in the update loop, and a
-// clock there makes every frame of this program depend on when it was drawn.
+// pickedInTree puts the cursor on the row that was clicked, and opens it when it
+// was already there.
 func (m Model) pickedInTree(at int) (tea.Model, tea.Cmd) {
 	if m.focus == focusSidebar && m.sidebar.cursor == at {
-		return m.openTable()
+		return m.openedInSidebar()
 	}
 	m.focus = focusSidebar
 	m.sidebar.cursor = at
@@ -325,9 +305,7 @@ func (m Model) dragged(msg tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// released ends a selection by putting it on the clipboard. Selecting something
-// and then having to reach for another key to copy it is the part people forget
-// to do, and a selection nobody copied was a selection for nothing.
+// released ends a selection by putting it on the clipboard.
 func (m Model) dropped(tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {
 	if m.dragging {
 		m.dragging = false
@@ -352,10 +330,7 @@ func (m Model) dropped(tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {
 		m.notify(ui.Plural(len(rows), "row", "rows")+" are on the clipboard"))
 }
 
-// rolled4Query scrolls whatever the pointer is over. The editor screen is two
-// lists side by side inside one body, so a wheel that moved the body would move
-// neither of them: what is under the pointer is the only sensible answer to
-// what a notch of the wheel meant.
+// rolled4Query scrolls whatever the pointer is over.
 func (m Model) rolled4Query(x, step int) Model {
 	if m.zoomed || m.overResults(x) {
 		m.results = m.results.roll(step)
@@ -377,9 +352,7 @@ func (m Model) overResults(x int) bool {
 
 type mouseMsg struct{}
 
-// tookMouse turns the mouse over to the terminal, or takes it back. While this
-// program is reading the mouse the terminal cannot select text with it, which
-// is the price of clicking anything and is not always worth paying.
+// tookMouse turns the mouse over to the terminal, or takes it back.
 func (m Model) tookMouse() (tea.Model, tea.Cmd) {
 	m.mouse = !m.mouse
 	if m.mouse {

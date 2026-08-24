@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,20 +16,14 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
-// preferences is settings.toml with a screen in front of it. Everything but the
-// assistant was edited by hand until now, which is fine for a file somebody
-// reads once and wrong for the two things on it that throw data away.
+// preferences is settings.toml with a screen in front of it.
 type preferences struct {
 	theme   *ui.Theme
 	form    form
 	trouble string
 }
 
-// laterOnly is said on the fields the open connection cannot be told about. The
-// row limit and the timeouts are handed to the driver when the connection is
-// made, so changing them here changes the next one, and it is said on the field
-// it is about rather than in a line under the whole form that reads as a
-// warning about everything.
+// laterOnly is said on the fields the open connection cannot be told about.
 const laterOnly = "it reaches the server when a connection is opened, so this applies to the next one"
 
 func (m Model) openPreferences() (tea.Model, tea.Cmd) {
@@ -64,6 +60,11 @@ func (m Model) openPreferences() (tea.Model, tea.Cmd) {
 		textField(m.theme, "lock", "lock time", settings.Safety.LockTimeout,
 			"how long a statement waits for a lock before giving up. "+laterOnly).
 			require().checked(lasting).under("safety"),
+
+		textField(m.theme, "sqlfiles", "sql files", settings.Workspace.Root,
+			"a full path to keep .sql files in, one directory per connection; "+
+				"empty is "+m.workspace.Setup().Store.Paths.SQLDir()).
+			checked(absolute).under("workspace"),
 
 		toggleField("history", "keep them", []string{"yes", "no"},
 			settings.History.Enabled, "write down the statements you run").
@@ -103,6 +104,13 @@ func (m Model) show4Preferences(cmd tea.Cmd) (tea.Model, tea.Cmd) {
 }
 
 // counted refuses anything that is not a whole number at least this big.
+func absolute(value string) error {
+	if !filepath.IsAbs(strings.TrimSpace(value)) {
+		return errors.New("must be a full path")
+	}
+	return nil
+}
+
 func counted(least int) func(string) error {
 	return func(value string) error {
 		held, err := strconv.Atoi(strings.TrimSpace(value))
@@ -170,7 +178,7 @@ func (m Model) savePreferences() (tea.Model, tea.Cmd) {
 	m.mouse = next.Appearance.MouseWanted()
 	m.theme.Bars(next.Appearance.Bar)
 	m.running = m.running.showingOwn(next.Appearance.OwnSessions)
-	return m, m.notify("settings.toml is written")
+	return m, tea.Batch(m.notify("settings.toml is written"), m.readFiles())
 }
 
 // settled4Preferences is the settings the form is describing.
@@ -188,6 +196,7 @@ func (m Model) settled4Preferences() config.Settings {
 	next.Safety.RowLimit = number(held.value("rows"))
 	next.Safety.QueryTimeout = held.value("query")
 	next.Safety.LockTimeout = held.value("lock")
+	next.Workspace.Root = strings.TrimSpace(held.value("sqlfiles"))
 	next.History.Enabled = held.enabled("history")
 	next.History.StoreSQL = held.enabled("statements")
 	next.History.Limit = number(held.value("queries"))
@@ -211,9 +220,7 @@ type forgetHistoryMsg struct{}
 
 type forgetChatsMsg struct{}
 
-// confirmForgetting is the question in front of a store being emptied. It says
-// how much is about to go, because "are you sure?" is a question nobody reads
-// and "2,431 statements" is a number somebody weighs.
+// confirmForgetting is the question in front of a store being emptied.
 func (m Model) confirmForgetting(what string, action tea.Msg) (tea.Model, tea.Cmd) {
 	held := m.counted4Preferences(action)
 	dialog := ask(m.theme, "clear "+what+"?", "", action)

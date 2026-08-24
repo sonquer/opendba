@@ -38,9 +38,7 @@ type frame struct {
 	} `json:"error"`
 }
 
-// stream reads generated content and turns it into chunks. A part carries whole
-// text rather than a delta and a call arrives complete, so the bracketing that
-// the other protocols send is worked out here instead.
+// stream reads generated content and turns it into chunks.
 type stream struct {
 	instance string
 	events   *ai.Events

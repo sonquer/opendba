@@ -18,21 +18,15 @@ const (
 	partSuffix = ".part"
 
 	// reportEvery is how often the screen is told how far a download has got.
-	// A message per read would be thousands a second and would tell nobody
-	// anything they could not see already.
 	reportEvery = 4 << 20
 
 	copyBuffer = 256 << 10
 )
 
-// ErrChecksum is what a file that arrived changed reports. It is a refusal
-// rather than a warning: a model whose weights are not the weights that were
-// measured is not the model this program offered.
+// ErrChecksum is what a file that arrived changed reports.
 var ErrChecksum = errors.New("what arrived is not what was asked for")
 
-// Progress is how far a download has got. Total is negative when the server
-// would not say how big the file is, which is the same convention the database
-// drivers use for a measurement nobody could take.
+// Progress is how far a download has got.
 type Progress struct {
 	ID    string
 	Bytes int64
@@ -40,9 +34,7 @@ type Progress struct {
 	Done  bool
 }
 
-// Ratio is how far along a download is, from nothing to one. A total the server
-// never stated reads as nothing rather than as finished, because a bar drawn
-// full while bytes are still arriving is worse than no bar at all.
+// Ratio is how far along a download is, from nothing to one.
 func (p Progress) Ratio() float64 {
 	if p.Total <= 0 {
 		return 0
@@ -50,11 +42,10 @@ func (p Progress) Ratio() float64 {
 	return min(float64(p.Bytes)/float64(p.Total), 1)
 }
 
-// Fetcher downloads models.
-//
-// It takes an http.Client rather than a narrower interface because the redirect
-// policy is part of the safety of this code: the Hub answers with a redirect to
-// a content network, and the token must not travel to it.
+// Fetcher downloads models. It takes an http.Client rather than a narrower
+// interface because the redirect policy is part of the safety of this code: the
+// Hub answers with a redirect to a content network, and the token must not
+// travel to it.
 type Fetcher struct {
 	HTTP  *http.Client
 	Store *Store
@@ -62,16 +53,12 @@ type Fetcher struct {
 }
 
 // NewFetcher returns a fetcher with a client that will not carry the token
-// across a redirect to another host. The signed address the Hub redirects to
-// carries its own permission, and sending the token as well would hand it to
-// whoever runs that host.
+// across a redirect to another host.
 func NewFetcher(store *Store, token string) *Fetcher {
 	return &Fetcher{HTTP: &http.Client{CheckRedirect: KeepTokenHome}, Store: store, Token: token}
 }
 
-// KeepTokenHome stops a token following a redirect to another host. The signed
-// address the hub redirects to carries its own permission, and sending the
-// token as well would hand it to whoever runs that host.
+// KeepTokenHome stops a token following a redirect to another host.
 func KeepTokenHome(request *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after %d redirects", len(via))
@@ -83,8 +70,7 @@ func KeepTokenHome(request *http.Request, via []*http.Request) error {
 }
 
 // Fetch downloads a model, resuming a part that was left behind by a download
-// that was stopped. What it writes is verified against the checksum the Hub
-// reports before it is given the name of a model.
+// that was stopped.
 func (f *Fetcher) Fetch(ctx context.Context, entry Entry, out chan<- Progress) error {
 	if err := entry.validate(); err != nil {
 		return err
@@ -126,9 +112,7 @@ func (f *Fetcher) Fetch(ctx context.Context, entry Entry, out chan<- Progress) e
 	return report(ctx, out, Progress{ID: entry.ID, Bytes: written, Total: written, Done: true})
 }
 
-// resumeAt is how much of a file is already there. A part left by a download
-// that was stopped is continued rather than started again, because these files
-// are gigabytes and somebody's connection is not owed twice.
+// resumeAt is how much of a file is already there.
 func resumeAt(part string) int64 {
 	info, err := os.Stat(part)
 	if err != nil {
@@ -253,9 +237,7 @@ func expected(response *http.Response, from int64, entry Entry) int64 {
 	return -1
 }
 
-// verify checks what arrived against the checksum the Hub reports. For a file
-// held in large file storage that header is the sha256 of the content, which is
-// exactly what was computed on the way in.
+// verify checks what arrived against the checksum the Hub reports.
 func verify(response *http.Response, sum string) error {
 	want := checksum(response)
 	if want == "" || want == sum {
@@ -266,19 +248,6 @@ func verify(response *http.Response, sum string) error {
 
 // checksum is the sha256 the Hub vouches for, taken from the Hub's own answer
 // rather than from the answer the content network gave.
-//
-// The difference is the whole of this function. A file kept in the Hub's
-// deduplicating storage is answered with a redirect that carries X-Linked-Etag,
-// the sha256 of the content, beside X-Xet-Hash, which is a different hash of
-// the same file. The network the redirect points at returns that second hash as
-// its own ETag: sixty four hex characters, the same shape as a sha256, and a
-// different number. Reading it off the last answer in the chain therefore
-// condemns every file that arrived perfectly intact, deletes it, and leaves
-// nothing to show for the download but the room it took.
-//
-// So the chain is walked back to whoever said X-Linked-Etag, and a plain ETag
-// counts only when nobody redirected us: from the server we asked, it is a
-// statement about the file we asked for.
 func checksum(response *http.Response) string {
 	redirected := false
 	for at := response; at != nil; {

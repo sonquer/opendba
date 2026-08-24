@@ -32,9 +32,7 @@ type script struct {
 	source     string
 }
 
-// reading takes the editor apart. A buffer with one statement in it is the
-// ordinary case and comes back with one; a buffer with several is a script, and
-// only the one the cursor is in is ever sent.
+// reading takes the editor apart.
 func (m Model) script() script {
 	source := m.statement()
 	held := script{source: source}
@@ -59,9 +57,7 @@ func (m Model) script() script {
 	return held
 }
 
-// chosen is the statement that pressing run would send. A buffer the parser
-// could not take apart is sent as it stands, so that what refuses it is the
-// guard with its own account of why rather than this quietly sending nothing.
+// chosen is the statement that pressing run would send.
 func (s script) chosen() string {
 	if len(s.statements) < 2 {
 		return s.source

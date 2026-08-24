@@ -2,9 +2,7 @@ package ai
 
 import "context"
 
-// Engine runs a model inside this process. The interface is declared here
-// rather than beside its implementation because this package is what depends
-// on it: the local back-end is one implementation, and a test fake is another.
+// Engine runs a model inside this process.
 type Engine interface {
 	Open(ctx context.Context, model string, opts EngineOptions) (Session, error)
 	Ready() error
@@ -21,10 +19,8 @@ type Session interface {
 
 // EngineOptions is how a model is loaded and sampled.
 type EngineOptions struct {
-	// Template names the chat format to fall back to when the one carried in
-	// the model file cannot be applied. It is a name out of the catalogue
-	// rather than a template of ours, because the shape of a turn belongs to
-	// the model and guessing it wrong is a model that answers nonsense.
+	// Template names the chat format to fall back to when the one carried in the
+	// model file cannot be applied.
 	Template string
 
 	Context     int
@@ -46,9 +42,7 @@ type Token struct {
 }
 
 // Device is one piece of hardware the engine can run on, and how much memory it
-// reports. A device that cannot report its memory returns a negative number,
-// the same convention the database drivers use, because zero means measured and
-// empty.
+// reports.
 type Device struct {
 	Name        string
 	Description string

@@ -3,20 +3,15 @@ package local
 import "fmt"
 
 const (
-	// graphOverhead is what the compute graph, the shader library and the
-	// process itself take before a single weight is loaded. It is a flat
-	// allowance because it varies with the batch and the backend rather than
-	// with the model, and being roughly right is what this number is for.
+	// graphOverhead is what the compute graph, the shader library and the process
+	// itself take before a single weight is loaded.
 	graphOverhead = 700 << 20
 
 	// cacheAllowance is what is set aside for the key and value cache when the
-	// shape of the model is not known yet. Once the file is open the cache is
-	// worked out from the layers rather than allowed for.
+	// shape of the model is not known yet.
 	cacheAllowance = 0.20
 
-	// diskReserve is what is left on the disk after a download. A machine with
-	// nothing left is a machine that stops working in ways nobody connects back
-	// to a model that was fetched.
+	// diskReserve is what is left on the disk after a download.
 	diskReserve = 2 << 30
 
 	// comfortable is the share of the memory budget a model may take before the
@@ -37,11 +32,6 @@ type Need struct {
 }
 
 // Needed works out what a model would take at a given context length.
-//
-// The weights are the measured size of the file, never a parameter count times
-// a bit width: a Q4_K_M is about 4.99 bits per weight rather than 4, and the
-// Gemma 4 edge variants keep part of their embeddings per layer, so neither sum
-// comes out right.
 func Needed(entry Entry, context int) Need {
 	if context <= 0 {
 		context = DefaultContext
@@ -58,9 +48,6 @@ func Needed(entry Entry, context int) Need {
 }
 
 // cachePerToken is what one token of context costs in the key and value cache.
-// Grouped attention is the whole of it: eight key heads rather than sixty-four
-// is an eightfold difference, and a model that has not said how many it has
-// cannot be worked out from its size.
 func (e Entry) cachePerToken() int64 {
 	if e.Layers <= 0 || e.KVHeads <= 0 || e.HeadDim <= 0 {
 		return 0
@@ -83,10 +70,7 @@ type Verdict struct {
 	Reason      string
 }
 
-// Fits weighs what a model needs against what a machine has. Memory is not the
-// only thing that can stop it: a model that fits in memory and not on the disk
-// cannot be fetched, and saying so before the download rather than during it is
-// the whole point of asking.
+// Fits weighs what a model needs against what a machine has.
 func Fits(entry Entry, context int, machine Machine) Verdict {
 	need := Needed(entry, context)
 	verdict := Verdict{Need: need}

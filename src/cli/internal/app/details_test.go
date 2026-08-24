@@ -99,10 +99,13 @@ func TestARecordIsReadableWithoutWalkingSideways(t *testing.T) {
 		t.Fatal("enter on a row must open the record")
 	}
 	view := plain(page.content())
-	for _, want := range []string{"row 1 of 1", "3 columns", "email", "ada@example.com", "SELECT * FROM users"} {
+	for _, want := range []string{"row 1 of 1", "3 columns", "email", "ada@example.com"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the record must show %q:\n%s", want, view)
 		}
+	}
+	if page.page.code != "" {
+		t.Errorf("the record must not repeat the statement it came from, got %q", page.page.code)
 	}
 }
 

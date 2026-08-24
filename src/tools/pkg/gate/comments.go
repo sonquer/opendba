@@ -1,12 +1,5 @@
 // Package gate enforces the rule that no comment in this repository may explain
 // code.
-//
-// Documentation comments are the point of the exception: a comment attached to a
-// package clause, a type, a function, a constant, a variable, a struct field or
-// an interface method is what pkg.go.dev renders and is always allowed. Anything
-// else, a comment inside a function body, a comment trailing a line of code, a
-// block of commented-out code, is a finding, because code that needs prose to be
-// understood should be renamed or split instead.
 package gate
 
 import (
@@ -85,8 +78,7 @@ var skippedDirs = map[string]bool{
 }
 
 // ScanFS walks a file system and reports every comment that does not document a
-// declaration, sorted by file and line. Generated files and vendored directories
-// are skipped.
+// declaration, sorted by file and line.
 func ScanFS(fsys fs.FS) ([]Finding, error) {
 	var findings []Finding
 	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {

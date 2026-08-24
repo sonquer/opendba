@@ -14,9 +14,7 @@ type Event struct {
 	Data string
 }
 
-// Events reads a text/event-stream. Three providers speak this format and only
-// disagree about what they put inside the data, so the framing is read once
-// here and the meaning is read by each of them.
+// Events reads a text/event-stream.
 type Events struct {
 	reader *bufio.Reader
 	body   io.ReadCloser
@@ -27,10 +25,7 @@ func NewEvents(body io.ReadCloser) *Events {
 	return &Events{reader: bufio.NewReader(body), body: body}
 }
 
-// Next returns the next event, or io.EOF when the stream is finished. A comment
-// and a keep-alive both arrive as an event with nothing in it, and neither is
-// returned. A stream that ends without its final blank line still yields what
-// it had gathered, because a cut connection is exactly how that happens.
+// Next returns the next event, or io.EOF when the stream is finished.
 func (e *Events) Next() (Event, error) {
 	var event Event
 	var data []string

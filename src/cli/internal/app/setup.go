@@ -57,8 +57,8 @@ type answers struct {
 	color    string
 
 	// existing marks a profile being edited rather than made, which is the
-	// difference between a password field that has to be filled and one that
-	// means keep what is stored.
+	// difference between a password field that has to be filled and one that means
+	// keep what is stored.
 	existing bool
 }
 
@@ -75,10 +75,7 @@ type SetupModel struct {
 	stage      stage
 	connection config.Connection
 
-	// editing is the profile this screen opened, empty when it is making a new
-	// one. Editing starts from what is saved rather than from a blank form,
-	// because the id, the secret reference and the schema filter are on the
-	// profile and on no field.
+	// editing is the profile this screen opened, empty when it is making a new one.
 	editing config.Connection
 	failure string
 	toaster
@@ -101,9 +98,7 @@ func NewSetupModel(setup cli.Setup) SetupModel {
 	return model
 }
 
-// EditSetupModel opens an existing profile in the form that made it. The driver
-// cannot be changed, because a postgres profile edited into a sqlite one is a
-// different connection wearing the same name, so it opens on the details.
+// EditSetupModel opens an existing profile in the form that made it.
 func EditSetupModel(setup cli.Setup, connection config.Connection) SetupModel {
 	model := SetupModel{
 		setup:   setup,
@@ -119,9 +114,7 @@ func EditSetupModel(setup cli.Setup, connection config.Connection) SetupModel {
 	return model
 }
 
-// answersFrom reads a saved profile back into the form. It is the other half of
-// connectionFrom, and the password is not among them: a secret is written and
-// never read back, so the field starts empty and an empty field means keep it.
+// answersFrom reads a saved profile back into the form.
 func answersFrom(connection config.Connection) answers {
 	values := defaults()
 	values.existing = true
@@ -400,12 +393,7 @@ func (m SetupModel) importURL(values answers, cmd tea.Cmd) (tea.Model, tea.Cmd) 
 	return m, tea.Batch(cmd, focus, m.notify("filled every field from the connection string"))
 }
 
-// connectionFrom writes the answers onto a connection. Editing starts from the
-// profile that is already saved, so its id, its secret reference and its schema
-// filter survive: none of the three is on the form, and building a fresh struct
-// would quietly drop all of them.
-// passwordHint says what an empty field means, which is not the same thing on
-// a profile that already has a password stored as on one that does not.
+// connectionFrom writes the answers onto a connection.
 func passwordHint(existing bool) string {
 	if existing {
 		return "left empty the stored password is kept"

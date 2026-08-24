@@ -52,21 +52,16 @@ type offer struct {
 	instance config.AIInstance
 	env      string
 
-	// mark is the state of a row, said in a glyph rather than in a word. There
-	// are only three states worth marking and a column of the word "fits"
-	// beside every one of them says nothing about any of them.
+	// mark is the state of a row, said in a glyph rather than in a word.
 	mark string
 
-	// verdict is what this machine makes of the model. A row that will not run
-	// here is greyed rather than hidden, because a list shorter than the
-	// documentation leaves somebody looking for what is missing.
+	// verdict is what this machine makes of the model.
 	verdict local.Verdict
 	here    bool
 }
 
 // chooser is the modal that says what can answer, and lets one of them be
-// chosen. It is the way in to the assistant: nothing else has to be configured
-// first, and nothing here sends anybody to a text editor.
+// chosen.
 type chooser struct {
 	theme  *ui.Theme
 	filter textinput.Model
@@ -74,19 +69,13 @@ type chooser struct {
 	cursor int
 	top    int
 
-	// asking is the second half of this modal: the field that takes a key. It
-	// is here rather than in an overlay of its own because it is the same
-	// question continued, and because two dialogs stacked on a screen is one
-	// more than anybody needs.
+	// asking is the second half of this modal: the field that takes a key.
 	asking  bool
 	host    cli.Hosted
 	field   textinput.Model
 	trouble string
 
 	// giving is the question a download gets when somebody tries to leave.
-	// Gigabytes over a slow line are worth one keypress of confirmation, and
-	// walking out of the modal is the one thing that would otherwise throw
-	// them away silently.
 	giving bool
 }
 
@@ -159,8 +148,7 @@ func mark4Model(here, answering bool) string {
 }
 
 // local4Instance finds the instance that runs a model here, whatever it was
-// named. One written by hand can be called anything, and the row for its model
-// should still know it is the one answering.
+// named.
 func (m Model) local4Instance(model string) (config.AIInstance, bool) {
 	for _, instance := range m.session.Settings.AI.Instances {
 		if ai.Kind(instance.Kind) == ai.KindLocal && instance.Model == model {
@@ -172,11 +160,6 @@ func (m Model) local4Instance(model string) (config.AIInstance, bool) {
 
 // note4Model is what is worth saying about a model beside its name: what it
 // costs to fetch and what it may be used for.
-//
-// It does not say whether the model fits. Fitting is the ordinary case and a
-// column of the same word against every row is a column nobody reads; one that
-// does not fit is greyed, which says it without spending the width, and the
-// arithmetic behind that is on the question you get for choosing it anyway.
 func note4Model(entry local.Entry, verdict local.Verdict, here bool) string {
 	said := fmt.Sprintf("%s · %s", ui.ByteSize(entry.Bytes), entry.Licence)
 	if !here && verdict.Fits && !verdict.Comfortable {
@@ -237,9 +220,7 @@ func (m Model) host4Offer(host cli.Hosted) []offer {
 	})
 }
 
-// ollama4Hint is what is known about the daemon so far. Nothing is known when
-// the modal opens: asking takes a round trip, and a list that waits for one
-// before it draws is a list that feels broken.
+// ollama4Hint is what is known about the daemon so far.
 func (m Model) ollama4Hint() string {
 	if m.ai.ollama == "" {
 		return "a daemon you run yourself"
@@ -296,9 +277,7 @@ func (c *chooser) at(key string) *chooser {
 	return c
 }
 
-// found is what the filter left. Typing flattens the groups, because somebody
-// who has typed three letters is looking for one row and the headings between
-// the matches are in the way.
+// found is what the filter left.
 func (c *chooser) found() []offer {
 	needle := strings.ToLower(strings.TrimSpace(c.filter.Value()))
 	if needle == "" {
@@ -333,17 +312,13 @@ func (c *chooser) move(step int) *chooser {
 	return c
 }
 
-// chooserRows is how many rows fit. A heading and the blank line under it cost
-// two more each, so the room for rows is what is left after the groups have
-// taken theirs.
+// chooserRows is how many rows fit.
 func chooserRows(height, groups int) int {
 	rows := ui.BodyHeight(height) - 8 - groups*2
 	return max(rows, minChooserRows)
 }
 
-// window keeps the cursor on screen. The palette cuts its list at the bottom
-// and loses the marker with it, which is survivable in twelve rows of commands
-// and would not be here.
+// window keeps the cursor on screen.
 func (c *chooser) window(found []offer, rows int) []offer {
 	if len(found) <= rows {
 		c.top = 0
@@ -399,10 +374,7 @@ func (m Model) chooserView(width, height int) string {
 	return m.theme.Panel.Render(square(strings.Join(parts, "\n"), inner))
 }
 
-// busy4View is the modal while something is arriving. The list is not drawn:
-// there is one thing happening, nothing on the list can be chosen until it
-// finishes, and a catalogue of models underneath a download of one of them is
-// an invitation to start a second.
+// busy4View is the modal while something is arriving.
 func (m Model) busy4View(inner int) string {
 	if m.chooser.giving {
 		return m.giving4View(inner)
@@ -439,8 +411,8 @@ func (m Model) giving4View(inner int) string {
 }
 
 // rows4Chooser draws the list. A row is not marked with a bar in the margin the
-// way a list on a screen is: this is a dialog, the chosen row is the whole
-// point of it, and the whole line lights up.
+// way a list on a screen is: this is a dialog, the chosen row is the whole point
+// of it, and the whole line lights up.
 func (m Model) rows4Chooser(shown []offer, width int) []string {
 	lines := make([]string, 0, len(shown)+len(shown)/2)
 	section := ""
@@ -460,9 +432,9 @@ func (m Model) rows4Chooser(shown []offer, width int) []string {
 	return lines
 }
 
-// row4Chooser draws one row. The chosen one is laid out from plain text and
-// then coloured whole, so that the highlight reaches both ends of the line and
-// lands in the same columns as every row above it.
+// row4Chooser draws one row. The chosen one is laid out from plain text and then
+// coloured whole, so that the highlight reaches both ends of the line and lands
+// in the same columns as every row above it.
 func (m Model) row4Chooser(item offer, width int, active bool) string {
 	gutter := "  "
 	if item.mark != "" {
@@ -482,9 +454,7 @@ func (m Model) row4Chooser(item offer, width int, active bool) string {
 	return ui.SplitLine(left, m.theme.Subtle.Render(item.note), width)
 }
 
-// grey is a row that cannot do what it offers on this machine. It is still
-// there, and still answers to enter, because being told why is an answer and a
-// row that is missing is not.
+// grey is a row that cannot do what it offers on this machine.
 func (o offer) grey() bool { return o.deed == useModel && !o.here && !o.verdict.Fits }
 
 func (m Model) mark4Chooser(item offer) string {
@@ -513,9 +483,7 @@ func (m Model) chooser4Foot() string {
 	return m.theme.Hints(append(hints, ui.Hint{Key: "esc", Does: "close"})...)
 }
 
-// let4Go gives back the memory the model under the cursor is loaded into. It is
-// here rather than on the conversation screen because there is no letter to
-// spare there: every one of them is something to type into the box.
+// let4Go gives back the memory the model under the cursor is loaded into.
 func (m Model) let4Go() (tea.Model, tea.Cmd) {
 	chosen, ok := m.chooser.selected()
 	if !ok || chosen.deed != useModel || !chosen.current || !m.talk.loaded {
@@ -555,9 +523,7 @@ func (m Model) chooserKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// busy4Key is what a key does while something is arriving. Everything the list
-// answers to is meaningless here, so the only two are the way out and the
-// question it raises.
+// busy4Key is what a key does while something is arriving.
 func (m Model) busy4Key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if !m.chooser.giving {
 		if key.Matches(msg, m.keys.Back) {
@@ -580,12 +546,7 @@ func (m Model) busy4Key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // whether a bare letter is a command or a letter.
 func (c *chooser) typing() bool { return c.filter.Value() != "" }
 
-// forget4Chooser removes the weights of a model that is here. It is the one
-// destructive thing in this modal, so it does nothing at all to a model that
-// was never downloaded rather than asking a question about nothing.
-// forget4Chooser asks about removing the weights of a model that is here. It is
-// the one destructive thing in this modal, and what it destroys is gigabytes
-// somebody waited for, so it asks first and says why when it will not.
+// forget4Chooser removes the weights of a model that is here.
 func (m Model) forget4Chooser() (tea.Model, tea.Cmd) {
 	chosen, ok := m.chooser.selected()
 	if !ok || chosen.deed != useModel {
@@ -651,10 +612,7 @@ func (m Model) chose4Chooser() (tea.Model, tea.Cmd) {
 	}
 }
 
-// asked4Anyway is the question a model too big for this machine gets. It is a
-// question rather than a refusal: the reading is an estimate, somebody may know
-// their machine better than the estimate does, and the download is gigabytes
-// either way, which is what makes it worth one keypress.
+// asked4Anyway is the question a model too big for this machine gets.
 func (m Model) asked4Anyway(chosen offer) (tea.Model, tea.Cmd) {
 	dialog := ask(m.theme, "fetch it anyway?", chosen.verdict.Reason+".", anywayMsg{id: chosen.model.ID})
 	dialog.tag = chosen.model.Title
@@ -663,12 +621,8 @@ func (m Model) asked4Anyway(chosen offer) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// cost4Model draws what a model would take against what this machine has, on
-// the same bars as every reading on the dashboard.
-//
-// A share over the whole is drawn full and red rather than left off: a model
-// that needs half again what the machine has is the case the picture is for,
-// and the number beside the bar says how far over it goes.
+// cost4Model draws what a model would take against what this machine has, on the
+// same bars as every reading on the dashboard.
 func (m Model) cost4Model(chosen offer) string {
 	room := m.room4AI()
 	readings := []ui.Reading{}
@@ -704,9 +658,6 @@ func share4Reading(label string, need, have int64) ui.Reading {
 }
 
 // tightShare is the share of a machine past which a model is not comfortable.
-// It is the same threshold the fit arithmetic uses, said again here because a
-// picture that disagreed with the verdict beside it would be worse than no
-// picture.
 const tightShare = 0.80
 
 // anywayMsg is that question answered yes.
@@ -721,9 +672,7 @@ func (m Model) anyway(msg anywayMsg) (tea.Model, tea.Cmd) {
 	return m.chose4Model(entry)
 }
 
-// asking4Key turns the modal into the one field it needs. The field is masked,
-// because a terminal is a thing people photograph and a key read off a picture
-// is as spent as one committed to a file.
+// asking4Key turns the modal into the one field it needs.
 func (m Model) asking4Key(host cli.Hosted) (tea.Model, tea.Cmd) {
 	if host.Env == "" {
 		return m.add4Host(host, "")
@@ -809,8 +758,7 @@ func (m Model) chose4Model(entry local.Entry) (tea.Model, tea.Cmd) {
 }
 
 // add4Model uses the instance that already runs this model, and writes one when
-// there is none. Two instances of the same weights would be two names for one
-// thing.
+// there is none.
 func (m Model) add4Model(entry local.Entry) (tea.Model, tea.Cmd) {
 	if instance, ok := m.local4Instance(entry.ID); ok {
 		return m.activate(instance.Name)
@@ -850,12 +798,8 @@ func (m Model) activate(name string) (tea.Model, tea.Cmd) {
 	return m.answering(settings, name)
 }
 
-// answering points everything at the instance that was chosen and lets go of
-// the one that was open, so the next question goes to the new one.
-//
-// Letting go is done rather than left to the garbage collector: a model that
-// runs here holds its memory through a handle the collector knows nothing
-// about, and switching away from one twice would hold two.
+// answering points everything at the instance that was chosen and lets go of the
+// one that was open, so the next question goes to the new one.
 func (m Model) answering(settings config.Settings, name string) (tea.Model, tea.Cmd) {
 	setup := m.workspace.Setup()
 	if m.assistant != nil {

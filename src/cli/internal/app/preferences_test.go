@@ -75,12 +75,13 @@ func set4Preferences(m Model, key, value string) Model {
 // connection cannot be told about.
 func TestTheSettingsScreenShowsWhatIsInTheFile(t *testing.T) {
 	m := settling(t)
-	m.width, m.height = 110, 40
+	m.width, m.height = 110, 46
 	view := plain(m.content())
 	for _, want := range []string{
 		"SETTINGS", "settings.toml",
 		"APPEARANCE", "bars", "mouse", "own sessions",
 		"SAFETY", "opens as", "rows", "query time", "lock time",
+		"WORKSPACE", "sql files",
 		"QUERY HISTORY", "keep the sql", "how many",
 		"CONVERSATIONS", "clear them", "save",
 	} {
@@ -380,5 +381,51 @@ func TestAStoreThatCannotBeCountedStillGetsASentence(t *testing.T) {
 	}
 	if settle(t, cleared.(Model), cmd).text() != "" {
 		t.Log("a store that will not empty says nothing rather than lying")
+	}
+}
+
+// typed4Form puts a value in a text field, which is what typing into it does.
+func typed4Form(f form, key, value string) form {
+	fields := make([]field, len(f.fields))
+	copy(fields, f.fields)
+	for i := range fields {
+		if fields[i].key == key {
+			fields[i].input.SetValue(value)
+		}
+	}
+	f.fields = fields
+	return f
+}
+
+// The workspace root is a full path or nothing, and saving it makes the program
+// look where it now says.
+func TestARelativeSqlDirectoryIsRefusedOnTheScreen(t *testing.T) {
+	m := settling(t)
+	m.preferences.form = typed4Form(m.preferences.form, "sqlfiles", "sql/here")
+	after, _ := m.savePreferences()
+	if after.(Model).preferences.trouble == "" {
+		t.Error("a relative directory must be refused rather than written")
+	}
+	if after.(Model).session.Settings.Workspace.Root != "" {
+		t.Error("a refused directory must not be kept")
+	}
+}
+
+func TestSavingTheSqlDirectoryReadsTheFilesAgain(t *testing.T) {
+	m := settling(t)
+	kept := filepath.Join(t.TempDir(), "statements")
+	m.preferences.form = typed4Form(m.preferences.form, "sqlfiles", kept)
+	after, cmd := m.savePreferences()
+	if after.(Model).preferences.trouble != "" {
+		t.Fatalf("trouble = %q", after.(Model).preferences.trouble)
+	}
+	if after.(Model).session.Settings.Workspace.Root != kept {
+		t.Errorf("root = %q, want %q", after.(Model).session.Settings.Workspace.Root, kept)
+	}
+	if after.(Model).root() != filepath.Join(kept, "production-eu") {
+		t.Errorf("the files come from %q", after.(Model).root())
+	}
+	if cmd == nil {
+		t.Error("saving must read the directory again")
 	}
 }

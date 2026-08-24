@@ -159,3 +159,21 @@ func TestTheTwoBrowsingKeysGoToDifferentScreens(t *testing.T) {
 		t.Fatalf("ctrl+p opens %s, and the footer says connections", connections.view)
 	}
 }
+
+// Saving has a key and a command, because some terminals still hold ctrl+s for
+// flow control and the command list is the way through when they do.
+func TestSavingHasAKeyAndACommand(t *testing.T) {
+	keys := newKeymap()
+	if keys.Write.Help().Key == "" {
+		t.Fatal("saving needs a key")
+	}
+	found := false
+	for _, entry := range every4Palette(keys) {
+		if entry.title == "save the tab to a file" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("saving must be in the command list")
+	}
+}

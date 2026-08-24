@@ -62,9 +62,7 @@ type queriedMsg struct {
 	truncated bool
 	err       error
 
-	// token says which run this result belongs to. A statement that was
-	// cancelled still answers, eventually, and the answer to a question nobody
-	// is waiting for must not replace the answer to the one they asked next.
+	// token says which run this result belongs to.
 	token int
 }
 
@@ -90,9 +88,9 @@ type Model struct {
 	plan    *plan
 	chats   *chatList
 
-	// preferences is the settings screen, built when it is opened rather than
-	// held, because it is a form over a file that anything else may have
-	// changed since the last look.
+	// preferences is the settings screen, built when it is opened rather than held,
+	// because it is a form over a file that anything else may have changed since
+	// the last look.
 	preferences *preferences
 	reading     int
 	listing     int
@@ -107,22 +105,15 @@ type Model struct {
 	indexes  []driver.Index
 
 	// worksheet is the tab being worked in, and sheets is every tab there is.
-	// The entry in sheets for the active tab is stale while it is active: stow
-	// is what makes it true again, and every path that changes which tab is
-	// active goes through it.
 	worksheet
 	sheets []worksheet
 	sheet  int
 
-	// mouse is whether the terminal has been asked to report the mouse. A
-	// terminal reporting the mouse to a program is a terminal that is not
-	// selecting text with it, so this is something to turn off rather than
-	// something to decide once.
+	// mouse is whether the terminal has been asked to report the mouse.
 	mouse bool
 
-	// dragging is whether the line between the statement and its result is
-	// being carried by the pointer, which is the one drag that is not a
-	// selection.
+	// dragging is whether the line between the statement and its result is being
+	// carried by the pointer, which is the one drag that is not a selection.
 	dragging bool
 
 	// runs stamps every statement sent, so a result can say which tab asked for
@@ -152,16 +143,9 @@ type Model struct {
 }
 
 // Talk builds a conversation once it has been told how to ask for permission.
-// The screen owns consent because the screen is what can put the question in
-// front of somebody, so the assistant is handed a way to ask rather than
-// arriving with one.
 type Talk func(allowed permission) (conversation, error)
 
-// WithAssistant gives the model something to have a conversation with. What is
-// kept is the way to build one rather than one already built: opening a local
-// model reads gigabytes off the disk, and nobody who never presses the key
-// should pay for that. A screen that can be handed a fake is also a screen that
-// can be tested.
+// WithAssistant gives the model something to have a conversation with.
 func (m Model) WithAssistant(instance string, build Talk) Model {
 	m.talk = newChat(m.theme, instance)
 	m.build = build
@@ -242,10 +226,10 @@ func (m Model) release() {
 	}
 }
 
-// load reads everything: the health of the server and the catalogue it holds.
-// It is what a fresh connection and an explicit reload ask for.
+// load reads everything: the health of the server, the catalogue it holds, and
+// the statements kept beside it.
 func (m Model) load() tea.Cmd {
-	return tea.Batch(m.readHealth(), m.readCatalogue())
+	return tea.Batch(m.readHealth(), m.readCatalogue(), m.readFiles())
 }
 
 // readHealth is the part of the dashboard that moves. It is cheap enough to
@@ -264,9 +248,7 @@ func (m Model) readHealth() tea.Cmd {
 	}
 }
 
-// readCatalogue is what the server holds rather than what it is doing. It is a
-// size and statistics sweep of every table and every index, so it is read when
-// the shape of the database could have changed and not on a clock.
+// readCatalogue is what the server holds rather than what it is doing.
 func (m Model) readCatalogue() tea.Cmd {
 	conn := m.session.Conn
 	connection := m.session.Connection
@@ -292,9 +274,7 @@ func (m Model) readCatalogue() tea.Cmd {
 
 const readTimeout = 30 * time.Second
 
-// loaded applies whichever half of a read came back. A refresh that asked only
-// for the health of the server leaves the catalogue alone, and the other way
-// round, so neither read can blank the other's part of the screen.
+// loaded applies whichever half of a read came back.
 func (m Model) loaded(msg loadedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err != nil {
@@ -314,9 +294,7 @@ func (m Model) loaded(msg loadedMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// one is the schema a driver can filter on its own. A form with several schemas
-// ticked reads the whole server once and keeps what it asked for, because the
-// drivers take one schema and a round trip each is worse than a filter here.
+// one is the schema a driver can filter on its own.
 func one(connection config.Connection) string {
 	if filter := connection.Filter(); len(filter) == 1 {
 		return filter[0]
@@ -335,10 +313,7 @@ func scoped[T any](items []T, keep func(string) bool, of func(T) string) []T {
 	return kept
 }
 
-// run sends a statement and keeps hold of the way to stop it. There is no
-// deadline of its own: the server is already holding the profile's statement
-// timeout, and a minute picked here would be a second, quieter timeout that
-// nobody configured.
+// run sends a statement and keeps hold of the way to stop it.
 func (m Model) run(statement string) (Model, tea.Cmd) {
 	conn := m.session.Conn
 	ctx, stop := context.WithCancel(context.Background())
@@ -367,9 +342,7 @@ func (m Model) run(statement string) (Model, tea.Cmd) {
 	return m, tea.Batch(query, m.spinner.Tick)
 }
 
-// halt gives up on the statement that is running. The result that arrives is
-// the error the driver reports for a cancelled context, which is what says the
-// query was stopped rather than that it returned nothing.
+// halt gives up on the statement that is running.
 func (m Model) halt() Model {
 	if m.stopQuery != nil {
 		m.stopQuery()
@@ -429,6 +402,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case toastMsg:
 		m.expire(msg)
 		return m, nil
+	case filesMsg:
+		return m.listedFiles(msg)
+	case openedFileMsg:
+		return m.openedFile(msg)
+	case saveFileMsg:
+		return m.saveSheet()
+	case nameFileMsg:
+		return m.saveNamed(msg)
+	case wroteFileMsg:
+		return m.wroteFile(msg)
+	case deleteFileMsg:
+		return m, m.removeFile(msg)
+	case deletedFileMsg:
+		return m.deletedFile(msg)
 	case profilesMsg:
 		m.list = m.list.
 			working(m.session.Connection.Name, len(m.running.sessions)).
@@ -577,10 +564,7 @@ func (m Model) toWizard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// spinning is whether anything on screen is waiting on something. A tick is
-// answered with the next one, so anything that stops answering stops the
-// spinner for good: a screen that draws one and is not named here draws a still
-// picture of one.
+// spinning is whether anything on screen is waiting on something.
 func (m Model) spinning() bool {
 	return m.loading || m.inflight || m.ai.busy != "" || m.talk.busy || m.talk.loading
 }
@@ -750,10 +734,8 @@ func (m Model) walkReadings(msg tea.KeyPressMsg) (Model, bool) {
 	return m, true
 }
 
-// walkListing moves the cursor through the tables or the indexes, whichever
-// list is on screen.
-// walkListing moves the cursor by a step, wrapping, and brings the row it
-// lands on into view.
+// walkListing moves the cursor through the tables or the indexes, whichever list
+// is on screen.
 func (m Model) walkListing(step int) (Model, bool) {
 	total := m.listed()
 	if total == 0 {
@@ -773,11 +755,6 @@ func (m Model) listed() int {
 }
 
 // follow keeps the row under the cursor on screen after it moves.
-//
-// The dashboard marks its cursor with a bar in the margin and can be searched
-// for it. A catalogue list paints the whole row instead, so there is no glyph
-// to look for, and the row's position has to be counted rather than found: a
-// search would match the first bar of a gauge and scroll to the wrong place.
 func (m Model) follow() Model {
 	if m.view == viewSchema || m.view == viewIndexes {
 		return m.followRow(m.listing + m.rowsAbove())
@@ -882,9 +859,7 @@ func (m Model) scrolled(step int) Model {
 	return m
 }
 
-// wheeled is the mouse doing what the keys already do. A terminal program that
-// ignores the wheel is a terminal program people scroll with their hand off the
-// keyboard and nothing happens, which reads as a program that has frozen.
+// wheeled is the mouse doing what the keys already do.
 func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	if !m.mouse {
 		return m, nil
@@ -906,9 +881,7 @@ func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	return m.scrolled(step), nil
 }
 
-// wheelRows is how far one notch of a wheel goes. Three is what a terminal
-// sends a line-scrolling program, and what every other program in a terminal
-// moves by.
+// wheelRows is how far one notch of a wheel goes.
 const wheelRows = 3
 
 func (m Model) openPalette() (tea.Model, tea.Cmd) {
@@ -946,9 +919,7 @@ func (m Model) paletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// queryKey answers the editor screen. A list of suggestions takes the arrows
-// and nothing else: every other binding in this program answers to a letter as
-// well, and a letter typed into an editor is a letter.
+// queryKey answers the editor screen.
 func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.suggest.active() {
 		switch {
@@ -990,6 +961,8 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.attempt()
 	case key.Matches(msg, m.keys.Export):
 		return m.export4Result()
+	case key.Matches(msg, m.keys.Write):
+		return m.saveSheet()
 	case key.Matches(msg, m.keys.Explain):
 		return m.explain(explainMsg{})
 	case key.Matches(msg, m.keys.History):
@@ -1100,10 +1073,7 @@ func (m Model) toggleSidebar() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// attempt is what pressing run does with each of the three verdicts. A refusal
-// says so rather than doing nothing, because a key that silently does nothing
-// is a broken key. A statement that changes data is asked about, once, unless
-// the profile has said not to ask.
+// attempt is what pressing run does with each of the three verdicts.
 func (m Model) attempt() (tea.Model, tea.Cmd) {
 	statement := m.script().chosen()
 	verdict := m.session.Guard.Classify(statement, cli.Mode(m.session.Connection.Mode))
@@ -1117,9 +1087,7 @@ func (m Model) attempt() (tea.Model, tea.Cmd) {
 	return m.run(statement)
 }
 
-// confirmRun is the dialog a write raises. It shows the statement it is about
-// to send, highlighted the way it is everywhere else, and why the classifier
-// thinks it is worth asking about.
+// confirmRun is the dialog a write raises.
 func (m Model) confirmRun(statement string, verdict sqlguard.Result) *modal {
 	dialog := ask(m.theme, "run this statement?", "", runMsg{statement: statement})
 	dialog.tag = m.theme.Mode(cli.Mode(m.session.Connection.Mode).Label())
@@ -1143,12 +1111,6 @@ func (m Model) Verdict() sqlguard.Result {
 }
 
 // Settled returns a model that starts no work of its own in the background.
-//
-// It is for the renderer that takes the pictures of these screens. A picture is
-// worth having only if it is the same picture every time, and unpacking a
-// library or asking the hardware how much memory it has finishes when it
-// finishes: a run that waited long enough and a run that did not would disagree
-// about what the screen says, and the disagreement would be committed.
 func (m Model) Settled() Model {
 	m.ai.warmed = true
 	return m
@@ -1220,10 +1182,7 @@ func (m Model) at(width int) ui.List {
 	}
 }
 
-// blank reports a screen with nothing on it yet. A first read has to say it is
-// working, because there is nothing else to look at. A read that refreshes what
-// is already drawn must not replace it: swapping a full screen for a spinner
-// and back again five times a minute is what makes a dashboard blink.
+// blank reports a screen with nothing on it yet.
 func (m Model) blank() bool {
 	return len(m.findings) == 0 && len(m.tables) == 0 && len(m.indexes) == 0
 }

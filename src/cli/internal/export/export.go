@@ -1,9 +1,4 @@
 // Package export writes a result to a file, one row at a time.
-//
-// A result the interface has drawn is not what gets written. The cells on
-// screen have been flattened and cut to the width of a column, which is right
-// for a table somebody is reading and wrong for a file somebody is going to
-// open in something else. Everything here takes the values the driver returned.
 package export
 
 import (
@@ -50,9 +45,8 @@ type Options struct {
 	// Sheet names the one sheet a spreadsheet gets. Empty is the default name.
 	Sheet string
 
-	// TempDir is where a writer that cannot hold a whole file in memory puts
-	// what it has written so far. It matters because a test may not write
-	// anywhere but the directory it was given.
+	// TempDir is where a writer that cannot hold a whole file in memory puts what
+	// it has written so far.
 	TempDir string
 }
 

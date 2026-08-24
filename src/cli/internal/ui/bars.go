@@ -7,14 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// BarStyle is how a measurement is drawn. Terminals differ in which glyphs they
-// have and fonts differ far more in how well they draw them, so the shape of a
-// bar is a choice rather than a constant.
-//
-// Parts are the cells between empty and full, from the thinnest to the widest.
-// A style with none of them draws whole cells only, which costs the bar seven
-// eighths of its precision: at twenty cells that is the difference between a
-// bar that can say 42% and one that rounds it to 40%.
+// BarStyle is how a measurement is drawn.
 type BarStyle struct {
 	Name  string
 	Full  string
@@ -23,14 +16,14 @@ type BarStyle struct {
 	Open  string
 	Close string
 
-	// Dim draws the empty cells in a dark tint of the colour rather than the
-	// colour itself, which is what a style needs when its empty glyph is as
-	// heavy as its full one.
+	// Dim draws the empty cells in a dark tint of the colour rather than the colour
+	// itself, which is what a style needs when its empty glyph is as heavy as its
+	// full one.
 	Dim bool
 
 	// Neutral draws the empty cells in grey rather than in the colour of the
-	// reading, so the part of the scale nothing was measured against says
-	// nothing about the measurement.
+	// reading, so the part of the scale nothing was measured against says nothing
+	// about the measurement.
 	Neutral bool
 }
 
@@ -107,9 +100,6 @@ func (t *Theme) draw(ratio float64, sev Severity, width int) string {
 // Track is progress rather than a reading, so it is drawn in the accent colour:
 // a download is neither healthy nor unhealthy, and colouring it as though it
 // were says something about it that is not true.
-//
-// It is exactly as wide as it is asked to be, brackets and all, because it has
-// a line of its own rather than a column in a table.
 func (t *Theme) Track(ratio float64, width int) string {
 	style := t.shape()
 	inner := width
@@ -129,15 +119,11 @@ func (t *Theme) shape() BarStyle {
 }
 
 // drawOn is the same bar on a background, for the row a cursor is sitting on.
-// Every part of it carries the background itself, because a styled run ends
-// with a reset and a reset would end a background the row set around it.
 func (t *Theme) drawOn(ratio float64, sev Severity, width int, ground color.Color) string {
 	return t.paint(ratio, t.Bar(sev), width, ground)
 }
 
-// paint is the bar itself, given the colour to fill it with. The scale behind
-// the measurement is worked out from that colour, which is why this takes one
-// style rather than a foreground and a background.
+// paint is the bar itself, given the colour to fill it with.
 func (t *Theme) paint(ratio float64, colour lipgloss.Style, width int, ground color.Color) string {
 	style := t.shape()
 	full, part, empty := cells(ratio, width, len(style.Parts))
