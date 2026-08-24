@@ -383,7 +383,7 @@ func (m Model) stopped(msg stoppedMsg) (tea.Model, tea.Cmd) {
 	if msg.terminate {
 		verb = "closed"
 	}
-	return m, tea.Batch(m.readSessions(), m.notify(verb+" session "+msg.id))
+	return m, tea.Batch(m.readSessions(), m.notify("session "+msg.id+" is "+verb))
 }
 
 // showingOwn changes whether the dashboard draws the sessions this program made.

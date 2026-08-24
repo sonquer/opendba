@@ -297,9 +297,9 @@ func (m SetupModel) pasted(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	updated, count, cmd := m.form.paste(msg)
 	m.form = updated
 	if count <= 0 {
-		return m, tea.Batch(cmd, m.notify("nothing was pasted here"))
+		return m, tea.Batch(cmd, m.notify("there was nothing to paste"))
 	}
-	return m, tea.Batch(cmd, m.notify(fmt.Sprintf("pasted %s into %s", characters(count), target.label)))
+	return m, tea.Batch(cmd, m.notify(fmt.Sprintf("%s went into %s", characters(count), target.label)))
 }
 
 func characters(count int) string {
@@ -390,7 +390,7 @@ func (m SetupModel) importURL(values answers, cmd tea.Cmd) (tea.Model, tea.Cmd) 
 	m.failure = ""
 	updated, focus := newForm(detailsFields(&values, m.theme)...)
 	m.form = updated
-	return m, tea.Batch(cmd, focus, m.notify("filled every field from the connection string"))
+	return m, tea.Batch(cmd, focus, m.notify("every field is filled from the connection string"))
 }
 
 // connectionFrom writes the answers onto a connection.

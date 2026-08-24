@@ -213,7 +213,7 @@ func TestCancellingAStatement(t *testing.T) {
 	if len(conn.stopped) != 1 || conn.stopped[0] != "cancelled 40218" {
 		t.Fatalf("stopped = %v", conn.stopped)
 	}
-	if !strings.Contains(plain(done.(Model).content()), "cancelled session 40218") {
+	if !strings.Contains(plain(done.(Model).content()), "session 40218 is cancelled") {
 		t.Errorf("content = %s", plain(done.(Model).content()))
 	}
 }

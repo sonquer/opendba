@@ -816,10 +816,10 @@ func TestPastingIntoAFieldRaisesAToast(t *testing.T) {
 	if model.form.value("name") != "production-eu" {
 		t.Fatalf("name = %q", model.form.value("name"))
 	}
-	if !strings.Contains(model.text(), "pasted 13 characters into name") {
+	if !strings.Contains(model.text(), "13 characters went into name") {
 		t.Fatalf("toast = %q", model.text())
 	}
-	if !strings.Contains(plain(model.content()), "pasted 13 characters") {
+	if !strings.Contains(plain(model.content()), "13 characters went into") {
 		t.Error("the toast must be shown")
 	}
 	if cmd == nil {
@@ -840,7 +840,7 @@ func TestPastingASingleCharacterReadsWell(t *testing.T) {
 	setup, _ := newSetup(t)
 	details := detailed(t, setup)
 	pasted, _ := details.Update(tea.PasteMsg{Content: "x"})
-	if !strings.Contains(pasted.(SetupModel).text(), "pasted 1 character into") {
+	if !strings.Contains(pasted.(SetupModel).text(), "1 character went into") {
 		t.Errorf("toast = %q", pasted.(SetupModel).text())
 	}
 }
@@ -857,7 +857,7 @@ func TestPastingWhereNothingCanBeTypedSaysSo(t *testing.T) {
 	if model.form.value("ssl") != "prefer" {
 		t.Errorf("a choice must not take pasted text: %q", model.form.value("ssl"))
 	}
-	if !strings.Contains(model.text(), "nothing was pasted") {
+	if !strings.Contains(model.text(), "there was nothing to paste") {
 		t.Errorf("toast = %q", model.text())
 	}
 }

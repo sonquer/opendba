@@ -156,7 +156,7 @@ func (m Model) wroteFile(msg wroteFileMsg) (Model, tea.Cmd) {
 	}
 	stowed := m.stow()
 	if msg.sheet < 0 || msg.sheet >= len(stowed.sheets) {
-		return stowed, tea.Batch(stowed.notify("wrote "+msg.name), stowed.readFiles())
+		return stowed, tea.Batch(stowed.notify(msg.name+" is written"), stowed.readFiles())
 	}
 	sheets := make([]worksheet, len(stowed.sheets))
 	copy(sheets, stowed.sheets)
@@ -168,7 +168,7 @@ func (m Model) wroteFile(msg wroteFileMsg) (Model, tea.Cmd) {
 	if msg.sheet == stowed.sheet {
 		stowed.worksheet = sheets[msg.sheet]
 	}
-	return stowed, tea.Batch(stowed.notify("wrote "+msg.name), stowed.readFiles())
+	return stowed, tea.Batch(stowed.notify(msg.name+" is written"), stowed.readFiles())
 }
 
 // confirmDeleteFile asks before taking a statement away, because nothing else
@@ -194,5 +194,5 @@ func (m Model) deletedFile(msg deletedFileMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
 		return m, tea.Batch(m.alarm(msg.err.Error()), m.readFiles())
 	}
-	return m, tea.Batch(m.notify("removed "+msg.name), m.readFiles())
+	return m, tea.Batch(m.notify(msg.name+" is gone"), m.readFiles())
 }

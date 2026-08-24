@@ -416,8 +416,8 @@ func (m Model) exported(msg exportEndedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.exporter = nil
-	return m, m.notify(fmt.Sprintf("wrote %s to %s",
-		ui.Plural(msg.rows, "row", "rows"), msg.path))
+	return m, m.notify(fmt.Sprintf("%s holds %s",
+		msg.path, ui.Plural(msg.rows, "row", "rows")))
 }
 
 // stopExporting gives up on a file that is being written. What has been written

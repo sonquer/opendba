@@ -401,7 +401,7 @@ func (m Model) remove4AI() (tea.Model, tea.Cmd) {
 		m.ai.trouble = err.Error()
 		return m, nil
 	}
-	return m.read4AI(), m.notify(row.entry.Title + " was removed")
+	return m.read4AI(), m.notify(row.entry.Title + " is gone")
 }
 
 // fetchLibrary gets what every local model needs before any of them can run.
@@ -562,7 +562,7 @@ func (m Model) doneFetching(msg fetchEndedMsg) (tea.Model, tea.Cmd) {
 	if m.pending != "" {
 		return m.continued()
 	}
-	return m.read4AI(), m.notify("done")
+	return m.read4AI(), m.notify(what + " is here")
 }
 
 // continued carries on with what somebody asked for.

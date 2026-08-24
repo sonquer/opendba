@@ -288,7 +288,7 @@ func (m Model) released() (Model, tea.Cmd) {
 		m.talk.trouble = err.Error()
 		return m, nil
 	}
-	return m, m.notify(m.talk.instance + " was released; the next question loads it again")
+	return m, m.notify(m.talk.instance + " is unloaded; the next question loads it again")
 }
 
 // started opens a turn and returns the command that reads it.

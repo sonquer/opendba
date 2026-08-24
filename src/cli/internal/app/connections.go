@@ -199,7 +199,7 @@ func (m Model) created(done SetupDone) (tea.Model, tea.Cmd) {
 		return m, m.profiles()
 	}
 	if editing && !mine {
-		return m, tea.Batch(m.profiles(), m.notify("saved "+done.Connection.Name))
+		return m, tea.Batch(m.profiles(), m.notify(done.Connection.Name+" is saved"))
 	}
 	m.view = viewDashboard
 	m.loading = true

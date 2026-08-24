@@ -588,7 +588,7 @@ func (m Model) forgot(msg forgetMsg) (tea.Model, tea.Cmd) {
 		read.chooser.offers = read.offers()
 		read.chooser.trouble = ""
 	}
-	return read, read.notify(entry.Title + " was removed")
+	return read, read.notify(entry.Title + " is gone")
 }
 
 // chose4Chooser is what a row does. Every one of them leads somewhere.

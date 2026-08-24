@@ -413,7 +413,7 @@ func TestSavingAnEditedProfile(t *testing.T) {
 	if stayed.(Model).view == viewDashboard || stayed.(Model).loading {
 		t.Error("saving somebody else's profile is not a reason to leave yours")
 	}
-	if !strings.Contains(plain(stayed.(Model).content()), "saved staging") {
+	if !strings.Contains(plain(stayed.(Model).content()), "staging is saved") {
 		t.Errorf("but it must say it saved:\n%s", plain(stayed.(Model).content()))
 	}
 
