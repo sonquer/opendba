@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 // A dialect is the shape a model writes a tool call in.

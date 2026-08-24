@@ -1,4 +1,4 @@
-<h1 align="center">TUI4DB</h1>
+<h1 align="center">OPENDBA</h1>
 
 <p align="center">
   <b>A terminal workbench for PostgreSQL and SQLite.</b><br>
@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sonquer/tui4db/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/sonquer/tui4db/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/sonquer/opendba/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/sonquer/opendba/actions/workflows/ci.yml/badge.svg"></a>
   <a href="#licence"><img alt="licence" src="https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue"></a>
   <img alt="go" src="https://img.shields.io/badge/go-1.26-00ADD8">
   <img alt="status" src="https://img.shields.io/badge/status-in%20development-orange">
@@ -34,7 +34,7 @@
     size                                     20.0 KiB   note
 ```
 
-TUI4DB connects to a database and shows you what it is doing: the health of the
+OPENDBA connects to a database and shows you what it is doing: the health of the
 server, what is running on it right now, what it holds, and an editor to ask it
 questions. Every statement is parsed before it is sent, and on a read-only
 profile anything that would change data is refused rather than warned about.
@@ -44,13 +44,13 @@ It is in development. There are no binary releases yet.
 ## Install
 
 ```bash
-go install github.com/sonquer/tui4db/src/cli/cmd/tui4db@latest
+go install github.com/sonquer/opendba/src/cli/cmd/opendba@latest
 ```
 
 ## Quick start
 
 ```bash
-tui4db
+opendba
 ```
 
 The first run has no connection to open, so it asks for one: a driver, the
@@ -96,17 +96,17 @@ environment variable, a command, `~/.pgpass`, or a prompt.
 ## Configuration
 
 ```text
-$XDG_CONFIG_HOME/tui4db/     (or ~/.config/tui4db/)
+$XDG_CONFIG_HOME/opendba/     (or ~/.config/opendba/)
   profiles.toml    0600  connection metadata, never a password
   settings.toml    0600  theme, safety defaults, workspace, assistants
   secrets.age      0600  only when the encrypted vault is used
 
-$XDG_DATA_HOME/tui4db/       (or ~/.local/share/tui4db/)
+$XDG_DATA_HOME/opendba/       (or ~/.local/share/opendba/)
   sql/<connection>/      the .sql files the sidebar lists
   models/                weights, and a manifest saying what they are
   lib/                   llama.cpp, written out of this program
 
-$XDG_STATE_HOME/tui4db/      (or ~/.local/state/tui4db/)
+$XDG_STATE_HOME/opendba/      (or ~/.local/state/opendba/)
   history.db             statements you have run
   chats.db               conversations with the assistant
   engine.log             what llama.cpp said this run

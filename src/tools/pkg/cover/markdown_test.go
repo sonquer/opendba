@@ -17,12 +17,12 @@ func markdownRows() []TableRow {
 
 func TestWriteMarkdown(t *testing.T) {
 	var buffer bytes.Buffer
-	if err := WriteMarkdown(&buffer, markdownRows(), 95, "tui4db"); err != nil {
+	if err := WriteMarkdown(&buffer, markdownRows(), 95, "opendba"); err != nil {
 		t.Fatalf("WriteMarkdown: %v", err)
 	}
 	out := buffer.String()
 	for _, want := range []string{
-		"## tui4db coverage",
+		"## opendba coverage",
 		"**37.50%** of 8 statements · gate 95% failed",
 		"| File | % Stmts | % Funcs | % Lines | Uncovered Lines |",
 		"**All files**",
@@ -37,7 +37,7 @@ func TestWriteMarkdown(t *testing.T) {
 
 func TestWriteMarkdownReportsAPassingGate(t *testing.T) {
 	var buffer bytes.Buffer
-	if err := WriteMarkdown(&buffer, markdownRows(), 10, "tui4db"); err != nil {
+	if err := WriteMarkdown(&buffer, markdownRows(), 10, "opendba"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buffer.String(), "gate 10% passed") {
@@ -47,7 +47,7 @@ func TestWriteMarkdownReportsAPassingGate(t *testing.T) {
 
 func TestWriteMarkdownWithoutRows(t *testing.T) {
 	var buffer bytes.Buffer
-	if err := WriteMarkdown(&buffer, nil, 95, "tui4db"); err != nil {
+	if err := WriteMarkdown(&buffer, nil, 95, "opendba"); err != nil {
 		t.Fatal(err)
 	}
 	if buffer.Len() != 0 {
@@ -56,7 +56,7 @@ func TestWriteMarkdownWithoutRows(t *testing.T) {
 }
 
 func TestWriteMarkdownReportsWriteErrors(t *testing.T) {
-	if err := WriteMarkdown(failingWriter{}, markdownRows(), 95, "tui4db"); err == nil {
+	if err := WriteMarkdown(failingWriter{}, markdownRows(), 95, "opendba"); err == nil {
 		t.Fatal("want write error")
 	}
 }

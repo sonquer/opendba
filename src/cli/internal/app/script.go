@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 )
 
 // caretOffset is where the cursor is in the whole buffer, counted in characters

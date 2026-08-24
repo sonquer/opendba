@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
 )
 
 const DirName = ".local/bin"

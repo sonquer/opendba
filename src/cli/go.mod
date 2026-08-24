@@ -1,4 +1,4 @@
-module github.com/sonquer/tui4db/src/cli
+module github.com/sonquer/opendba/src/cli
 
 go 1.26.7
 

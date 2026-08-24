@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/sonquer/tui4db/src/tools/internal/core"
+	"github.com/sonquer/opendba/src/tools/internal/core"
 )
 
 func plain(s string) string { return ansi.Strip(s) }

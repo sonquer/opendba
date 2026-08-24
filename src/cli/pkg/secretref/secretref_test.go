@@ -20,7 +20,7 @@ func TestParse(t *testing.T) {
 		want    Ref
 		wantErr bool
 	}{
-		{"keyring", "keyring:tui4db/01J", Ref{Scheme: "keyring", Value: "tui4db/01J"}, false},
+		{"keyring", "keyring:opendba/01J", Ref{Scheme: "keyring", Value: "opendba/01J"}, false},
 		{"env", "env:PGPASSWORD", Ref{Scheme: "env", Value: "PGPASSWORD"}, false},
 		{"command with spaces", "command:op read op://vault/db/password", Ref{Scheme: "command", Value: "op read op://vault/db/password"}, false},
 		{"scheme only", "prompt", Ref{Scheme: "prompt"}, false},
@@ -169,10 +169,10 @@ func TestEnvBackend(t *testing.T) {
 }
 
 func TestEnvBackendFallsBackToTheProcessEnvironment(t *testing.T) {
-	t.Setenv("TUI4DB_TEST_SECRET", "from-process")
+	t.Setenv("OPENDBA_TEST_SECRET", "from-process")
 	backend := NewEnvBackend()
 	backend.Lookup = nil
-	secret, err := backend.Get(context.Background(), ForEnv("TUI4DB_TEST_SECRET"))
+	secret, err := backend.Get(context.Background(), ForEnv("OPENDBA_TEST_SECRET"))
 	if err != nil || string(secret) != "from-process" {
 		t.Fatalf("Get = %q, %v", secret, err)
 	}
@@ -324,7 +324,7 @@ func TestKeyringBackendFailures(t *testing.T) {
 func TestKeyringBackendDefaults(t *testing.T) {
 	backend := NewKeyringBackend()
 	if backend.service() != KeyringService || backend.API == nil {
-		t.Error("the default backend must target the tui4db service")
+		t.Error("the default backend must target the opendba service")
 	}
 	bare := KeyringBackend{}
 	if bare.service() != KeyringService {

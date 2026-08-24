@@ -8,8 +8,8 @@ import (
 
 	"github.com/hybridgroup/yzma/pkg/llama"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local"
 )
 
 const (

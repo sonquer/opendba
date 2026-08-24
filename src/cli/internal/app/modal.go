@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 const (
@@ -169,7 +169,7 @@ func wrap(text string, width int) string {
 }
 
 func (m Model) confirmQuit() (tea.Model, tea.Cmd) {
-	m.modal = ask(m.theme, "close tui4db?",
+	m.modal = ask(m.theme, "close opendba?",
 		"the connection is closed with it", quitMsg{})
 	return m, nil
 }

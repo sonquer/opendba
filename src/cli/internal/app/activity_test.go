@@ -8,10 +8,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 func busy() *fakeConn {
@@ -443,7 +443,7 @@ func TestAnApplicationNameSaysWhoseSessionItIs(t *testing.T) {
 		{"this program on a profile", driver.AppName + "/production-eu", true},
 		{"something else", "psql", false},
 		{"nothing at all", "", false},
-		{"something that only starts the same", "tui4dbeaver", false},
+		{"something that only starts the same", "opendbaeaver", false},
 	} {
 		t.Run(want.name, func(t *testing.T) {
 			if got := driver.Ours(want.application); got != want.ours {
@@ -457,8 +457,8 @@ func TestAnApplicationNameSaysWhoseSessionItIs(t *testing.T) {
 		application string
 	}{
 		{"with a profile", driver.Config{Application: "production-eu"},
-			"tui4db/production-eu"},
-		{"without one", driver.Config{}, "tui4db"},
+			"opendba/production-eu"},
+		{"without one", driver.Config{}, "opendba"},
 	} {
 		t.Run(want.name, func(t *testing.T) {
 			if got := want.config.ApplicationName(); got != want.application {

@@ -86,7 +86,7 @@ func TestOSRunUsesProvidedEnvironment(t *testing.T) {
 }
 
 func TestOSRunMissingBinary(t *testing.T) {
-	if _, err := (OS{}).Run(context.Background(), t.TempDir(), "tui4db-not-a-real-binary"); err == nil {
+	if _, err := (OS{}).Run(context.Background(), t.TempDir(), "opendba-not-a-real-binary"); err == nil {
 		t.Fatal("want error for missing binary")
 	}
 }

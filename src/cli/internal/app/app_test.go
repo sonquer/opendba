@@ -14,12 +14,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 type fakeConn struct {
@@ -523,7 +523,7 @@ func TestQuittingAsksFirst(t *testing.T) {
 		if asked.modal == nil {
 			t.Fatalf("%q must raise the question", key)
 		}
-		if !strings.Contains(plain(asked.content()), "close tui4db?") {
+		if !strings.Contains(plain(asked.content()), "close opendba?") {
 			t.Errorf("content = %s", plain(asked.content()))
 		}
 

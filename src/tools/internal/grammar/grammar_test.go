@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
 )
 
 func TestTransformRewritesReceivers(t *testing.T) {
@@ -236,7 +236,7 @@ func TestJarNaming(t *testing.T) {
 	if !strings.HasSuffix(JarURL("4.13.2"), "/antlr-4.13.2-complete.jar") {
 		t.Errorf("JarURL() = %q", JarURL("4.13.2"))
 	}
-	if got := CacheDir("/home/db"); got != filepath.Join("/home/db", ".cache", "tui4db-dev") {
+	if got := CacheDir("/home/db"); got != filepath.Join("/home/db", ".cache", "opendba-dev") {
 		t.Errorf("CacheDir() = %q", got)
 	}
 }

@@ -11,11 +11,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/export"
-	"github.com/sonquer/tui4db/src/cli/internal/sqlfiles"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/export"
+	"github.com/sonquer/opendba/src/cli/internal/sqlfiles"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 type exportMsg struct{}
@@ -301,7 +301,7 @@ func write4Export(ctx context.Context, job job4Export) (written int, err error) 
 	if _, err := os.Stat(job.path); err == nil {
 		return 0, fmt.Errorf("%s is already there", job.path)
 	}
-	file, err := os.CreateTemp(filepath.Dir(job.path), ".tui4db-export-*")
+	file, err := os.CreateTemp(filepath.Dir(job.path), ".opendba-export-*")
 	if err != nil {
 		return 0, fmt.Errorf("make the file: %w", err)
 	}

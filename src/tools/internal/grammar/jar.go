@@ -17,7 +17,7 @@ func JarURL(version string) string {
 	return "https://www.antlr.org/download/" + JarName(version)
 }
 
-func CacheDir(home string) string { return filepath.Join(home, ".cache", "tui4db-dev") }
+func CacheDir(home string) string { return filepath.Join(home, ".cache", "opendba-dev") }
 
 type JarFetcher struct {
 	Client *http.Client

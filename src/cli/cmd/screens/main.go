@@ -17,11 +17,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	_ "modernc.org/sqlite"
 
-	"github.com/sonquer/tui4db/src/cli/internal/app"
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/internal/app"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 )
 
 const (
@@ -267,7 +267,7 @@ func open(ctx context.Context, opts options) (cli.Session, cli.Workspace, func()
 // fixedStore keeps the fixture profile out of the real configuration, so
 // rendering screens never writes to what the person is using.
 func fixedStore(store config.Store, file string) (config.Store, error) {
-	paths := config.Paths{Config: filepath.Join(os.TempDir(), "tui4db-screens"), State: store.Paths.State}
+	paths := config.Paths{Config: filepath.Join(os.TempDir(), "opendba-screens"), State: store.Paths.State}
 	if err := paths.Ensure(); err != nil {
 		return config.Store{}, err
 	}

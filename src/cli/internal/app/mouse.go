@@ -8,8 +8,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/sonquer/tui4db/src/cli/internal/export"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/export"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 // tabAt says which tab a click landed on.
@@ -163,11 +163,7 @@ func (m Model) hintAt(x, y int) (hit, bool) {
 	at := ui.Gutter
 	separator := lipgloss.Width(
 		m.help.Styles.ShortSeparator.Inline(true).Render(m.help.ShortSeparator))
-	for _, binding := range m.keys.footer(m.view, m.suggest.active(), m.zoomed,
-		m.onSessions, m.lists[m.which()].typing, m.inflight) {
-		if !binding.Enabled() {
-			continue
-		}
+	for _, binding := range m.footerKeys(ui.FrameWidth(m.width)) {
 		width := lipgloss.Width(m.help.ShortHelpView([]key.Binding{binding}))
 		if x >= at && x < at+width {
 			return pressing(binding)

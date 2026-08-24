@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/export"
-	"github.com/sonquer/tui4db/src/cli/internal/sqlfiles"
+	"github.com/sonquer/opendba/src/cli/internal/export"
+	"github.com/sonquer/opendba/src/cli/internal/sqlfiles"
 )
 
 // exporting drives the dialog to the end and hands back the model and the path

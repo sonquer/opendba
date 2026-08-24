@@ -10,9 +10,9 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 // pane4AI is which of the two lists the keys are talking to.

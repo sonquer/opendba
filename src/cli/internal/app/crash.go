@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 // crash is what is left behind when the program ends in a way nobody planned.
@@ -32,7 +32,7 @@ func (c crash) wrote(doing string, cause any, stack []byte) string {
 
 func (c crash) account(doing string, cause any, stack []byte) string {
 	said := []string{
-		"tui4db " + c.version,
+		"opendba " + c.version,
 		"when: " + time.Now().Format(time.RFC3339),
 		"doing: " + doing,
 		fmt.Sprintf("what happened: %v", cause),

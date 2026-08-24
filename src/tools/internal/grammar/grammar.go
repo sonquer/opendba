@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
 )
 
 const generatedMarker = "// Code generated"
@@ -49,7 +49,7 @@ type Generator struct {
 }
 
 func (g Generator) Generate(ctx context.Context, spec Spec) ([]string, error) {
-	staging, err := os.MkdirTemp("", "tui4db-grammar-")
+	staging, err := os.MkdirTemp("", "opendba-grammar-")
 	if err != nil {
 		return nil, fmt.Errorf("create staging directory: %w", err)
 	}

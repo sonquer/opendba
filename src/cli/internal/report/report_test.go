@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
 )
 
 func info() driver.ServerInfo {
@@ -132,7 +132,7 @@ func TestNormalize(t *testing.T) {
 }
 
 func TestEveryFieldIsDescribedByTheSchema(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "schema", "tui4db.report.v1.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schema", "opendba.report.v1.json"))
 	if err != nil {
 		t.Fatalf("read the schema: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestEveryFieldIsDescribedByTheSchema(t *testing.T) {
 }
 
 func TestSchemaVersionMatchesTheContract(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "schema", "tui4db.report.v1.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schema", "opendba.report.v1.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

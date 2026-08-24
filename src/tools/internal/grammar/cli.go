@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
-	"github.com/sonquer/tui4db/src/tools/internal/workspace"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/workspace"
 )
 
 const (

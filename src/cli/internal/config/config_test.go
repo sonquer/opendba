@@ -22,13 +22,13 @@ func TestPathsFromXDG(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PathsFor: %v", err)
 	}
-	if paths.Config != filepath.Join("/x/config", "tui4db") {
+	if paths.Config != filepath.Join("/x/config", "opendba") {
 		t.Errorf("Config = %q", paths.Config)
 	}
-	if paths.State != filepath.Join("/x/state", "tui4db") {
+	if paths.State != filepath.Join("/x/state", "opendba") {
 		t.Errorf("State = %q", paths.State)
 	}
-	if paths.Data != filepath.Join("/x/data", "tui4db") {
+	if paths.Data != filepath.Join("/x/data", "opendba") {
 		t.Errorf("Data = %q", paths.Data)
 	}
 }
@@ -38,10 +38,10 @@ func TestPathsFallBackToHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PathsFor: %v", err)
 	}
-	if paths.Config != filepath.Join("/home/db", ".config", "tui4db") {
+	if paths.Config != filepath.Join("/home/db", ".config", "opendba") {
 		t.Errorf("Config = %q", paths.Config)
 	}
-	if paths.State != filepath.Join("/home/db", ".local", "state", "tui4db") {
+	if paths.State != filepath.Join("/home/db", ".local", "state", "opendba") {
 		t.Errorf("State = %q", paths.State)
 	}
 }
@@ -51,7 +51,7 @@ func TestPathsFallBackToUserProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PathsFor: %v", err)
 	}
-	if !strings.Contains(paths.Config, "tui4db") {
+	if !strings.Contains(paths.Config, "opendba") {
 		t.Errorf("Config = %q", paths.Config)
 	}
 }
@@ -162,7 +162,7 @@ func sampleConnection() Connection {
 		SSLMode:  "verify-full",
 		Mode:     ReadOnly,
 		Color:    "red",
-		Secret:   "keyring:tui4db/01J000000000000000000000",
+		Secret:   "keyring:opendba/01J000000000000000000000",
 	}
 }
 

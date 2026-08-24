@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report security issues privately through
-[GitHub security advisories](https://github.com/sonquer/tui4db/security/advisories/new)
+[GitHub security advisories](https://github.com/sonquer/opendba/security/advisories/new)
 rather than in a public issue.
 
 Include what you did, what happened, and what you expected. A proof of concept
@@ -16,7 +16,7 @@ Until the first stable release, only the latest commit on `main` receives fixes.
 
 ## What this project treats as a vulnerability
 
-TUI4DB stands between a person and their production database, so the bar is:
+OPENDBA stands between a person and their production database, so the bar is:
 
 - **A statement reaching the database that the safety layer should have stopped.**
   The classifier is default-deny over a real parse tree; anything that gets a write
@@ -32,7 +32,7 @@ TUI4DB stands between a person and their production database, so the bar is:
 ## What it does not
 
 - A database role with write privileges doing what its privileges allow.
-  TUI4DB documents the read-only role and warns when the connected role can write,
+  OPENDBA documents the read-only role and warns when the connected role can write,
   but it cannot be the boundary.
 - Findings that require an attacker to already control the user's account.
 

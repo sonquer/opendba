@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 func hotTable() driver.Table {

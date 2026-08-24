@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v5"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 func readOnlyConfig() driver.Config {
@@ -55,7 +55,7 @@ func TestDriverIdentity(t *testing.T) {
 
 func TestDSN(t *testing.T) {
 	dsn := DSN(readOnlyConfig())
-	for _, want := range []string{"postgres://readonly@db.example.com:5432/app", "sslmode=verify-full", "application_name=tui4db%2Fproduction-eu"} {
+	for _, want := range []string{"postgres://readonly@db.example.com:5432/app", "sslmode=verify-full", "application_name=opendba%2Fproduction-eu"} {
 		if !strings.Contains(dsn, want) {
 			t.Errorf("dsn missing %q: %s", want, dsn)
 		}
@@ -68,7 +68,7 @@ func TestDSN(t *testing.T) {
 	if !strings.Contains(bare, "localhost:5432") {
 		t.Errorf("defaults = %s", bare)
 	}
-	if !strings.Contains(bare, "application_name=tui4db") {
+	if !strings.Contains(bare, "application_name=opendba") {
 		t.Errorf("application name = %s", bare)
 	}
 

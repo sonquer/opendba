@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local/embedded"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local/embedded"
 )
 
 // Build is the llama.cpp release this program is written against.

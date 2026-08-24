@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 func TestSystemPrompt4Test(t *testing.T) {

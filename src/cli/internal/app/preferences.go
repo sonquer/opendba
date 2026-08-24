@@ -12,8 +12,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 // preferences is settings.toml with a screen in front of it.

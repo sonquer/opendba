@@ -14,9 +14,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/zalando/go-keyring"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/pkg/secretref"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/pkg/secretref"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 
 	_ "modernc.org/sqlite"
 )
@@ -364,8 +364,8 @@ func TestUnreadableConfigurationIsReported(t *testing.T) {
 
 func TestSecretsAreResolved(t *testing.T) {
 	connection := localConnection(t)
-	connection.Secret = "env:TUI4DB_TEST_PASSWORD"
-	t.Setenv("TUI4DB_TEST_PASSWORD", "hunter2")
+	connection.Secret = "env:OPENDBA_TEST_PASSWORD"
+	t.Setenv("OPENDBA_TEST_PASSWORD", "hunter2")
 	h := newHarness(t, connection)
 	if code := h.app.Run(context.Background(), []string{"inspect"}); code != ExitOK {
 		t.Fatalf("exit = %d\n%s", code, h.err())
@@ -374,7 +374,7 @@ func TestSecretsAreResolved(t *testing.T) {
 
 func TestMissingSecretsAreReported(t *testing.T) {
 	connection := localConnection(t)
-	connection.Secret = "env:TUI4DB_ABSENT_PASSWORD"
+	connection.Secret = "env:OPENDBA_ABSENT_PASSWORD"
 	h := newHarness(t, connection)
 	if code := h.app.Run(context.Background(), []string{"inspect"}); code != ExitFailure {
 		t.Fatalf("exit = %d", code)

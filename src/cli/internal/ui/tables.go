@@ -8,9 +8,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/export"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/export"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 const maxCellWidth = 48

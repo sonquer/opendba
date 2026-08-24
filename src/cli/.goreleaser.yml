@@ -1,15 +1,15 @@
 version: 2
 
-project_name: tui4db
+project_name: opendba
 
 before:
   hooks:
     - go mod download
 
 builds:
-  - id: tui4db
-    main: ./cmd/tui4db
-    binary: tui4db
+  - id: opendba
+    main: ./cmd/opendba
+    binary: opendba
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]

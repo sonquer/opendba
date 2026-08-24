@@ -12,10 +12,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/zalando/go-keyring"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 func newSetup(t *testing.T) (cli.Setup, config.Store) {
@@ -84,7 +84,7 @@ func TestTheFormOffersOnlyImplementedDrivers(t *testing.T) {
 	setup, _ := newSetup(t)
 	m := started(t, setup)
 	view := plain(m.content())
-	for _, want := range []string{"tui4db setup", "database", "PostgreSQL", "continue"} {
+	for _, want := range []string{"opendba setup", "database", "PostgreSQL", "continue"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the first step must show %q:\n%s", want, view)
 		}
@@ -222,7 +222,7 @@ func TestTheWizardWarnsWhenTheRoleCanWrite(t *testing.T) {
 	if done.Connection.Name != "production-eu" || !done.Saved {
 		t.Fatalf("done = %+v", done)
 	}
-	if !strings.Contains(done.Warning(), "read only is enforced by tui4db alone") {
+	if !strings.Contains(done.Warning(), "read only is enforced by opendba alone") {
 		t.Errorf("a writable role must be called out: %q", done.Warning())
 	}
 

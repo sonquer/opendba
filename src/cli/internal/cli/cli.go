@@ -8,16 +8,16 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/chats"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/driver/postgres"
-	"github.com/sonquer/tui4db/src/cli/internal/driver/sqlite"
-	"github.com/sonquer/tui4db/src/cli/internal/history"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
-	"github.com/sonquer/tui4db/src/cli/pkg/secretref"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/chats"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver/postgres"
+	"github.com/sonquer/opendba/src/cli/internal/driver/sqlite"
+	"github.com/sonquer/opendba/src/cli/internal/history"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/pkg/secretref"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 const (
@@ -370,7 +370,7 @@ func (a App) history(settings config.Settings) (*history.Store, string) {
 
 func pick(profiles config.Profiles, name string) (config.Connection, error) {
 	if profiles.IsEmpty() {
-		return config.Connection{}, fmt.Errorf("no connections are configured yet; run tui4db to set one up")
+		return config.Connection{}, fmt.Errorf("no connections are configured yet; run opendba to set one up")
 	}
 	if name == "" {
 		return profiles.Connections[0], nil
@@ -506,7 +506,7 @@ func split(args []string) (string, []string) {
 
 func (a App) parse(command string, args []string) (options, string, error) {
 	opts := options{}
-	set := flag.NewFlagSet("tui4db "+command, flag.ContinueOnError)
+	set := flag.NewFlagSet("opendba "+command, flag.ContinueOnError)
 	set.SetOutput(a.Stderr)
 	set.BoolVar(&opts.json, "json", false, "print a machine readable report")
 	set.StringVar(&opts.connection, "connection", "", "the connection to use")
@@ -518,15 +518,15 @@ func (a App) parse(command string, args []string) (options, string, error) {
 	}
 	statement := strings.Join(set.Args(), " ")
 	if command == "query" && strings.TrimSpace(statement) == "" {
-		return options{}, "", fmt.Errorf("tui4db query needs a statement")
+		return options{}, "", fmt.Errorf("opendba query needs a statement")
 	}
 	return opts, statement, nil
 }
 
 func (a App) usage() {
-	fmt.Fprintf(a.Stdout, `tui4db, a terminal workbench for databases
+	fmt.Fprintf(a.Stdout, `opendba, a terminal workbench for databases
 
-usage: tui4db [command] [flags] [statement]
+usage: opendba [command] [flags] [statement]
 
 commands:
   tui           open the interface, the default when no command is given

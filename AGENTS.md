@@ -70,7 +70,7 @@ The PostgreSQL driver is structured so its logic is testable without a server:
 SQL construction, row mapping, DSN handling, session pinning and health
 thresholds are pure functions, and everything touching the wire goes through a
 narrow interface that tests fake with `pgxmock`. Tests that genuinely need a
-live PostgreSQL read `TUI4DB_TEST_DSN` and **skip** when it is unset.
+live PostgreSQL read `OPENDBA_TEST_DSN` and **skip** when it is unset.
 
 ### The one exception
 
@@ -101,7 +101,7 @@ go run ./src/tools/cmd/dev comments   # the comment gate
 go run ./src/tools/cmd/dev vuln       # govulncheck over both modules
 go run ./src/tools/cmd/dev lint       # golangci-lint, pinned in src/tools/go.mod
 go run ./src/tools/cmd/dev version    # the version from VERSION
-go run ./src/tools/cmd/dev run        # start tui4db with the values from .env
+go run ./src/tools/cmd/dev run        # start opendba with the values from .env
 go run ./src/tools/cmd/grammar        # regenerate the vendored parsers
 ```
 

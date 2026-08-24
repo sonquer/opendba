@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/export"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/export"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 // The mouse can be handed back to the terminal, because a terminal reporting
@@ -515,11 +515,7 @@ func TestEveryKeyInTheFooterAnswersWhereItIsDrawn(t *testing.T) {
 			row := ui.FooterRow(m.height, m.view == viewQuery && !m.zoomed)
 			drawn := plain(m.footer(0))
 			from := 0
-			for _, binding := range m.keys.footer(m.view, m.suggest.active(), m.zoomed,
-				m.onSessions, m.lists[m.which()].typing, m.inflight) {
-				if !binding.Enabled() {
-					continue
-				}
+			for _, binding := range m.footerKeys(ui.FrameWidth(m.width)) {
 				label := binding.Help().Key
 				column, ok := columnOf(drawn, label+" "+binding.Help().Desc, from)
 				if !ok {
@@ -716,4 +712,35 @@ func lineOf4File(m Model, name string) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// The row of keys stays inside the frame. Off macOS a modifier is spelled out
+// rather than drawn as a glyph, so the same eight keys are far wider there; a
+// footer that is allowed to overflow makes every row of the screen grow with it.
+func TestTheFooterStaysInsideTheFrame(t *testing.T) {
+	for _, width := range []int{60, 80, 110, 120} {
+		m := manyRows(t, 4)
+		m.width = width
+		drawn := plain(m.footer(3))
+		if lipgloss.Width(drawn) > ui.FrameWidth(width) {
+			t.Errorf("at %d the footer is %d wide, the frame is %d:\n%s",
+				width, lipgloss.Width(drawn), ui.FrameWidth(width), drawn)
+		}
+		if bare := plain(m.footer(0)); lipgloss.Width(bare) > ui.FrameWidth(width) {
+			t.Errorf("at %d the footer with nothing to scroll is %d wide:\n%s",
+				width, lipgloss.Width(bare), bare)
+		}
+	}
+}
+
+// A key the footer had no room to draw cannot be clicked, because there is
+// nothing there to click.
+func TestAKeyTheFooterCouldNotDrawIsNotClickable(t *testing.T) {
+	m := manyRows(t, 4)
+	m.width = 40
+	m.mouse = true
+	row := ui.FooterRow(m.height, true)
+	if _, ok := m.hintAt(ui.Gutter+ui.FrameWidth(40)+4, row); ok {
+		t.Error("past the frame there is no key to press")
+	}
 }

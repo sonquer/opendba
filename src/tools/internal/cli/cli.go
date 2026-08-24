@@ -10,16 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sonquer/tui4db/src/tools/internal/checks"
-	"github.com/sonquer/tui4db/src/tools/internal/core"
-	"github.com/sonquer/tui4db/src/tools/internal/envfile"
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
-	"github.com/sonquer/tui4db/src/tools/internal/policy"
-	"github.com/sonquer/tui4db/src/tools/internal/render"
-	"github.com/sonquer/tui4db/src/tools/internal/toolbin"
-	"github.com/sonquer/tui4db/src/tools/internal/tui"
-	"github.com/sonquer/tui4db/src/tools/internal/workspace"
-	"github.com/sonquer/tui4db/src/tools/pkg/cover"
+	"github.com/sonquer/opendba/src/tools/internal/checks"
+	"github.com/sonquer/opendba/src/tools/internal/core"
+	"github.com/sonquer/opendba/src/tools/internal/envfile"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/policy"
+	"github.com/sonquer/opendba/src/tools/internal/render"
+	"github.com/sonquer/opendba/src/tools/internal/toolbin"
+	"github.com/sonquer/opendba/src/tools/internal/tui"
+	"github.com/sonquer/opendba/src/tools/internal/workspace"
+	"github.com/sonquer/opendba/src/tools/pkg/cover"
 )
 
 const (
@@ -145,7 +145,7 @@ func (a App) runProduct(args []string) int {
 	if len(values) > 0 {
 		fmt.Fprintln(a.Stderr, "using "+envfile.FileName+": "+values.Describe())
 	}
-	command := append([]string{"run", "./src/cli/cmd/tui4db"}, args...)
+	command := append([]string{"run", "./src/cli/cmd/opendba"}, args...)
 	code, err := exec.Passthrough(context.Background(), space.Root, values.Environment(os.Environ()), "go", command...)
 	if err != nil {
 		fmt.Fprintln(a.Stderr, err)
@@ -217,7 +217,7 @@ func (a App) report(space workspace.Workspace, suite core.Suite, opts options) {
 	}
 	path := filepath.Join(space.Root, "coverage.html")
 	err := cover.WriteReportFile(path, merged, cover.ReportOptions{
-		Title:     "tui4db",
+		Title:     "opendba",
 		Min:       opts.min,
 		Resolve:   space.Resolve,
 		Sections:  sections,
@@ -240,7 +240,7 @@ func (a App) writeSummary(rows []cover.TableRow, opts options) {
 		return
 	}
 	defer file.Close()
-	if err := cover.WriteMarkdown(file, rows, opts.min, "tui4db"); err != nil {
+	if err := cover.WriteMarkdown(file, rows, opts.min, "opendba"); err != nil {
 		fmt.Fprintln(a.Stderr, err)
 	}
 }
@@ -311,7 +311,7 @@ func (a App) coverageDir(space workspace.Workspace, opts options) string {
 }
 
 func (a App) title(space workspace.Workspace) string {
-	return fmt.Sprintf("tui4db dev · %s", filepath.Base(space.Root))
+	return fmt.Sprintf("opendba dev · %s", filepath.Base(space.Root))
 }
 
 func (a App) parse(command string, args []string) (options, error) {
@@ -346,7 +346,7 @@ func (a App) name() string {
 }
 
 func (a App) usage() {
-	fmt.Fprintf(a.Stdout, `%s, tui4db development tooling
+	fmt.Fprintf(a.Stdout, `%s, opendba development tooling
 
 usage: %s <command> [flags]
 
@@ -359,7 +359,7 @@ commands:
   build      compile every module
   lint       run golangci-lint, built from the version pinned in src/tools
   vuln       run govulncheck, built the same way
-  run        start tui4db with the values from .env, passing the rest through
+  run        start opendba with the values from .env, passing the rest through
   screens    render every screen of the interface, to look at what changed
   version    print the version from the VERSION file
   help       show this message

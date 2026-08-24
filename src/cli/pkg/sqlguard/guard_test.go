@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 )
 
 type goldenCase struct {

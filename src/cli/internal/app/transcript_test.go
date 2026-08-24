@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 // A conversation that was kept draws exactly as the live one did. The same

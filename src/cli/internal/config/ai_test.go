@@ -207,11 +207,11 @@ func TestAISettingsRefusedOnLoad(t *testing.T) {
 }
 
 func TestDataPaths(t *testing.T) {
-	paths := Paths{Data: filepath.Join("/x", "data", "tui4db")}
-	if got := paths.ModelsDir(); got != filepath.Join("/x", "data", "tui4db", "models") {
+	paths := Paths{Data: filepath.Join("/x", "data", "opendba")}
+	if got := paths.ModelsDir(); got != filepath.Join("/x", "data", "opendba", "models") {
 		t.Fatalf("ModelsDir() = %q", got)
 	}
-	if got := paths.LibDir(); got != filepath.Join("/x", "data", "tui4db", "lib") {
+	if got := paths.LibDir(); got != filepath.Join("/x", "data", "opendba", "lib") {
 		t.Fatalf("LibDir() = %q", got)
 	}
 }

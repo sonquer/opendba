@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/pkg/secretref"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/pkg/secretref"
 )
 
 func aiSettings() config.Settings {
@@ -17,7 +17,7 @@ func aiSettings() config.Settings {
 		Active:  "claude",
 		Context: 16384,
 		Instances: []config.AIInstance{
-			{Name: "claude", Kind: "anthropic", Model: "claude-sonnet-5", Key: "env:TUI4DB_TEST_AI_KEY"},
+			{Name: "claude", Kind: "anthropic", Model: "claude-sonnet-5", Key: "env:OPENDBA_TEST_AI_KEY"},
 			{Name: "here", Kind: "local", Model: "gemma-4-e4b-qat", Context: 4096, Thinking: true},
 			{Name: "keyless", Kind: "ollama", Model: "qwen3.5:9b"},
 		},
@@ -31,7 +31,7 @@ func secrets(t *testing.T) *secretref.Store {
 }
 
 func TestAIInstance(t *testing.T) {
-	t.Setenv("TUI4DB_TEST_AI_KEY", "sk-ant-from-the-environment")
+	t.Setenv("OPENDBA_TEST_AI_KEY", "sk-ant-from-the-environment")
 	settings := aiSettings()
 
 	chosen, err := AIInstance(context.Background(), settings, secrets(t), "")

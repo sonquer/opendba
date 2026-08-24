@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/history"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/history"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 // keepingHistory builds a model that keeps what it runs, in a store of its own.

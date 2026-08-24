@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 // CallOpen and CallClose bracket a tool call in a local model's output.

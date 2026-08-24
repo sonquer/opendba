@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/anthropic"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/gemini"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/ollama"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/openai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/anthropic"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/gemini"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/ollama"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/openai"
 )
 
 // Registry is the factory. It maps a kind to the provider that opens it, and it

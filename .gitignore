@@ -28,7 +28,7 @@
 # .idea/
 # .vscode/
 
-# tui4db
+# opendba
 /bin/
 /dist/
 

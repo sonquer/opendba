@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/report"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/report"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 func Timeouts(safety config.SafetySettings) driver.Timeouts {

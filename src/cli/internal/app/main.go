@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 )
 
 func Main(version string, args []string) int {

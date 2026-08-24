@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 type stubDriver struct{ name string }

@@ -14,11 +14,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/agent"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local"
-	"github.com/sonquer/tui4db/src/cli/internal/chats"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai/agent"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local"
+	"github.com/sonquer/opendba/src/cli/internal/chats"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 const (

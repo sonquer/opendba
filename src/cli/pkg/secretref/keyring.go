@@ -8,7 +8,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-const KeyringService = "tui4db"
+const KeyringService = "opendba"
 
 // KeyringAPI is the part of the operating system keychain this package uses.
 type KeyringAPI interface {

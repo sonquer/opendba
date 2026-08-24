@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 )
 
 // Mode is the access mode a connection was configured with.
@@ -85,7 +85,7 @@ func (g Guard) Dialect() string { return g.dialect.Name() }
 // that holds more than one statement, or whose statement is not recognised is
 // blocked. A statement that only reads is allowed. A statement that writes,
 // takes locks or creates a relation is blocked in read only mode and needs
-// confirmation otherwise. Statements that tui4db never runs, such as those that
+// confirmation otherwise. Statements that opendba never runs, such as those that
 // manage transactions or the session, are blocked in every mode.
 func (g Guard) Classify(sql string, mode Mode) Result {
 	analysis := g.dialect.Analyze(sql)

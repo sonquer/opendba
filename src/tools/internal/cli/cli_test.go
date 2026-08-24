@@ -12,10 +12,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/sonquer/tui4db/src/tools/internal/core"
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
-	"github.com/sonquer/tui4db/src/tools/internal/render"
-	"github.com/sonquer/tui4db/src/tools/internal/workspace"
+	"github.com/sonquer/opendba/src/tools/internal/core"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/render"
+	"github.com/sonquer/opendba/src/tools/internal/workspace"
 )
 
 type fakeRunner struct {
@@ -235,7 +235,7 @@ func TestInteractiveLaunch(t *testing.T) {
 	if len(launched) == 0 {
 		t.Fatal("suite was not handed to the launcher")
 	}
-	if !strings.HasPrefix(title, "tui4db dev · ") {
+	if !strings.HasPrefix(title, "opendba dev · ") {
 		t.Errorf("title = %q", title)
 	}
 }
@@ -289,7 +289,7 @@ func TestHelpAndUsageErrors(t *testing.T) {
 	if code := h.app.Run(context.Background(), []string{"help"}); code != ExitOK {
 		t.Fatalf("help exit = %d", code)
 	}
-	if !strings.Contains(h.out(), "tui4db development tooling") {
+	if !strings.Contains(h.out(), "opendba development tooling") {
 		t.Errorf("usage missing:\n%s", h.out())
 	}
 
@@ -370,7 +370,7 @@ func TestSummaryIsAppendedForCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("summary missing: %v", err)
 	}
-	for _, want := range []string{"## tui4db coverage", "| File |", "cli/", "tools/"} {
+	for _, want := range []string{"## opendba coverage", "| File |", "cli/", "tools/"} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("summary missing %q:\n%s", want, data)
 		}
@@ -476,7 +476,7 @@ func TestMinFlagOverridesThePolicy(t *testing.T) {
 func TestRunProductPassesTheEnvironmentThrough(t *testing.T) {
 	h := newHarness(t, fakeRunner{})
 	writeFile(t, filepath.Join(h.root, ".env"), "XDG_CONFIG_HOME=.local/config\n")
-	writeFile(t, filepath.Join(h.root, "src", "cli", "cmd", "tui4db", "main.go"),
+	writeFile(t, filepath.Join(h.root, "src", "cli", "cmd", "opendba", "main.go"),
 		"package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"started\") }\n")
 
 	code := h.app.Run(context.Background(), []string{"run", "version"})

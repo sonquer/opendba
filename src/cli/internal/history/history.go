@@ -11,7 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 const redactedStatement = "(not recorded)"

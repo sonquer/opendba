@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 // Extension is what a file has to end in to be one of these.

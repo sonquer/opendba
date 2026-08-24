@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 func settings() config.HistorySettings {

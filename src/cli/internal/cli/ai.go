@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local/llama"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/pkg/secretref"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local/llama"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/pkg/secretref"
 )
 
 // Assistant is everything the conversation screen needs, gathered when the

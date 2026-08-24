@@ -8,10 +8,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 type fakeWorkspace struct {
@@ -314,7 +314,7 @@ func TestTheWizardOpensInsideTheProgram(t *testing.T) {
 	if adding.wizard == nil {
 		t.Fatal("n must open the wizard")
 	}
-	if !strings.Contains(plain(adding.content()), "tui4db setup") {
+	if !strings.Contains(plain(adding.content()), "opendba setup") {
 		t.Errorf("content = %s", plain(adding.content()))
 	}
 	sized, _ := adding.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
@@ -440,7 +440,7 @@ func TestTheConnectionListSaysWhatIsKnown(t *testing.T) {
 	shown := settle(t, browsing.(Model), cmd)
 	view := plain(shown.content())
 	for _, want := range []string{"production-eu", "sqlite", "read only",
-		"tui4db/production-eu", "2 running"} {
+		"opendba/production-eu", "2 running"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the list must say %q:\n%s", want, view)
 		}

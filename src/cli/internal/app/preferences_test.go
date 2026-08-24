@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/chats"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/chats"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 // storing is a model with both stores behind it, on whatever screen it starts.

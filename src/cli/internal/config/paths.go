@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-const appName = "tui4db"
+const appName = "opendba"
 
 type Paths struct {
 	Config string

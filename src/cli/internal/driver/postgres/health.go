@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
 )
 
 const (

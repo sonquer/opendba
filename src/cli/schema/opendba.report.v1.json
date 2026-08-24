@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sonquer/tui4db/schema/tui4db.report.v1.json",
-  "title": "TUI4DB report",
-  "description": "The machine readable output of tui4db inspect, schema and indexes. Breaking this contract is a breaking change to the tool.",
+  "$id": "https://github.com/sonquer/opendba/schema/opendba.report.v1.json",
+  "title": "OPENDBA report",
+  "description": "The machine readable output of opendba inspect, schema and indexes. Breaking this contract is a breaking change to the tool.",
   "type": "object",
   "required": ["schema_version", "generated_at", "connection", "exactness", "counts"],
   "additionalProperties": false,

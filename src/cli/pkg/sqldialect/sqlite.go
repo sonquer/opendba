@@ -3,7 +3,7 @@ package sqldialect
 import (
 	"github.com/antlr4-go/antlr/v4"
 
-	"github.com/sonquer/tui4db/src/cli/internal/parser/generated/sqlite"
+	"github.com/sonquer/opendba/src/cli/internal/parser/generated/sqlite"
 )
 
 func SQLite() Dialect {
@@ -39,11 +39,11 @@ var sqliteRules = map[string]semantics{
 	"update_stmt_limited": {kind: KindUpdate, mutating: true},
 	"delete_stmt_limited": {kind: KindDelete, mutating: true},
 
-	"begin_stmt":     {kind: KindTransaction, refusal: "tui4db owns transaction boundaries"},
-	"commit_stmt":    {kind: KindTransaction, refusal: "tui4db owns transaction boundaries"},
-	"rollback_stmt":  {kind: KindTransaction, refusal: "tui4db owns transaction boundaries"},
-	"savepoint_stmt": {kind: KindTransaction, refusal: "tui4db owns transaction boundaries"},
-	"release_stmt":   {kind: KindTransaction, refusal: "tui4db owns transaction boundaries"},
+	"begin_stmt":     {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},
+	"commit_stmt":    {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},
+	"rollback_stmt":  {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},
+	"savepoint_stmt": {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},
+	"release_stmt":   {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},
 	"attach_stmt":    {kind: KindSession, refusal: "ATTACH opens another database file"},
 	"detach_stmt":    {kind: KindSession, refusal: "DETACH closes a database file"},
 	"pragma_stmt":    {kind: KindPragma, refusal: "pragmas change how the database behaves"},

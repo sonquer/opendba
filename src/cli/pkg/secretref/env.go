@@ -29,9 +29,9 @@ func (b EnvBackend) Get(_ context.Context, ref Ref) ([]byte, error) {
 }
 
 func (b EnvBackend) Set(context.Context, Ref, []byte) error {
-	return fmt.Errorf("environment variables are managed outside tui4db")
+	return fmt.Errorf("environment variables are managed outside opendba")
 }
 
 func (b EnvBackend) Delete(context.Context, Ref) error {
-	return fmt.Errorf("environment variables are managed outside tui4db")
+	return fmt.Errorf("environment variables are managed outside opendba")
 }

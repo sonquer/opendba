@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/sonquer/tui4db/src/cli/internal/app"
+	"github.com/sonquer/opendba/src/cli/internal/app"
 )
 
 var version = "dev"

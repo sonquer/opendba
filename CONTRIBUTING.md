@@ -25,8 +25,8 @@ Everything below is checked by `dev check`, and CI runs `dev check`. Read
 ## Getting set up
 
 ```bash
-git clone https://github.com/sonquer/tui4db
-cd tui4db
+git clone https://github.com/sonquer/opendba
+cd opendba
 go run ./src/tools/cmd/dev
 ```
 
@@ -45,8 +45,8 @@ cp .env.example .env && go run ./src/tools/cmd/dev run
 ## Layout
 
 ```
-src/cli/     the product      module github.com/sonquer/tui4db/src/cli
-src/tools/   the tooling      module github.com/sonquer/tui4db/src/tools
+src/cli/     the product      module github.com/sonquer/opendba/src/cli
+src/tools/   the tooling      module github.com/sonquer/opendba/src/tools
 ```
 
 The generated ANTLR parsers under `src/cli/internal/parser/generated` are vendored

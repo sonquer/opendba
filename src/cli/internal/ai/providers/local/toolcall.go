@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 // ParseCalls reads the tool calls out of a model's output and returns them with

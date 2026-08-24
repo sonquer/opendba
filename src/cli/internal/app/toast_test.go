@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 // Two things said at once are both shown, newest first, rather than one of them

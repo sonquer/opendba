@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
 )
 
 // Health reads what this file can say about itself.

@@ -8,7 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 
-	"github.com/sonquer/tui4db/src/tools/pkg/cover"
+	"github.com/sonquer/opendba/src/tools/pkg/cover"
 )
 
 const uncoveredWidth = 26

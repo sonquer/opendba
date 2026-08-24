@@ -3,7 +3,7 @@ package local
 import (
 	"errors"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 // ErrNoLibrary is what an engine reports when the inference library is not

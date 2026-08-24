@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 // TestTheGemmaDialectIsRead is the answer that started this: a model asked how

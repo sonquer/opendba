@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/tools/internal/core"
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
-	"github.com/sonquer/tui4db/src/tools/internal/policy"
-	"github.com/sonquer/tui4db/src/tools/internal/toolbin"
-	"github.com/sonquer/tui4db/src/tools/internal/workspace"
-	"github.com/sonquer/tui4db/src/tools/pkg/cover"
+	"github.com/sonquer/opendba/src/tools/internal/core"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/policy"
+	"github.com/sonquer/opendba/src/tools/internal/toolbin"
+	"github.com/sonquer/opendba/src/tools/internal/workspace"
+	"github.com/sonquer/opendba/src/tools/pkg/cover"
 )
 
 type fakeRunner struct {

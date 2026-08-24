@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai/agent"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/tool"
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/ai/agent"
+	"github.com/sonquer/opendba/src/cli/internal/ai/tool"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 // instructions is what the assistant is told before anything else.
-const instructions = `You are built into tui4db, a terminal program for reading a %s database.
+const instructions = `You are built into opendba, a terminal program for reading a %s database.
 You are talking to the person using it, who can see the same screens you can read through tools.
 
 Answer the question you were asked, and nothing else.

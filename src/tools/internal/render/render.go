@@ -8,7 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/sonquer/tui4db/src/tools/internal/core"
+	"github.com/sonquer/opendba/src/tools/internal/core"
 )
 
 type Theme struct {

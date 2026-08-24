@@ -9,9 +9,9 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 func TestEnvAndConnectionLine(t *testing.T) {

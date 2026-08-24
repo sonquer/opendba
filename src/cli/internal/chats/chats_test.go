@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 func kept(t *testing.T, settings config.ChatSettings) *Store {

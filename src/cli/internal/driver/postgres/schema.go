@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
 )
 
 const infoQuery = `SELECT current_setting('server_version'), current_database(), current_user,

@@ -3,7 +3,7 @@ package local
 import (
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 // reader turns the flat run of text a local model produces into the bracketed

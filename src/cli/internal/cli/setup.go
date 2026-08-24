@@ -10,10 +10,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/driver/postgres"
-	"github.com/sonquer/tui4db/src/cli/pkg/secretref"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver/postgres"
+	"github.com/sonquer/opendba/src/cli/pkg/secretref"
 )
 
 type Setup struct {

@@ -3,7 +3,7 @@ package app
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/sqlfiles"
+	"github.com/sonquer/opendba/src/cli/internal/sqlfiles"
 )
 
 // filesMsg is what the workspace directory holds, or what went wrong reading it.

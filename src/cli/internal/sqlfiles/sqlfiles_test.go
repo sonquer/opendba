@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 func TestTheRootIsTheSettingOrTheDataDirectory(t *testing.T) {
-	data := config.Paths{Data: filepath.Join("/data", "tui4db")}
+	data := config.Paths{Data: filepath.Join("/data", "opendba")}
 	for _, want := range []struct {
 		name       string
 		paths      config.Paths
@@ -19,13 +19,13 @@ func TestTheRootIsTheSettingOrTheDataDirectory(t *testing.T) {
 		root       string
 	}{
 		{"the data directory", data, "", config.Connection{Name: "production-eu"},
-			filepath.Join("/data", "tui4db", "sql", "production-eu")},
+			filepath.Join("/data", "opendba", "sql", "production-eu")},
 		{"the setting", data, filepath.Join("/elsewhere"), config.Connection{Name: "staging"},
 			filepath.Join("/elsewhere", "staging")},
 		{"a name a directory cannot hold", data, "", config.Connection{Name: "eu/west"},
-			filepath.Join("/data", "tui4db", "sql", "eu-west")},
+			filepath.Join("/data", "opendba", "sql", "eu-west")},
 		{"a name that is nothing but punctuation", data, "", config.Connection{Name: "///", ID: "01J"},
-			filepath.Join("/data", "tui4db", "sql", "01J")},
+			filepath.Join("/data", "opendba", "sql", "01J")},
 		{"nowhere to keep them", config.Paths{}, "", config.Connection{Name: "x"}, ""},
 		{"a setting that is not a full path", data, "sql", config.Connection{Name: "x"}, ""},
 	} {

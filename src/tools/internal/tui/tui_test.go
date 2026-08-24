@@ -10,8 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/sonquer/tui4db/src/tools/internal/core"
-	"github.com/sonquer/tui4db/src/tools/internal/render"
+	"github.com/sonquer/opendba/src/tools/internal/core"
+	"github.com/sonquer/opendba/src/tools/internal/render"
 )
 
 type stubCheck struct {
@@ -32,7 +32,7 @@ func (s stubCheck) Run(context.Context) (core.Report, error) {
 }
 
 func newModel(checks ...core.Check) Model {
-	return New(core.Suite(checks), render.DefaultTheme(), "tui4db dev")
+	return New(core.Suite(checks), render.DefaultTheme(), "opendba dev")
 }
 
 func pass(name string) stubCheck {
@@ -196,11 +196,11 @@ func TestStartWithEmptySelectionIsIgnored(t *testing.T) {
 func TestViewRendersChecksAndHints(t *testing.T) {
 	m := newModel(pass("a"), pass("b"))
 	view := m.View()
-	if !view.AltScreen || view.WindowTitle != "tui4db dev" {
+	if !view.AltScreen || view.WindowTitle != "opendba dev" {
 		t.Fatalf("view = %+v", view)
 	}
 	content := ansi.Strip(m.content())
-	for _, want := range []string{"tui4db dev", "a", "b", "a description", "[enter] run", "0 passed"} {
+	for _, want := range []string{"opendba dev", "a", "b", "a description", "[enter] run", "0 passed"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("content missing %q", want)
 		}

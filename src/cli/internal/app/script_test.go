@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 )
 
 // The cursor is found in the buffer by counting characters, not bytes, or a

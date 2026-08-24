@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sonquer/tui4db/src/tools/internal/core"
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
-	"github.com/sonquer/tui4db/src/tools/internal/policy"
-	"github.com/sonquer/tui4db/src/tools/internal/toolbin"
-	"github.com/sonquer/tui4db/src/tools/internal/workspace"
-	"github.com/sonquer/tui4db/src/tools/pkg/cover"
-	"github.com/sonquer/tui4db/src/tools/pkg/gate"
+	"github.com/sonquer/opendba/src/tools/internal/core"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/policy"
+	"github.com/sonquer/opendba/src/tools/internal/toolbin"
+	"github.com/sonquer/opendba/src/tools/internal/workspace"
+	"github.com/sonquer/opendba/src/tools/pkg/cover"
+	"github.com/sonquer/opendba/src/tools/pkg/gate"
 )
 
 type Options struct {
@@ -130,14 +130,27 @@ func Format(module workspace.Module, runner exec.Runner) core.Check {
 		module:   module,
 		runner:   runner,
 		args:     []string{"fmt", "./..."},
-		failOn:   func(r exec.Result) bool { return !r.OK() || r.Output() != "" },
+		failOn:   func(r exec.Result) bool { return !r.OK() || reformatted(r.Output()) != "" },
 		summary: func(r exec.Result) string {
-			if r.OK() && r.Output() == "" {
+			if r.OK() && reformatted(r.Output()) == "" {
 				return "formatted"
 			}
 			return "needs formatting"
 		},
 	}
+}
+
+// reformatted is the files go fmt rewrote, out of everything it said. On a cold
+// module cache the command also reports what it is downloading, and a download
+// is not a file that was left unformatted.
+func reformatted(output string) string {
+	kept := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasSuffix(strings.TrimSpace(line), ".go") {
+			kept = append(kept, strings.TrimSpace(line))
+		}
+	}
+	return strings.Join(kept, "\n")
 }
 
 func Build(module workspace.Module, runner exec.Runner) core.Check {

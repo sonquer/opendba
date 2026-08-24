@@ -37,7 +37,7 @@ const (
 )
 
 // Statement is what one parsed statement means for safety: the kind it is, what
-// it would change, and whether tui4db refuses to run it at all.
+// it would change, and whether opendba refuses to run it at all.
 type Statement struct {
 	Kind         Kind
 	MutatedBy    Kind
@@ -142,7 +142,7 @@ func NewFactory(dialects ...Dialect) *Factory {
 	return factory
 }
 
-// Default returns a factory holding every dialect tui4db ships with.
+// Default returns a factory holding every dialect opendba ships with.
 func Default() *Factory { return NewFactory(PostgreSQL(), SQLite()) }
 
 // Register adds a dialect, replacing any dialect registered under the same name.

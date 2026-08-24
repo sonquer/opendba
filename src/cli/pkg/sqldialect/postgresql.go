@@ -3,7 +3,7 @@ package sqldialect
 import (
 	"github.com/antlr4-go/antlr/v4"
 
-	"github.com/sonquer/tui4db/src/cli/internal/parser/generated/postgresql"
+	"github.com/sonquer/opendba/src/cli/internal/parser/generated/postgresql"
 )
 
 func PostgreSQL() Dialect {
@@ -58,10 +58,10 @@ var postgresRules = map[string]semantics{
 	"for_locking_clause": {locking: true},
 
 	"copystmt":           {kind: KindCopy, refusal: "COPY moves data between the server and files"},
-	"variablesetstmt":    {kind: KindSession, refusal: "session settings are managed by tui4db"},
-	"constraintssetstmt": {kind: KindSession, refusal: "session settings are managed by tui4db"},
-	"discardstmt":        {kind: KindSession, refusal: "session settings are managed by tui4db"},
-	"transactionstmt":    {kind: KindTransaction, refusal: "tui4db owns transaction boundaries"},
+	"variablesetstmt":    {kind: KindSession, refusal: "session settings are managed by opendba"},
+	"constraintssetstmt": {kind: KindSession, refusal: "session settings are managed by opendba"},
+	"discardstmt":        {kind: KindSession, refusal: "session settings are managed by opendba"},
+	"transactionstmt":    {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},
 	"lockstmt":           {kind: KindMaintenance, refusal: "LOCK blocks other sessions"},
 	"dostmt":             {kind: KindCall, refusal: "anonymous code blocks can do anything"},
 	"callstmt":           {kind: KindCall, refusal: "procedures can do anything"},

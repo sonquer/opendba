@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
-	"github.com/sonquer/tui4db/src/cli/internal/ai/agent"
-	"github.com/sonquer/tui4db/src/cli/internal/chats"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai/agent"
+	"github.com/sonquer/opendba/src/cli/internal/chats"
+	"github.com/sonquer/opendba/src/cli/internal/config"
 )
 
 // chatting is a model on the ask screen with somewhere to keep what is said.

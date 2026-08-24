@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
 )
 
 const Name = "postgres"

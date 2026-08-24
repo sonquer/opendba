@@ -12,12 +12,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/export"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/export"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 type view string
@@ -1125,7 +1125,7 @@ func (m Model) View() tea.View {
 	}
 	v.BackgroundColor = m.theme.P.Bg
 	v.ForegroundColor = m.theme.P.Fg
-	v.WindowTitle = "tui4db, " + m.session.Connection.Name
+	v.WindowTitle = "opendba, " + m.session.Connection.Name
 	v.Cursor = m.caret()
 	v.SetContent(m.theme.Base.Render(m.content()))
 	return v
@@ -1243,10 +1243,43 @@ func (m Model) body() string {
 	}
 }
 
+// footer is the row of keys, kept inside the frame. Off macOS a modifier is
+// spelled out rather than drawn as a glyph, so the same keys are three times as
+// wide and a row that fits on one machine runs off the other.
 func (m Model) footer(more int) string {
-	left := m.help.View(m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions,
-		m.lists[m.which()].typing, m.inflight))
-	return ui.SplitLine(left, m.theme.Subtle.Render(scrollHint(more)), ui.FrameWidth(m.width))
+	inner := ui.FrameWidth(m.width)
+	hint := m.theme.Subtle.Render(scrollHint(more))
+	left := m.help.ShortHelpView(m.footerKeys(inner - lipgloss.Width(hint) - 2))
+	return ui.SplitLine(left, hint, inner)
+}
+
+// footerKeys is the keys the footer has room to draw, in order. Off macOS a
+// modifier is spelled out rather than drawn as a glyph, so the same eight keys
+// are half again as wide and a row that fits on one machine runs off the other,
+// taking the width of every row of the screen with it. Drawing and clicking
+// both go through here so that a key nobody can see is a key nobody can press.
+func (m Model) footerKeys(room int) []key.Binding {
+	offered := m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions,
+		m.lists[m.which()].typing, m.inflight)
+	separator := lipgloss.Width(
+		m.help.Styles.ShortSeparator.Inline(true).Render(m.help.ShortSeparator))
+	kept := make([]key.Binding, 0, len(offered))
+	at := 0
+	for _, binding := range offered {
+		if !binding.Enabled() {
+			continue
+		}
+		width := lipgloss.Width(m.help.ShortHelpView([]key.Binding{binding}))
+		if len(kept) > 0 {
+			width += separator
+		}
+		if at+width > room {
+			break
+		}
+		at += width
+		kept = append(kept, binding)
+	}
+	return kept
 }
 
 func scrollHint(more int) string {

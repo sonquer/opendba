@@ -3,8 +3,8 @@
 ## Two modules
 
 ```
-src/cli/     the product        module github.com/sonquer/tui4db/src/cli
-src/tools/   the dev tooling    module github.com/sonquer/tui4db/src/tools
+src/cli/     the product        module github.com/sonquer/opendba/src/cli
+src/tools/   the dev tooling    module github.com/sonquer/opendba/src/tools
 ```
 
 Two modules on purpose: dependencies of the dev tooling can never leak into the
@@ -14,7 +14,7 @@ dependency graph of the shipped binary. `go.work` ties them together.
 
 ```
 src/cli/
-  cmd/tui4db/                  binary entry point
+  cmd/opendba/                  binary entry point
   cmd/screens/                 renders the interface against a seeded database
   schema/                      the versioned --json contract
   pkg/sqlguard/                the safety policy

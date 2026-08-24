@@ -34,14 +34,14 @@ func render(t *testing.T, opts ReportOptions) string {
 
 func TestReportIsASelfContainedDocument(t *testing.T) {
 	html := render(t, ReportOptions{
-		Title:     "tui4db",
+		Title:     "opendba",
 		Min:       95,
 		Resolve:   sampleSource(t),
 		Generated: "2026-08-21",
 		Sections:  []string{"cli", "tools"},
 	})
 	for _, want := range []string{
-		"<!doctype html>", "Code coverage report for", "tui4db", "<style>", "37.50%", "3/8",
+		"<!doctype html>", "Code coverage report for", "opendba", "<style>", "37.50%", "3/8",
 		"cli, tools", "2026-08-21", "example.com/m/a", "one.go",
 		"coverage-summary", "status-line", "cover-fill", "Statements", "Functions", "Lines",
 	} {
@@ -106,7 +106,7 @@ func TestReportMarksTheLevelAgainstTheGate(t *testing.T) {
 
 func TestWriteReportFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "coverage.html")
-	if err := WriteReportFile(path, parseSample(t), ReportOptions{Title: "tui4db"}); err != nil {
+	if err := WriteReportFile(path, parseSample(t), ReportOptions{Title: "opendba"}); err != nil {
 		t.Fatalf("WriteReportFile: %v", err)
 	}
 	data, err := os.ReadFile(path)

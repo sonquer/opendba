@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/tools/internal/envfile"
-	"github.com/sonquer/tui4db/src/tools/internal/exec"
-	"github.com/sonquer/tui4db/src/tools/internal/workspace"
+	"github.com/sonquer/opendba/src/tools/internal/envfile"
+	"github.com/sonquer/opendba/src/tools/internal/exec"
+	"github.com/sonquer/opendba/src/tools/internal/workspace"
 )
 
 // script is one path through the interface, named so that a change can be

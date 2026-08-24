@@ -3,7 +3,7 @@ package sqlguard
 import (
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/sqldialect"
+	"github.com/sonquer/opendba/src/cli/pkg/sqldialect"
 )
 
 func TestSpotTheWrite(t *testing.T) {

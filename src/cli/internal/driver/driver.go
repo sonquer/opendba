@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/sqlguard"
+	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
 )
 
 type Capabilities struct {
@@ -71,7 +71,7 @@ func (c Config) Target() string {
 func (c Config) ReadOnly() bool { return !c.Mode.Writable() }
 
 // AppName is what this program calls itself to a server.
-const AppName = "tui4db"
+const AppName = "opendba"
 
 // ApplicationName is what a connection tells the server it is: this program, and
 // which of your profiles it opened.

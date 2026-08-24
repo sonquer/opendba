@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/sonquer/tui4db/src/cli/pkg/secretref"
+	"github.com/sonquer/opendba/src/cli/pkg/secretref"
 )
 
 type SafetySettings struct {

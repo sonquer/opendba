@@ -3,7 +3,7 @@ package local
 import (
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai"
+	"github.com/sonquer/opendba/src/cli/internal/ai"
 )
 
 func TestNormalise(t *testing.T) {

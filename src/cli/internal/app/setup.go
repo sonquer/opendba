@@ -9,10 +9,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/sonquer/tui4db/src/cli/internal/cli"
-	"github.com/sonquer/tui4db/src/cli/internal/config"
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
-	"github.com/sonquer/tui4db/src/cli/internal/ui"
+	"github.com/sonquer/opendba/src/cli/internal/cli"
+	"github.com/sonquer/opendba/src/cli/internal/config"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 type stage int
@@ -31,7 +31,7 @@ type SetupDone struct {
 
 func (d SetupDone) Warning() string {
 	if d.Saved && d.Info.CanWrite && d.Connection.Mode == config.ReadOnly {
-		return "the role can write, so read only is enforced by tui4db alone"
+		return "the role can write, so read only is enforced by opendba alone"
 	}
 	return ""
 }
@@ -212,7 +212,7 @@ func connectionFields(values *answers, theme *ui.Theme) []field {
 	return []field{
 		textField(theme, "host", "host", values.host, "the server to connect to").require(),
 		textField(theme, "port", "port", values.port, "5432 unless the server was moved").require().checked(port),
-		textField(theme, "user", "user", values.user, "the role tui4db connects as"),
+		textField(theme, "user", "user", values.user, "the role opendba connects as"),
 		secretField(theme, "password", "password", values.password, passwordHint(values.existing)),
 		textField(theme, "database", "database", values.database, "left empty the server picks its default, usually the user name"),
 		choiceField("ssl", "ssl", []string{"prefer", "require", "verify-ca", "verify-full", "disable"}, values.sslmode, "← → picks how the connection is encrypted"),
@@ -450,7 +450,7 @@ func (m SetupModel) View() tea.View {
 	v.AltScreen = true
 	v.BackgroundColor = m.theme.P.Bg
 	v.ForegroundColor = m.theme.P.Fg
-	v.WindowTitle = "tui4db setup"
+	v.WindowTitle = "opendba setup"
 	v.SetContent(m.theme.Base.Render(m.content()))
 	return v
 }
@@ -472,7 +472,7 @@ func (m SetupModel) content() string {
 }
 
 func (m SetupModel) headline() string {
-	title := "tui4db setup"
+	title := "opendba setup"
 	if m.editing.ID != "" {
 		title = "configuration"
 	}

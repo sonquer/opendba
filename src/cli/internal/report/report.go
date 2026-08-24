@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver"
 )
 
 const SchemaVersion = "1.0.0"

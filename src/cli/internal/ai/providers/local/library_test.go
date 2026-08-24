@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local/embedded"
+	"github.com/sonquer/opendba/src/cli/internal/ai/providers/local/embedded"
 )
 
 // TestTheBuildIsTiedToTheBinding is the guarantee that this pair moves
