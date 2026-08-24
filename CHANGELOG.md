@@ -31,6 +31,46 @@ meets the classifier like anything else, it is on screen, and it is the
 statement to add a WHERE to. The name in it is quoted the way the server quotes
 one, so a table with a capital letter opens.
 
+CI could not build the dev tooling, because a source file was in `.gitignore`.
+`coverage.*` was written without a leading slash, so it matched at every depth
+and swallowed `src/tools/internal/render/coverage.go` — the file defining the
+function the coverage command calls. The artifacts it was meant to cover were
+already ignored by anchored rules further down the file. The patterns are
+anchored now, and a clean checkout of the tree builds both modules.
+
+The keys on a reading's page are drawn on caps, with a rule between them and
+the words. It was the last screen building its hint row by hand out of grey
+prose, which does not read as something to press.
+
+A local model's thinking is no longer printed as its answer. Ask one something
+and it would reply with `<|channel>thought`, three paragraphs of its own
+deliberation, `<channel|>`, and then — buried at the bottom — the two lines that
+were the reply. The local provider had never emitted a reasoning chunk in its
+life: `ai.ChunkReasoning*` has existed all along and every remote provider uses
+it, but the one provider that gets an undifferentiated stream of tokens and has
+to do the separation itself was never taught to. It is now, and the thinking
+goes where thinking already went — folded away behind `ctrl+t`.
+
+Conversations saved before this keep what they showed. Rewriting them would mean
+putting words in a model's mouth that it did not say in that order.
+
+There is one grey behind things now instead of three. `Selection` `#27272a` and
+`Empty` `#2a2a2e` differed by three parts in 255, which no terminal shows, and
+both meant the same thing: a ground behind a block of content. They are one
+`Surface`, and it is much darker — `#151517`, barely lifted off the black — so
+the box you type a question into and the sentence that appears in the corner
+stop reading as bright bands. The corner in particular was wearing the keycap
+colour at the size of a slab.
+
+The keycaps keep a colour of their own, darkened to match. They are not a
+surface: the cap on the tab you are in sits against that tab's own ground with
+nothing between them, and lightness is the only thing telling them apart.
+
+The dot after the name of the connection you are on is gone, replaced by the
+words "in use" at the end of the row. A dot says nothing to anybody who has not
+been told what it means, and that row was already drawn in the accent, so it was
+saying the same thing twice — once illegibly.
+
 A dashboard with nothing running shows the table with its column names and no
 rows, rather than a sentence where the table was. The screen stopped jumping
 every time the last statement finished.

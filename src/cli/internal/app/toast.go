@@ -121,7 +121,7 @@ func (t toaster) one(theme *ui.Theme, held note) string {
 	if held.alarm {
 		colour = theme.P.Critical
 	}
-	bar := lipgloss.NewStyle().Foreground(colour).Background(theme.P.Keycap).
+	bar := lipgloss.NewStyle().Foreground(colour).Background(theme.P.Surface).
 		Render(strings.Repeat("▌\n", lipgloss.Height(said)-1) + "▌")
 	return lipgloss.JoinHorizontal(lipgloss.Top, bar, said)
 }

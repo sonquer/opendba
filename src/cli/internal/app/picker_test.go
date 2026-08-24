@@ -58,7 +58,7 @@ func TestThePickerGroupsAndMarks(t *testing.T) {
 	if strings.Count(view, "DATABASES") != 1 {
 		t.Error("a section announces itself once")
 	}
-	if !strings.Contains(view, "app ·") {
+	if !strings.Contains(view, "in use") {
 		t.Errorf("what is in use must be marked:\n%s", view)
 	}
 	if !strings.Contains(view, "cold") {

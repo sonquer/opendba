@@ -1221,7 +1221,7 @@ func TestWhoSaidWhatIsDrawnRatherThanLabelled(t *testing.T) {
 	if !strings.Contains(asked, plain4Accent(m)) {
 		t.Fatalf("the bar is not the accent colour: %q", asked)
 	}
-	if !strings.Contains(asked, ground4Test(m.theme.P.Selection)) {
+	if !strings.Contains(asked, ground4Test(m.theme.P.Surface)) {
 		t.Fatalf("the question has no ground behind it: %q", asked)
 	}
 	if lipgloss.Width(asked) != 80 {
@@ -1312,7 +1312,7 @@ func TestTheBoxIsAWholeBlock(t *testing.T) {
 		if !strings.HasPrefix(plain(line), "┃") {
 			t.Fatalf("row %d has no bar down its side: %q", at, plain(line))
 		}
-		if strings.Count(line, ground4Test(m.theme.P.Empty)) == 0 {
+		if strings.Count(line, ground4Test(m.theme.P.Surface)) == 0 {
 			t.Fatalf("row %d has nothing behind it: %q", at, line)
 		}
 	}

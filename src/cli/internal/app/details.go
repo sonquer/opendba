@@ -100,15 +100,18 @@ func (d details) view(width, height int) string {
 	}
 	shown, more := ui.Window(strings.Join(body, "\n"), d.offset, rows)
 	head := ui.SplitLine(d.theme.Title.Render(ui.Truncate(d.title, inner-12)), d.tag, inner)
-	foot := ui.Dotted(ui.Keystroke("esc")+" back", "↑↓ scroll")
+	hints := []ui.Hint{{Key: "esc", Does: "back"}}
 	if d.ask {
-		foot = ui.Dotted(ui.Keystroke("esc")+" back", ui.Keystroke("a")+" ask about this", "↑↓ scroll")
+		hints = append(hints, ui.Hint{Key: "a", Does: "ask about this"})
 	}
+	hints = append(hints, ui.Hint{Key: "↑↓", Does: "scroll"})
+	foot := d.theme.Hints(hints...)
 	if more > 0 {
-		foot = ui.Dotted(foot, ui.Plural(more, "more line", "more lines"))
+		foot = ui.SplitLine(foot,
+			d.theme.Subtle.Render(ui.Plural(more, "more line", "more lines")), inner)
 	}
 	return d.theme.Panel.Render(square(strings.Join([]string{
-		head, d.theme.Rule(inner), "", shown, "", d.theme.Subtle.Render(foot),
+		head, d.theme.Rule(inner), "", shown, "", d.theme.Rule(inner), foot,
 	}, "\n"), inner))
 }
 

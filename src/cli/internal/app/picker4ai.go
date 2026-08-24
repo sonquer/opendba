@@ -383,7 +383,7 @@ func (m Model) chooserView(width, height int) string {
 
 	parts := []string{
 		ui.SplitLine(m.theme.Title.Render("what answers"),
-			m.theme.Subtle.Render(ui.Keystroke("esc")), inner),
+			m.theme.KeycapStyle.Render("esc"), inner),
 		"",
 		m.theme.Prompt.Render("› ") + m.chooser.filter.View(),
 		"",

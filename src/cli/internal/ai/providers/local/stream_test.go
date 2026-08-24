@@ -290,3 +290,195 @@ func TestWhatIsHeldBehindACallIsCutToo(t *testing.T) {
 		t.Fatal("the turn is not marked as over")
 	}
 }
+
+// reasoning is what the model said to itself, the way text is what it said to
+// the person.
+func reasoning(chunks []ai.Chunk) string {
+	var built strings.Builder
+	for _, chunk := range chunks {
+		if chunk.Kind == ai.ChunkReasoningDelta {
+			built.WriteString(chunk.Text)
+		}
+	}
+	return built.String()
+}
+
+// letters feeds an answer one byte at a time, which is closer to what an engine
+// does than handing over whole words is. A marker split down the middle is the
+// thing that breaks a reader, and the only way to be sure it does not is to
+// split every one of them.
+func letters(answer string) []string {
+	pieces := make([]string, 0, len(answer))
+	for i := range answer {
+		pieces = append(pieces, answer[i:i+1])
+	}
+	return pieces
+}
+
+// bothWays reads an answer whole and then a byte at a time, and insists the two
+// agree. Everything a reader can get wrong about a marker it gets wrong in only
+// one of the two.
+func bothWays(t *testing.T, answer string, stop ai.StopReason) []ai.Chunk {
+	t.Helper()
+	whole := read(t, []string{answer}, stop)
+	split := read(t, letters(answer), stop)
+	if text(whole) != text(split) {
+		t.Fatalf("read whole the answer is %q; read a byte at a time it is %q",
+			text(whole), text(split))
+	}
+	if reasoning(whole) != reasoning(split) {
+		t.Fatalf("read whole the thinking is %q; read a byte at a time it is %q",
+			reasoning(whole), reasoning(split))
+	}
+	return whole
+}
+
+// A model that thinks out loud has its thinking kept apart from its answer,
+// and neither bracket reaches the person. This is the answer that prompted the
+// work, copied off the screen it was drawn on.
+func TestAModelsThinkingIsNotItsAnswer(t *testing.T) {
+	answer := GemmaThinkOpen + "thought\n" +
+		"The user is asking about \"idle indexes\", which currently reads 5.1 MiB.\n\n" +
+		"I will use the health_findings tool." + GemmaThinkClose +
+		"The warning indicates that 111 indexes have never been used."
+
+	chunks := bothWays(t, answer, ai.StopEndTurn)
+	if got := text(chunks); got != "The warning indicates that 111 indexes have never been used." {
+		t.Errorf("the answer is %q", got)
+	}
+	said := reasoning(chunks)
+	if !strings.Contains(said, "idle indexes") || !strings.Contains(said, "health_findings tool") {
+		t.Errorf("the thinking is %q", said)
+	}
+	if strings.HasPrefix(said, "thought") {
+		t.Errorf("the name of the channel is not the first thing thought: %q", said)
+	}
+	for _, marker := range Thinking() {
+		if strings.Contains(text(chunks)+said, marker) {
+			t.Errorf("%q reached the person", marker)
+		}
+	}
+}
+
+// The blocks are bracketed the way every other provider brackets them.
+func TestThinkingIsBracketedLikeEverythingElse(t *testing.T) {
+	chunks := read(t, []string{GemmaThinkOpen + "thought\nwhy" + GemmaThinkClose + "because"},
+		ai.StopEndTurn)
+	want := []ai.ChunkKind{
+		ai.ChunkReasoningStart, ai.ChunkReasoningDelta, ai.ChunkReasoningEnd,
+		ai.ChunkTextStart, ai.ChunkTextDelta, ai.ChunkTextEnd, ai.ChunkDone,
+	}
+	if got := kinds(chunks); !sameKinds(got, want) {
+		t.Errorf("kinds = %v, want %v", got, want)
+	}
+}
+
+func sameKinds(got, want []ai.ChunkKind) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Thinking that is never closed is folded away rather than printed. The model
+// stopped mid-thought; what it was working through is still not the answer, and
+// printing it with a bracket hanging off it is the failure this whole change is
+// about.
+func TestThinkingThatIsNeverClosedIsStillThinking(t *testing.T) {
+	chunks := bothWays(t, "here goes "+GemmaThinkOpen+"thought\nstill working",
+		ai.StopEndTurn)
+	if got := text(chunks); got != "here goes " {
+		t.Errorf("the answer is %q, only what was said before the thinking", got)
+	}
+	if got := reasoning(chunks); got != "still working" {
+		t.Errorf("the thinking is %q", got)
+	}
+}
+
+// A closing bracket nobody opened is not a licence to hide the answer.
+func TestAStrayClosingBracketDoesNotHideAnything(t *testing.T) {
+	chunks := bothWays(t, "the answer"+GemmaThinkClose+" continues", ai.StopEndTurn)
+	if got := text(chunks); !strings.Contains(got, "the answer") ||
+		!strings.Contains(got, "continues") {
+		t.Errorf("the answer is %q, and nothing was opened to close", got)
+	}
+	if got := reasoning(chunks); got != "" {
+		t.Errorf("nothing was thought, got %q", got)
+	}
+}
+
+// A tool call written inside the thinking is still a tool call.
+func TestAToolCallInsideTheThinkingIsStillACall(t *testing.T) {
+	answer := GemmaThinkOpen + "thought\nI will look." + GemmaThinkClose +
+		GemmaOpen + "call:list_schemas{}" + GemmaClose
+	chunks := read(t, []string{answer}, ai.StopEndTurn)
+	calls := 0
+	for _, chunk := range chunks {
+		if chunk.Kind == ai.ChunkToolEnd {
+			calls++
+		}
+	}
+	if calls != 1 {
+		t.Errorf("calls = %d, want 1", calls)
+	}
+	if got := reasoning(chunks); !strings.Contains(got, "I will look") {
+		t.Errorf("the thinking is %q", got)
+	}
+}
+
+// An answer with no thinking in it reads exactly as it did before any of this.
+func TestAnAnswerWithoutThinkingIsUntouched(t *testing.T) {
+	answer := "the orders table has 12 columns"
+	chunks := bothWays(t, answer, ai.StopEndTurn)
+	if got := text(chunks); got != answer {
+		t.Errorf("text = %q, want %q", got, answer)
+	}
+	if got := reasoning(chunks); got != "" {
+		t.Errorf("nothing was thought, got %q", got)
+	}
+	for _, kind := range kinds(chunks) {
+		if kind == ai.ChunkReasoningStart || kind == ai.ChunkReasoningDelta {
+			t.Errorf("kinds = %v, no reasoning block belongs here", kinds(chunks))
+			break
+		}
+	}
+}
+
+// The name of the channel is dropped however it is written.
+func TestTheNameOfTheChannelIsDropped(t *testing.T) {
+	for name, opened := range map[string]string{
+		"a named channel":     GemmaThinkOpen + "thought\nwhy",
+		"another name":        GemmaThinkOpen + "analysis why",
+		"no name at all":      GemmaThinkOpen + "why",
+		"a name and a spacer": GemmaThinkOpen + "thought \twhy",
+	} {
+		t.Run(name, func(t *testing.T) {
+			chunks := read(t, []string{opened + GemmaThinkClose + "so"}, ai.StopEndTurn)
+			if got := reasoning(chunks); !strings.HasPrefix(got, "why") {
+				t.Errorf("the thinking is %q, want it to begin at the thought", got)
+			}
+			if got := text(chunks); got != "so" {
+				t.Errorf("the answer is %q", got)
+			}
+		})
+	}
+}
+
+// Every marker the reader watches for is one it will not print half of.
+func TestTheThinkingMarkersAreWhatTheScreenWatchesFor(t *testing.T) {
+	if len(Thinking()) == 0 {
+		t.Fatal("a family that thinks out loud must say so")
+	}
+	for _, marker := range Thinking() {
+		t.Run(marker, func(t *testing.T) {
+			if partialTag(marker[:len(marker)-1]) == 0 {
+				t.Errorf("%q would be drawn one character at a time", marker)
+			}
+		})
+	}
+}

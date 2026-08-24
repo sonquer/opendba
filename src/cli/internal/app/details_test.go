@@ -410,3 +410,26 @@ func TestEveryFindingHasAPage(t *testing.T) {
 		t.Error("a code with no page has none")
 	}
 }
+
+// The keys a page offers are drawn on caps, like the keys everywhere else. A
+// letter sitting in grey prose beside grey prose does not read as something to
+// press, and this page was the last one building its own row by hand.
+func TestThePageDrawsItsKeysOnCaps(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 110, 34
+	opened, _ := press(t, m, "enter")
+	if opened.page == nil {
+		t.Fatal("enter must open the page")
+	}
+	drawn := opened.page.view(110, 34)
+	for _, key := range []string{"esc", "↑↓"} {
+		if !strings.Contains(drawn, m.theme.KeycapStyle.Render(key)) {
+			t.Errorf("%q must be on a cap:\n%s", key, plain(drawn))
+		}
+	}
+	shown := plain(drawn)
+	rules := strings.Count(shown, strings.Repeat("─", 10))
+	if rules < 2 {
+		t.Errorf("the keys want a rule between them and the words:\n%s", shown)
+	}
+}

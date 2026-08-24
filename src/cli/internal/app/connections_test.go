@@ -118,7 +118,7 @@ func TestTheConnectionsScreenListsTheProfiles(t *testing.T) {
 			t.Errorf("the list must show %q:\n%s", want, view)
 		}
 	}
-	if !strings.Contains(view, "production-eu ·") {
+	if !strings.Contains(view, "in use") {
 		t.Error("the connection in use must be marked")
 	}
 }

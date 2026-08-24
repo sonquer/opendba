@@ -111,9 +111,6 @@ func (p picker) line(item row, width int, active bool) string {
 	case item.current, item.on:
 		label = p.theme.Accent.Render(item.label)
 	}
-	if item.current {
-		label += p.theme.Subtle.Render(" ·")
-	}
 	left := marker + strings.Repeat("  ", item.depth) + p.box(item, active) + label
 	right := p.aside(item, max(width-lipgloss.Width(left)-2, 8))
 	if right == "" {
@@ -122,33 +119,59 @@ func (p picker) line(item row, width int, active bool) string {
 	return ui.SplitLine(left, right, width)
 }
 
-// aside is what sits at the right of a row: what the row is about, and then the
-// key it answers to on a cap of its own. They are drawn apart on purpose. A
-// column where one row holds a keystroke and the next holds a sentence is a
-// column the eye cannot run down, and a key printed as plain text beside prose
-// does not read as something to press.
+// aside is what sits at the right of a row: what the row is about, then the
+// word for the row that is the one in use, then the key it answers to on a cap
+// of its own. They are drawn apart on purpose. A column where one row holds a
+// keystroke and the next holds a sentence is a column the eye cannot run down,
+// and a key printed as plain text beside prose does not read as something to
+// press.
+//
+// The word used to be a dot after the name, which said nothing to anybody who
+// had not been told what it meant, and said it twice over for a row that was
+// already drawn in the accent. It is never cut: which row you are already on
+// matters more than the rest of the line it shares.
 func (p picker) aside(item row, room int) string {
-	column := p.caps
-	cap4Key := strings.Repeat(" ", column)
-	if item.cap != "" {
-		drawn := p.theme.KeycapStyle.Render(item.cap)
-		cap4Key = strings.Repeat(" ", max(column-lipgloss.Width(drawn), 0)) + drawn
+	held := ""
+	if item.current {
+		held = p.theme.Subtle.Render(here4Row)
+		room -= lipgloss.Width(held) + 2
 	}
-	if column > 0 {
-		room -= column + 2
+	cap4Key := ""
+	if p.caps > 0 {
+		cap4Key = p.cap4Key(item)
+		room -= p.caps + 2
 	}
 	note := ""
 	if item.note != "" && room > 0 {
 		note = p.theme.Muted.Render(ui.Truncate(item.note, room))
 	}
-	switch {
-	case column == 0:
-		return note
-	case note == "":
-		return cap4Key
-	default:
-		return note + "  " + cap4Key
+	return strings.TrimRight(strings.TrimLeft(
+		strings.Join(kept4Row(note, held, cap4Key), "  "), " "), " ")
+}
+
+// kept4Row drops the pieces a row has nothing to put in, so two spaces never
+// stand in for something that was not there.
+func kept4Row(parts ...string) []string {
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			kept = append(kept, part)
+		}
 	}
+	return kept
+}
+
+// here4Row is the word on the row somebody is already on.
+const here4Row = "in use"
+
+// cap4Key is the key a row answers to, right-aligned in the column every row
+// shares so the keys read down rather than sitting wherever the prose left off.
+func (p picker) cap4Key(item row) string {
+	if item.cap == "" {
+		return strings.Repeat(" ", p.caps)
+	}
+	drawn := p.theme.KeycapStyle.Render(item.cap)
+	return strings.Repeat(" ", max(p.caps-lipgloss.Width(drawn), 0)) + drawn
 }
 
 // box draws the state of a row in a form, where a row is chosen rather than

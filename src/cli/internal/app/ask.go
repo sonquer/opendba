@@ -226,7 +226,7 @@ func newChat(theme *ui.Theme, instance string) chat {
 	field.ShowLineNumbers = false
 	field.SetHeight(promptRows)
 	field.CharLimit = 0
-	ground := lipgloss.NewStyle().Background(theme.P.Empty)
+	ground := lipgloss.NewStyle().Background(theme.P.Surface)
 	styles := textarea.DefaultStyles(true)
 	styles.Focused.Base = ground
 	styles.Blurred.Base = ground
@@ -838,7 +838,7 @@ func (m Model) typed(width int) string {
 		written = m.talk.prompt.Placeholder
 	}
 	lines := make([]string, 0, promptRows)
-	dim := m.theme.Subtle.Background(m.theme.P.Empty)
+	dim := m.theme.Subtle.Background(m.theme.P.Surface)
 	for i, line := range strings.Split(ui.Fit(written, promptRows), "\n") {
 		if i >= promptRows {
 			break
@@ -885,17 +885,17 @@ func (m Model) asked4Permission(waiting approval, inner int) string {
 // or is answering. A border would draw a rectangle around three blank lines,
 // which is a lot of furniture for a place to type.
 func (m Model) boxed(content string, inner int) string {
-	ground := lipgloss.NewStyle().Background(m.theme.P.Empty)
+	ground := lipgloss.NewStyle().Background(m.theme.P.Surface)
 	bar := ground.Foreground(m.theme.P.Border)
 	if !m.shut() && m.talk.prompt.Focused() && m.talk.pending == nil {
 		bar = ground.Foreground(m.theme.P.Accent)
 	}
 	lines := strings.Split(content, "\n")
 	drawn := make([]string, 0, len(lines)+2)
-	blank := bar.Render("┃") + ui.Fill("", inner+3, m.theme.P.Empty)
+	blank := bar.Render("┃") + ui.Fill("", inner+3, m.theme.P.Surface)
 	drawn = append(drawn, blank)
 	for _, line := range lines {
-		drawn = append(drawn, bar.Render("┃")+ui.Fill("  "+line, inner+3, m.theme.P.Empty))
+		drawn = append(drawn, bar.Render("┃")+ui.Fill("  "+line, inner+3, m.theme.P.Surface))
 	}
 	return strings.Join(append(drawn, blank), "\n")
 }
@@ -904,9 +904,9 @@ func (m Model) boxed(content string, inner int) string {
 func (m Model) meta(width int) string {
 	if m.build == nil {
 		return ui.SplitLine("",
-			m.theme.HintsOn(m.theme.P.Empty, ui.Hint{Key: "enter", Does: "choose what answers"}), width)
+			m.theme.HintsOn(m.theme.P.Surface, ui.Hint{Key: "enter", Does: "choose what answers"}), width)
 	}
-	ground := m.theme.P.Empty
+	ground := m.theme.P.Surface
 	said := []string{m.theme.Accent.Background(ground).Render(m.talk.instance)}
 	if model := m.model4Meta(); model != "" {
 		said = append(said, m.theme.Value.Background(ground).Render(model))
@@ -921,7 +921,7 @@ func (m Model) meta(width int) string {
 // hint4Meta is the key worth offering under the box, which is the one that
 // changes while a model is being loaded or held.
 func (m Model) hint4Meta() string {
-	ground := m.theme.P.Empty
+	ground := m.theme.P.Surface
 	switch {
 	case m.talk.loading:
 		return m.theme.HintsOn(ground, ui.Hint{Key: "esc", Does: "stop loading"})
@@ -998,8 +998,8 @@ func (m Model) exchangeView(said exchange, width int, current bool) string {
 // "you" at the top of every block does badly.
 func (m Model) asked4View(question string, width int) string {
 	room := max(width-2, 1)
-	body := lipgloss.NewStyle().Background(m.theme.P.Selection).Foreground(m.theme.P.OnSelection)
-	bar := lipgloss.NewStyle().Background(m.theme.P.Selection).Foreground(m.theme.P.Accent)
+	body := lipgloss.NewStyle().Background(m.theme.P.Surface).Foreground(m.theme.P.OnSelection)
+	bar := lipgloss.NewStyle().Background(m.theme.P.Surface).Foreground(m.theme.P.Accent)
 	lines := strings.Split(wrap(strings.TrimSpace(question), room), "\n")
 	drawn := make([]string, 0, len(lines))
 	for _, line := range lines {

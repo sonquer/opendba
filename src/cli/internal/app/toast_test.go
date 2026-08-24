@@ -103,3 +103,40 @@ func TestALongSentenceWrapsOntoOneGround(t *testing.T) {
 		t.Errorf("width = %d, it must stop at %d plus its frame", widest, toastWidth)
 	}
 }
+
+// A passing sentence is drawn on a ground of its own. It sits over whatever
+// screen it interrupted, and words with nothing under them read as part of that
+// screen rather than as something the program just said.
+func TestASentenceIsDrawnOnAGround(t *testing.T) {
+	theme := ui.Default()
+	var said toaster
+	said.notify("the file is written")
+	drawn := said.render(theme)
+
+	ground := background4Toast(theme.Toast.Render(" "))
+	if ground == "" {
+		t.Fatal("the toast style has no ground to look for")
+	}
+	for i, line := range strings.Split(drawn, "\n") {
+		if !strings.Contains(line, ground) {
+			t.Errorf("line %d of the toast has no ground under it:\n%q", i, line)
+		}
+	}
+	if strings.Contains(drawn, background4Toast(theme.KeycapStyle.Render(" "))) {
+		t.Error("a toast is a surface, not a key on one")
+	}
+}
+
+// background4Toast is the escape a style emits for its ground, which is what a
+// test can look for in a rendered line without knowing the colour.
+func background4Toast(rendered string) string {
+	at := strings.Index(rendered, "48;2;")
+	if at < 0 {
+		return ""
+	}
+	end := strings.IndexByte(rendered[at:], 'm')
+	if end < 0 {
+		return ""
+	}
+	return rendered[at : at+end]
+}

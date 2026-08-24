@@ -462,7 +462,7 @@ func colour4Test(c color.Color) string {
 // shows the colour in the gaps between them and nowhere else.
 func TestFillPaintsWhatNothingElsePainted(t *testing.T) {
 	theme := Default()
-	ground := theme.P.Empty
+	ground := theme.P.Surface
 	line := theme.Accent.Render("local") + " · " + theme.KeycapStyle.Render("esc")
 	filled := Fill(line, 40, ground)
 
@@ -484,10 +484,10 @@ func TestFillPaintsWhatNothingElsePainted(t *testing.T) {
 }
 
 func TestFillLeavesNothingToDoWithNothing(t *testing.T) {
-	if got := plain(Fill("", 4, Default().P.Empty)); got != "    " {
+	if got := plain(Fill("", 4, Default().P.Surface)); got != "    " {
 		t.Fatalf("Fill() = %q, want a run of ground", got)
 	}
-	if got := plain(Fill("wider than it is told", 4, Default().P.Empty)); got != "wider than it is told" {
+	if got := plain(Fill("wider than it is told", 4, Default().P.Surface)); got != "wider than it is told" {
 		t.Fatalf("Fill() = %q, want the line left whole", got)
 	}
 }

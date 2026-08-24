@@ -21,12 +21,21 @@ type Palette struct {
 	Inactive color.Color
 	OnEnv    color.Color
 
-	Selection   color.Color
+	// Surface is the ground behind a block of content: the box a question is
+	// typed into, the question itself, the row under the cursor, the tab in
+	// front, a passing sentence in the corner. One colour, because they are one
+	// idea, and barely lifted off the black behind them: a surface that draws
+	// the eye is a surface competing with what it is holding.
+	Surface     color.Color
 	OnSelection color.Color
-	Keycap      color.Color
-	Empty       color.Color
-	Badge       color.Color
-	OnBadge     color.Color
+
+	// Keycap is a chip drawn on top of a surface rather than a surface itself,
+	// which is why it is not Surface. The cap on the tab you are in sits
+	// against that tab's own ground with nothing between them, and the only
+	// thing telling the two apart is that the cap is lighter.
+	Keycap  color.Color
+	Badge   color.Color
+	OnBadge color.Color
 
 	BarOK       color.Color
 	BarWarn     color.Color
@@ -53,10 +62,9 @@ func DefaultPalette() Palette {
 		Inactive: lipgloss.Color("#585858"),
 		OnEnv:    lipgloss.Color("#101010"),
 
-		Selection:   lipgloss.Color("#27272a"),
+		Surface:     lipgloss.Color("#151517"),
 		OnSelection: lipgloss.Color("#fafafa"),
-		Keycap:      lipgloss.Color("#3f3f46"),
-		Empty:       lipgloss.Color("#2a2a2e"),
+		Keycap:      lipgloss.Color("#2e2e34"),
 		Badge:       lipgloss.Color("#d78ba0"),
 		OnBadge:     lipgloss.Color("#141014"),
 
@@ -184,7 +192,6 @@ type Theme struct {
 	SectionHead lipgloss.Style
 	Error       lipgloss.Style
 	Divider     lipgloss.Style
-	Empty       lipgloss.Style
 	Selected2   lipgloss.Style
 	KeycapStyle lipgloss.Style
 	BadgeStyle  lipgloss.Style
@@ -193,9 +200,9 @@ type Theme struct {
 	// Toast is the ground a passing sentence is drawn on. It has a background
 	// of its own because it sits over whatever screen it interrupted, and text
 	// with no ground under it reads as part of that screen rather than as
-	// something the program just said. The ground is the one the keycaps use:
-	// the selection colour is a shade off black and disappears on the black a
-	// terminal usually is.
+	// something the program just said. It is the same ground as everything else
+	// that holds content, and it used to be the keycap colour, which is a chip
+	// worn at the size of a slab and read as a light band across the screen.
 	Toast     lipgloss.Style
 	TableHead lipgloss.Style
 
@@ -245,12 +252,12 @@ func NewTheme(p Palette) *Theme {
 			BorderForeground(p.Border).BorderBackground(p.Bg).Background(p.Bg).Padding(0, 1),
 		TableHead:   lipgloss.NewStyle().Foreground(p.Muted),
 		Divider:     lipgloss.NewStyle().Foreground(p.Border),
-		Selected2:   lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Selection),
+		Selected2:   lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Surface),
 		KeycapStyle: lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap).Padding(0, 1),
-		Toast:       lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap).Padding(1, 2),
+		Toast:       lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Surface).Padding(1, 2),
 		BadgeStyle: lipgloss.NewStyle().Foreground(p.OnBadge).Background(p.Badge).
 			Bold(true).Padding(0, 1),
-		Tab:     lipgloss.NewStyle().Foreground(p.Accent).Background(p.Selection).Bold(true),
+		Tab:     lipgloss.NewStyle().Foreground(p.Accent).Background(p.Surface).Bold(true),
 		TabIdle: lipgloss.NewStyle().Foreground(p.Muted),
 		TabKey:  lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap),
 	}

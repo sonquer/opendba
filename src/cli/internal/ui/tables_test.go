@@ -94,10 +94,10 @@ func TestTableList(t *testing.T) {
 	}
 	painted := strings.Split(theme.TableList(tables, List{Cursor: 0, Sort: -1, Width: 110}), "\n")
 	first := len(painted) - 2
-	if !strings.Contains(painted[first], background(theme.P.Selection)) {
+	if !strings.Contains(painted[first], background(theme.P.Surface)) {
 		t.Errorf("the row under the cursor is painted end to end: %q", painted[first])
 	}
-	if strings.Contains(painted[first+1], background(theme.P.Selection)) {
+	if strings.Contains(painted[first+1], background(theme.P.Surface)) {
 		t.Errorf("and only that row: %q", painted[first+1])
 	}
 	if lipgloss.Width(painted[first]) != 110 {

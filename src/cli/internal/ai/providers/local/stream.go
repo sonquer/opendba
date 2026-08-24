@@ -18,6 +18,23 @@ type reader struct {
 	calling bool
 	started bool
 
+	// thinking is the model talking to itself rather than to the person, and
+	// thought is that having been started so it can be closed. They are kept
+	// apart from started for the same reason the chunks are: a block of
+	// deliberation must never open a block of answer.
+	thinking bool
+	thought  bool
+
+	// naming is the channel's own name not yet having been read off the front
+	// of what was said. It is a state rather than a cut made once, because the
+	// name arrives a byte at a time like everything else and a cut made on the
+	// first of those bytes cuts nothing.
+	naming bool
+
+	// speaks is the family whose brackets were recognised, kept so the closing
+	// one looked for is the mate of the opening one found.
+	speaks dialect
+
 	// ending is the end of turn marker having been written out as text. It
 	// should not happen: the token that ends a turn is a special one, and a
 	// sampler that picks it stops the loop before anything is printed. It
@@ -69,9 +86,19 @@ func (r *reader) add(text string) []ai.Chunk {
 		return nil
 	}
 	r.visible.WriteString(text)
+	if r.thinking {
+		return r.deliberating()
+	}
 	pending := r.visible.String()
 	_, call := opening(pending)
 	ends := earliest(pending, Endings)
+	spoken, thinks := thinkingOpens(pending)
+	if thinks >= 0 && first(thinks, call, ends) {
+		r.thinking, r.naming, r.speaks = true, true, spoken
+		r.visible.Reset()
+		r.visible.WriteString(pending[thinks+len(spoken.thinkOpen):])
+		return append(r.show(pending[:thinks]), r.deliberating()...)
+	}
 	if call >= 0 && (ends < 0 || call < ends) {
 		r.calling = true
 		r.visible.Reset()
@@ -84,6 +111,94 @@ func (r *reader) add(text string) []ai.Chunk {
 		return r.show(pending[:ends])
 	}
 	return r.show(r.release(pending))
+}
+
+// first reports whether a marker is the earliest of the three, counting the
+// ones that are not there at all as being nowhere.
+func first(at int, others ...int) bool {
+	for _, other := range others {
+		if other >= 0 && other < at {
+			return false
+		}
+	}
+	return true
+}
+
+// withoutChannelName drops the name of the channel from the front of what the
+// model said to itself, and says whether it could tell yet.
+//
+// A channel is opened as <|channel>thought, and the word after the bracket
+// names the channel rather than being the first thing thought. A word is only
+// the name when something spaces it from what follows: <|channel>why is a
+// channel with no name and a thought that begins at "why", and eating that word
+// would be eating the thought.
+func withoutChannelName(text string) (string, bool) {
+	cut := 0
+	for cut < len(text) && isLetter(text[cut]) {
+		cut++
+	}
+	if cut == len(text) {
+		return text, false
+	}
+	if !isSpacer(text[cut]) {
+		return text, true
+	}
+	return strings.TrimLeft(text[cut:], " \t\r\n"), true
+}
+
+func isLetter(held byte) bool {
+	return held >= 'a' && held <= 'z' || held >= 'A' && held <= 'Z'
+}
+
+func isSpacer(held byte) bool {
+	return held == ' ' || held == '\t' || held == '\r' || held == '\n'
+}
+
+// deliberating forwards what the model is saying to itself, holding back the
+// tail that could still turn into the closing bracket and stopping the moment
+// it does. The words stream rather than being kept to the end: the screen shows
+// the last of them while they are the only thing that has arrived, and a model
+// that thinks for a minute with nothing on screen is a model that has hung.
+func (r *reader) deliberating() []ai.Chunk {
+	if r.naming {
+		rest, told := withoutChannelName(r.visible.String())
+		if !told {
+			return nil
+		}
+		r.naming = false
+		r.visible.Reset()
+		r.visible.WriteString(rest)
+	}
+	pending := r.visible.String()
+	at := strings.Index(pending, r.speaks.thinkClose)
+	if at < 0 {
+		return r.think(r.release(pending))
+	}
+	rest := pending[at+len(r.speaks.thinkClose):]
+	chunks := r.think(pending[:at])
+	if r.thought {
+		chunks = append(chunks, ai.Chunk{Kind: ai.ChunkReasoningEnd})
+		r.thought = false
+	}
+	r.thinking = false
+	r.visible.Reset()
+	if rest == "" {
+		return chunks
+	}
+	return append(chunks, r.add(rest)...)
+}
+
+// think is show for what a model says to itself.
+func (r *reader) think(text string) []ai.Chunk {
+	if text == "" {
+		return nil
+	}
+	chunks := make([]ai.Chunk, 0, 2)
+	if !r.thought {
+		r.thought = true
+		chunks = append(chunks, ai.Chunk{Kind: ai.ChunkReasoningStart})
+	}
+	return append(chunks, ai.Chunk{Kind: ai.ChunkReasoningDelta, Text: text})
 }
 
 // earliest is where the first of a set of markers begins, or -1 for none.
@@ -141,6 +256,20 @@ func (r *reader) finished() string {
 // model made, then the reason it stopped.
 func (r *reader) done(stop ai.StopReason) ([]ai.Chunk, error) {
 	chunks := []ai.Chunk{}
+	if r.thinking {
+		said := r.visible.String()
+		if r.naming {
+			said, _ = withoutChannelName(said)
+		}
+		chunks = append(chunks, r.think(said)...)
+		if r.thought {
+			chunks = append(chunks, ai.Chunk{Kind: ai.ChunkReasoningEnd})
+		}
+		if r.started {
+			chunks = append(chunks, ai.Chunk{Kind: ai.ChunkTextEnd})
+		}
+		return append(chunks, ai.Chunk{Kind: ai.ChunkDone, Stop: stop}), nil
+	}
 	if !r.calling {
 		chunks = append(chunks, r.show(r.visible.String())...)
 		if r.started {
@@ -177,7 +306,7 @@ func (r *reader) done(stop ai.StopReason) ([]ai.Chunk, error) {
 // enough of it to recognise.
 func partialTag(text string) int {
 	keep := 0
-	for _, marker := range append(Openers(), Endings...) {
+	for _, marker := range append(append(Openers(), Thinking()...), Endings...) {
 		longest := min(len(text), len(marker)-1)
 		for length := longest; length > keep; length-- {
 			if strings.HasPrefix(marker, text[len(text)-length:]) {

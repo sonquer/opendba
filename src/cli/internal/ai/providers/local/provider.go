@@ -64,11 +64,15 @@ type client struct {
 
 // Capabilities reports what a local model can do. Tools are answered with a
 // grammar rather than with a provider's own tool protocol, which is why the
-// grammar is advertised alongside them.
+// grammar is advertised alongside them. Reasoning is read out of the stream
+// rather than handed over by a protocol, which is why it is advertised at all:
+// a model that brackets its deliberation is understood here the same way a
+// remote one that labels it is.
 func (c *client) Capabilities() ai.Capabilities {
 	return ai.Capabilities{
 		Tools:     true,
 		Streaming: true,
+		Reasoning: true,
 		Grammar:   true,
 		Local:     true,
 		Context:   c.instance.Context,

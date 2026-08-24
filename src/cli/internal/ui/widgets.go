@@ -367,7 +367,7 @@ func (t *Theme) row(item Listing, shape shape, width int) string {
 	text, muted, verdict := t.Value, t.Muted, t.Severity(item.Severity)
 	var ground color.Color
 	if item.Cursor {
-		ground = t.P.Selection
+		ground = t.P.Surface
 		text = text.Foreground(t.P.OnSelection).Background(ground)
 		muted, verdict = muted.Background(ground), verdict.Background(ground)
 	}

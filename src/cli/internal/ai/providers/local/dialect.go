@@ -36,6 +36,14 @@ type dialect struct {
 	resultOpen  string
 	resultClose string
 
+	// thinkOpen and thinkClose bracket what a model says to itself on its way
+	// to an answer. It is not the answer and was never meant to be read: a
+	// model that writes it and is not understood produces three paragraphs of
+	// its own deliberation with the brackets still around them, above the two
+	// lines that were the reply.
+	thinkOpen  string
+	thinkClose string
+
 	// shape is the one example of a call the model is given. Nothing else in
 	// the instructions matters as much: it writes what it is shown.
 	shape string
@@ -66,6 +74,11 @@ const (
 
 	// gemmaDialect is what the catalogue calls this family.
 	gemmaDialect = "gemma"
+
+	// GemmaThinkOpen and GemmaThinkClose bracket the channel this family
+	// thinks out loud on, in the same bracket grammar as its tool calls.
+	GemmaThinkOpen  = "<|channel>"
+	GemmaThinkClose = "<channel|>"
 )
 
 // dialects are the shapes read, in the order they are looked for.
@@ -80,6 +93,7 @@ func dialects() []dialect {
 		{
 			name: gemmaDialect, open: GemmaOpen, close: GemmaClose, parse: decodeGemma,
 			resultOpen: GemmaResultOpen, resultClose: GemmaResultClose,
+			thinkOpen: GemmaThinkOpen, thinkClose: GemmaThinkClose,
 			shape:     `call:the_tool{an_argument:` + gemmaQuote + `a value` + gemmaQuote + `}`,
 			arguments: gemmaArguments,
 		},
@@ -156,6 +170,44 @@ func Openers() []string {
 		open = append(open, spoken.open)
 	}
 	return open
+}
+
+// Thinking is every marker that begins or ends what a model says to itself,
+// which the screen has to watch for so that a model's deliberation is folded
+// away rather than printed as its reply, and so that neither bracket is drawn
+// one character at a time on its way to being recognised.
+//
+// A family with nothing to say about it contributes nothing: a marker invented
+// for a model that has never been seen writing it is a parser that eats text
+// nobody asked it to.
+func Thinking() []string {
+	markers := make([]string, 0, 2)
+	for _, spoken := range dialects() {
+		if spoken.thinkOpen == "" {
+			continue
+		}
+		markers = append(markers, spoken.thinkOpen, spoken.thinkClose)
+	}
+	return markers
+}
+
+// thinkingOpens is where the first think-opener begins and which family wrote
+// it, or minus one for none.
+func thinkingOpens(text string) (dialect, int) {
+	found, at := dialect{}, -1
+	for _, spoken := range dialects() {
+		if spoken.thinkOpen == "" {
+			continue
+		}
+		start := strings.Index(text, spoken.thinkOpen)
+		if start < 0 {
+			continue
+		}
+		if at < 0 || start < at {
+			found, at = spoken, start
+		}
+	}
+	return found, at
 }
 
 // decodeGemma reads a call written the way the Gemma family writes one:
