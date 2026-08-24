@@ -102,6 +102,16 @@ func New(client ai.Client, tools Tools, consent Consent, instance ai.Instance, s
 // Messages is the conversation so far.
 func (a *Agent) Messages() []ai.Message { return a.messages }
 
+// Resume takes a conversation that was had earlier and carries on from it, so
+// that a question asked after opening a saved conversation is answered with
+// what was already said rather than from nothing.
+//
+// The messages are copied. A caller that keeps its own slice and appends to it
+// must not find itself editing the conversation this is now having.
+func (a *Agent) Resume(messages []ai.Message) {
+	a.messages = append([]ai.Message(nil), messages...)
+}
+
 // Warm makes the back-end ready with the tools this conversation will use. A
 // back-end with nothing to get ready says so by not offering to.
 func (a *Agent) Warm(ctx context.Context) error {

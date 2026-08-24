@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
+	"github.com/sonquer/tui4db/src/cli/internal/config"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
@@ -58,10 +59,19 @@ func TestWhatIsRunningReachesTheScreen(t *testing.T) {
 	}
 }
 
-func TestAQuietServerSaysSo(t *testing.T) {
+// A server with nothing running still shows the table, with its column names
+// and no rows. A sentence where the table was makes the screen jump every time
+// the last statement finishes.
+func TestAQuietServerStillShowsTheTable(t *testing.T) {
 	m := watching(t, healthy(), session)
-	if !strings.Contains(plain(m.content()), "nothing is running") {
-		t.Errorf("content = %s", plain(m.content()))
+	view := plain(m.content())
+	if strings.Contains(view, "nothing is running") {
+		t.Errorf("an empty table says it better than a sentence:\n%s", view)
+	}
+	for _, want := range activityHeaders {
+		if !strings.Contains(view, want) {
+			t.Errorf("the column names must stay on screen, missing %q:\n%s", want, view)
+		}
 	}
 }
 
@@ -380,5 +390,80 @@ func TestARefreshDoesNotBlankTheScreen(t *testing.T) {
 	fresh.loading = true
 	if !strings.Contains(plain(fresh.content()), "reading the server") {
 		t.Error("a first read has nothing to draw and must say it is working")
+	}
+}
+
+// The dashboard leaves out the sessions this program made, and says how many it
+// left out rather than quietly shortening the list.
+func TestTheDashboardLeavesOutItsOwnSessions(t *testing.T) {
+	held := []driver.Session{
+		{ID: "1", Application: driver.AppName, State: "active", Statement: "SELECT pg_stat"},
+		{ID: "2", Application: driver.AppName + "/production-eu", State: "active"},
+		{ID: "3", Application: "psql", State: "active", Statement: "SELECT 1"},
+		{ID: "4", Application: "", State: "idle"},
+	}
+	hiding := newActivity(ui.Default(), config.DefaultSettings())
+	hiding = hiding.withSessions(sessionsMsg{sessions: held, at: time.Now()}, 100)
+	if len(hiding.sessions) != 2 {
+		t.Fatalf("sessions = %d, the two of ours must go", len(hiding.sessions))
+	}
+	if hiding.ours != 2 {
+		t.Errorf("ours = %d, want 2", hiding.ours)
+	}
+	if said := plain(hiding.count()); !strings.Contains(said, "2 of ours hidden") {
+		t.Errorf("count = %q, hiding rows must be said out loud", said)
+	}
+
+	settings := config.DefaultSettings()
+	settings.Appearance.OwnSessions = true
+	showing := newActivity(ui.Default(), settings)
+	showing = showing.withSessions(sessionsMsg{sessions: held, at: time.Now()}, 100)
+	if len(showing.sessions) != 4 || showing.ours != 0 {
+		t.Errorf("sessions = %d ours = %d, asking for them shows them",
+			len(showing.sessions), showing.ours)
+	}
+	if said := plain(showing.count()); strings.Contains(said, "hidden") {
+		t.Errorf("count = %q, nothing is hidden", said)
+	}
+
+	turned := hiding.showingOwn(true)
+	if !turned.own {
+		t.Error("the setting must reach the dashboard")
+	}
+}
+
+// An application name says whether a session is one of ours.
+func TestAnApplicationNameSaysWhoseSessionItIs(t *testing.T) {
+	for _, want := range []struct {
+		name        string
+		application string
+		ours        bool
+	}{
+		{"this program", driver.AppName, true},
+		{"this program on a profile", driver.AppName + "/production-eu", true},
+		{"something else", "psql", false},
+		{"nothing at all", "", false},
+		{"something that only starts the same", "tui4dbeaver", false},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if got := driver.Ours(want.application); got != want.ours {
+				t.Errorf("Ours(%q) = %v, want %v", want.application, got, want.ours)
+			}
+		})
+	}
+	for _, want := range []struct {
+		name        string
+		config      driver.Config
+		application string
+	}{
+		{"with a profile", driver.Config{Application: "production-eu"},
+			"tui4db/production-eu"},
+		{"without one", driver.Config{}, "tui4db"},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if got := want.config.ApplicationName(); got != want.application {
+				t.Errorf("ApplicationName = %q, want %q", got, want.application)
+			}
+		})
 	}
 }

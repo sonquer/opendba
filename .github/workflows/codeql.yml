@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: src/cli/go.mod
 
       - uses: github/codeql-action/init@v3
         with:

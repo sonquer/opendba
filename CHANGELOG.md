@@ -31,6 +31,72 @@ meets the classifier like anything else, it is on screen, and it is the
 statement to add a WHERE to. The name in it is quoted the way the server quotes
 one, so a table with a capital letter opens.
 
+A dashboard with nothing running shows the table with its column names and no
+rows, rather than a sentence where the table was. The screen stopped jumping
+every time the last statement finished.
+
+Clicking a reading on the dashboard opens the page about it, which pressing
+enter on it already did.
+
+The keys in the footer answered clicks in the wrong places: the separator
+between them was being measured as nothing, so every key after the first was
+credited with the space belonging to its neighbour. There is a test now that
+finds each key in the drawn row and clicks exactly where it is.
+
+The settings screen is grouped under headings — appearance, safety, query
+history, conversations — and the standing line under it about what applies to
+the next connection has moved onto the three fields it is actually about.
+
+The command list is about the screen you are on. It offered "close this tab" on
+the dashboard and "export the result" with no result in sight; now the editor's
+commands are on the editor, the assistant's are on the assistant, and the rest
+are everywhere. The keys have a column of their own on the right, on the same
+cap the footer prints them on, and the sentences that used to sit in that column
+are gone: a command whose name does not say what it does wants a better name
+rather than a footnote.
+
+Clicking the statement puts the cursor where you clicked, which the schema and
+the result already did and the statement itself did not. Clicking a key in the
+footer presses it.
+
+What the program says in passing is now a stack in the top right, each sentence
+on a ground of its own with a bar in the colour of what it is about. Two things
+happening at once used to mean one of them silently replacing the other; four
+are shown, and the bullet in front of them is gone.
+
+The dashboard leaves out the sessions this program made — reading the health of
+a server and listing what it is running are themselves two sessions running two
+statements, and they were burying the query somebody actually wanted to see. It
+says how many it left out rather than quietly shortening the list, and
+`own_sessions = true` under `[appearance]`, or the settings screen, puts them
+back. The connections list says what each profile tells the server it is, and
+how many sessions the one in use has open.
+
+CI runs. `go.work` was in `.gitignore` and had never been committed, so every
+runner checked out a tree with no workspace and no root module, and three
+workflows failed on the first `go` command before anything was built. The stock
+Go ignore block is for a repo where a workspace is a personal local override;
+here it is the only thing that defines the build. The Go version is pinned from
+`src/cli/go.mod` in all four workflows while we are in there.
+
+Conversations with the assistant are kept. `ctrl+g` on the ask screen opens what
+was said before, `enter` carries one on from where it left off, `ctrl+x` forgets
+one and `ctrl+n` begins another; typing searches. Everything is kept, tool
+results included, because a conversation stored without the rows the model read
+reads back but cannot be continued — which also means those rows are written to
+`chats.db`, so `[chats] enabled = false` turns the whole thing off and the
+settings screen clears it.
+
+There is a settings screen. It covers the bar shape, the mouse, the access mode
+a connection opens in, whether writes are confirmed, the row limit, the two
+timeouts, and what is kept of your queries and conversations, and it says which
+of those the connection already open cannot be told about. Clearing either store
+is behind a red panel with a count in it and a box to tick.
+
+Choosing a different assistant no longer leaves the conversation on screen
+disagreeing with the one the model is having: the messages are handed to the new
+one rather than thrown away.
+
 A buffer holding several statements separated by semicolons is a script now, and
 the run key sends the one the cursor is in rather than refusing the lot. The
 guard still refuses more than one statement in a request: it is handed one

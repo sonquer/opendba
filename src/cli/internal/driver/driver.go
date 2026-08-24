@@ -70,6 +70,29 @@ func (c Config) Target() string {
 
 func (c Config) ReadOnly() bool { return !c.Mode.Writable() }
 
+// AppName is what this program calls itself to a server. Every connection it
+// makes says so, which is what lets a screen tell the work somebody asked for
+// apart from the work this program does to draw itself.
+const AppName = "tui4db"
+
+// ApplicationName is what a connection tells the server it is: this program,
+// and which of your profiles it opened. A server that cannot be told stays
+// silent about it, and the screens fall back to what they can see.
+func (c Config) ApplicationName() string {
+	if c.Application == "" {
+		return AppName
+	}
+	return AppName + "/" + c.Application
+}
+
+// Ours reports whether an application name is one of ours. It matches every
+// connection this program has open rather than only the one asking, because a
+// dashboard that hid one of its own reads and drew the other is a dashboard
+// showing noise it made itself.
+func Ours(application string) bool {
+	return application == AppName || strings.HasPrefix(application, AppName+"/")
+}
+
 type ServerInfo struct {
 	Driver      string
 	Version     string

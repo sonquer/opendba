@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: src/cli/go.mod
 
       - name: Verify the tag matches VERSION
         run: |

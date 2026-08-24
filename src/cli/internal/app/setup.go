@@ -527,12 +527,12 @@ func (m SetupModel) status() string {
 	}
 }
 
-func (m SetupModel) body(_ int) string {
+func (m SetupModel) body(width int) string {
 	switch m.stage {
 	case stageTesting:
 		return m.theme.Muted.Render("reaching the server…")
 	default:
-		sections := []string{m.form.view(m.theme)}
+		sections := []string{m.form.view(m.theme, width)}
 		if m.failure != "" {
 			sections = append(sections, m.theme.Error.Render("✗ "+m.failure))
 		}

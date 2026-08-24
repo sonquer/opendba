@@ -208,6 +208,14 @@ func (m Model) tab(sheet worksheet, index int) string {
 // jumpLabel is the key that reaches a tab, written the way the keyboard prints
 // it. Past the ninth there is no key left to print, so the number stands on its
 // own and the command list is the way there.
+// jumpCap is the key a tab answers to, or nothing for the tabs past the digits.
+func jumpCap(index int) string {
+	if index >= maxJumpTabs {
+		return ""
+	}
+	return ui.Keystroke("ctrl+" + strconv.Itoa(index+1))
+}
+
 func jumpLabel(index int) string {
 	if index >= maxJumpTabs {
 		return strconv.Itoa(index + 1)
@@ -339,28 +347,11 @@ func (m Model) commands() []command {
 		}
 		tabs = append(tabs, command{
 			title: "tab " + strconv.Itoa(i+1) + ", " + m.label(sheet, i),
-			hint:  m.hint(sheet),
+			key:   jumpCap(i),
 			msg:   gotoSheetMsg{index: i},
 		})
 	}
 	return tabs
-}
-
-// hint is what a tab says about itself in the command list: what it is showing,
-// or that it is still waiting for it.
-func (m Model) hint(sheet worksheet) string {
-	switch {
-	case sheet.inflight:
-		return "still running"
-	case sheet.results.failure != "":
-		return "failed"
-	case sheet.results.present:
-		return ui.Plural(len(sheet.results.rows), "row", "rows")
-	case sheet.kind == sheetTable:
-		return "table"
-	default:
-		return "nothing has run yet"
-	}
 }
 
 // show4Tabs puts the editor in front. A command that opens or moves between

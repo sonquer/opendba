@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/sonquer/tui4db/src/cli/internal/export"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
@@ -85,7 +86,7 @@ func TestDraggingOverTheResultCopiesIt(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("and must copy it")
 	}
-	if said := let4Go.(Model).text; !strings.Contains(said, "copied 4 rows") {
+	if said := let4Go.(Model).text(); !strings.Contains(said, "4 rows are on the clipboard") {
 		t.Errorf("and say so, got %q", said)
 	}
 }
@@ -100,7 +101,7 @@ func TestADragThatWentNowhereCopiesTheValue(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("letting go must copy something")
 	}
-	if said := let4Go.(Model).text; !strings.Contains(said, "copied the value") {
+	if said := let4Go.(Model).text(); !strings.Contains(said, "the value is on the clipboard") {
 		t.Errorf("one row under the pointer is one value, got %q", said)
 	}
 }
@@ -131,16 +132,16 @@ func TestCopyingWithoutAMouse(t *testing.T) {
 		key  string
 		said string
 	}{
-		{"the value", "y", "copied the value"},
-		{"the row", "Y", "copied the row"},
+		{"the value", "y", "the value is on the clipboard"},
+		{"the row", "Y", "the row is on the clipboard"},
 	} {
 		t.Run(want.name, func(t *testing.T) {
 			copied, cmd := press(t, onResults, want.key)
 			if cmd == nil {
 				t.Fatal("that key must copy something")
 			}
-			if !strings.Contains(copied.text, want.said) {
-				t.Errorf("the screen must say %q, got %q", want.said, copied.text)
+			if !strings.Contains(copied.text(), want.said) {
+				t.Errorf("the screen must say %q, got %q", want.said, copied.text())
 			}
 		})
 	}
@@ -150,8 +151,8 @@ func TestCopyingWithoutAMouse(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("the command must copy something")
 			}
-			said := copied.(Model).text
-			if !strings.Contains(said, "copied 4 rows as "+format) {
+			said := copied.(Model).text()
+			if !strings.Contains(said, "4 rows are on the clipboard, as "+format) {
 				t.Errorf("the screen must name what went over:\n%s", said)
 			}
 		})
@@ -173,7 +174,7 @@ func TestThereIsNothingToCopyYet(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("it has to say so")
 			}
-			if said := copied.(Model).text; !strings.Contains(said, "nothing to copy") {
+			if said := copied.(Model).text(); !strings.Contains(said, "nothing to copy") {
 				t.Errorf("and say what it is saying, got %q", said)
 			}
 		})
@@ -271,7 +272,7 @@ func TestCopyingAFormatThatDoesNotExistIsRefused(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("it has to say so")
 	}
-	if said := refused.(Model).text; !strings.Contains(said, "could not be written") {
+	if said := refused.(Model).text(); !strings.Contains(said, "could not be written") {
 		t.Errorf("text = %q", said)
 	}
 }
@@ -380,5 +381,283 @@ func TestNothingIsDraggedWhenNothingIsHeld(t *testing.T) {
 	held, _ := off.Update(tea.MouseMotionMsg{X: 80, Y: 12, Button: tea.MouseLeft})
 	if held.(Model).dragging {
 		t.Error("and a terminal that kept the mouse sends nothing here")
+	}
+}
+
+// Clicking the statement puts the cursor where the pointer is, which is the
+// one thing a mouse in an editor is for.
+func TestClickingTheStatementPutsTheCursorThere(t *testing.T) {
+	m := manyRows(t, 4)
+	m.editor.SetValue("SELECT id\nFROM users\nWHERE id = 1")
+	m.focus = focusResults
+	m.editor.Blur()
+
+	left, top := m.editorOrigin()
+	clicked, _ := m.Update(click(left+editorGutter+4, top+1))
+	on := clicked.(Model)
+	if on.focus != focusEditor || !on.editor.Focused() {
+		t.Fatalf("focus = %v, a click in the statement must focus it", on.focus)
+	}
+	if on.editor.Line() != 1 {
+		t.Errorf("line = %d, the cursor must land on the line clicked", on.editor.Line())
+	}
+	if on.editor.Column() != 4 {
+		t.Errorf("column = %d, and in the column clicked", on.editor.Column())
+	}
+
+	back, _ := on.Update(click(left+editorGutter+2, top))
+	if back.(Model).editor.Line() != 0 {
+		t.Errorf("line = %d, going back up must work too", back.(Model).editor.Line())
+	}
+	past, _ := on.Update(click(left+editorGutter+200, top+2))
+	if past.(Model).editor.Line() != 2 {
+		t.Errorf("line = %d", past.(Model).editor.Line())
+	}
+}
+
+// A click outside the statement is not a click in it.
+func TestAClickOutsideTheStatementIsNot(t *testing.T) {
+	m := manyRows(t, 4)
+	left, top := m.editorOrigin()
+	for _, want := range []struct {
+		name string
+		x, y int
+	}{
+		{"in the schema", ui.Gutter + 1, top},
+		{"below the statement", left + editorGutter, top + 50},
+		{"above the body", left + editorGutter, 1},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if m.inEditor(want.x, want.y) {
+				t.Error("that is not the statement")
+			}
+		})
+	}
+	zoomed := m
+	zoomed.zoomed = true
+	if zoomed.inEditor(left+editorGutter, top) {
+		t.Error("a zoomed result has no statement to click in")
+	}
+}
+
+// Clicking a key in the footer presses it.
+func TestClickingAKeyInTheFooterPressesIt(t *testing.T) {
+	m := manyRows(t, 4)
+	row := ui.FooterRow(m.height, true)
+	found := false
+	for x := ui.Gutter; x < m.width; x++ {
+		hit, ok := m.hintAt(x, row)
+		if !ok {
+			continue
+		}
+		found = true
+		if hit.code == 0 {
+			t.Errorf("at %d the key is nothing", x)
+		}
+	}
+	if !found {
+		t.Fatalf("nothing in the footer answers a click on row %d", row)
+	}
+	if _, ok := m.hintAt(ui.Gutter, row-1); ok {
+		t.Error("and only that row does")
+	}
+
+	tabbed, _ := m.Update(click(ui.Gutter+3, row))
+	if len(tabbed.(Model).sheets) != 1 {
+		t.Log("the first key on this screen is run, which needs a statement")
+	}
+}
+
+// A key nobody can press back is not offered to the mouse.
+func TestAKeyThatCannotBePressedBackIsNotOffered(t *testing.T) {
+	for _, want := range []struct {
+		name  string
+		named string
+		ok    bool
+	}{
+		{"a letter", "y", true},
+		{"a named key", "enter", true},
+		{"with a modifier", "ctrl+r", true},
+		{"two modifiers", "ctrl+shift+tab", true},
+		{"a modifier nobody has", "hyper+r", false},
+		{"a name nobody knows", "wibble", false},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			pressed, ok := pressed4Name(want.named)
+			if ok != want.ok {
+				t.Fatalf("pressed4Name(%q) = %v, want %v", want.named, ok, want.ok)
+			}
+			if ok && pressed.code == 0 {
+				t.Errorf("%q came back as nothing", want.named)
+			}
+		})
+	}
+}
+
+// Every key in the footer answers where it is drawn. This is measured against
+// the rendered row rather than against the code that places it: the two were
+// worked out separately, and a click that pressed the key next to the one under
+// the pointer is exactly what that costs.
+func TestEveryKeyInTheFooterAnswersWhereItIsDrawn(t *testing.T) {
+	for _, want := range []struct {
+		name  string
+		build func(*testing.T) Model
+	}{
+		{"the dashboard", func(t *testing.T) Model {
+			m := loaded(t, healthy())
+			m.width, m.height = 120, 36
+			return m
+		}},
+		{"the editor", func(t *testing.T) Model { return manyRows(t, 4) }},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			m := want.build(t)
+			row := ui.FooterRow(m.height, m.view == viewQuery && !m.zoomed)
+			drawn := plain(m.footer(0))
+			from := 0
+			for _, binding := range m.keys.footer(m.view, m.suggest.active(), m.zoomed,
+				m.onSessions, m.lists[m.which()].typing, m.inflight) {
+				if !binding.Enabled() {
+					continue
+				}
+				label := binding.Help().Key
+				column, ok := columnOf(drawn, label+" "+binding.Help().Desc, from)
+				if !ok {
+					t.Fatalf("%q is not in the footer after column %d:\n%s",
+						label, from, drawn)
+				}
+				pressed, found := m.hintAt(ui.Gutter+column, row)
+				if !found {
+					t.Errorf("nothing answers a click on %q at column %d", label, column)
+					from = column + lipgloss.Width(label)
+					continue
+				}
+				wanted, _ := pressed4Name(binding.Keys()[0])
+				if pressed != wanted {
+					t.Errorf("clicking %q at column %d presses %+v, want %+v",
+						label, column, pressed, wanted)
+				}
+				from = column + lipgloss.Width(label)
+			}
+		})
+	}
+}
+
+// columnOf finds the screen column a piece of text starts at, counting the
+// cells a terminal draws rather than the bytes Go stores. It is given the key
+// and what it does together, because a key of one letter is a letter that also
+// appears inside the words around it.
+func columnOf(drawn, label string, from int) (int, bool) {
+	runes := []rune(drawn)
+	column := 0
+	for i := range runes {
+		if column >= from && strings.HasPrefix(string(runes[i:]), label) {
+			return column, true
+		}
+		column += lipgloss.Width(string(runes[i]))
+	}
+	return 0, false
+}
+
+// Clicking a reading on the dashboard opens the page about it, which is what
+// enter on it already did.
+func TestClickingAReadingOpensItsPage(t *testing.T) {
+	for _, want := range []struct {
+		name  string
+		width int
+	}{
+		{"in two columns", 160},
+		{"in one", 100},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			m := loaded(t, healthy())
+			m.width, m.height = want.width, 40
+			readings := m.readings(every)
+			if len(readings) < 2 {
+				t.Skip("this server reports too little to lay out")
+			}
+
+			for at := range readings {
+				x, y, ok := whereIsReading(m, at)
+				if !ok {
+					t.Fatalf("reading %d (%q) is not drawn", at, readings[at].Label)
+				}
+				clicked, _ := m.Update(click(x, y))
+				opened := clicked.(Model)
+				if opened.page == nil {
+					t.Fatalf("clicking %q must open its page", readings[at].Label)
+				}
+				if opened.reading != at {
+					t.Errorf("clicking %q opened reading %d, want %d",
+						readings[at].Label, opened.reading, at)
+				}
+			}
+		})
+	}
+}
+
+// whereIsReading finds the screen position of a reading by reading the body
+// back, which is the same thing the click does and so proves nothing on its
+// own; it is here so the test can click somewhere real.
+func whereIsReading(m Model, at int) (int, int, bool) {
+	readings := m.readings(every)
+	width := ui.FrameWidth(m.width)
+	lines := strings.Split(plain(m.body()), "\n")
+	for line := range lines {
+		for _, column := range []int{ui.Gutter + 1, ui.Gutter + width/2 + 1} {
+			if found, ok := m.readingAt(column, line+ui.BodyTop(false)); ok && found == at {
+				return column, line + ui.BodyTop(false), true
+			}
+		}
+		_ = readings
+	}
+	return 0, 0, false
+}
+
+// A click on the dashboard that is not on a reading opens nothing.
+func TestAClickOnNoReadingOpensNothing(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 160, 40
+	for _, want := range []struct {
+		name string
+		x, y int
+	}{
+		{"above the body", ui.Gutter, 1},
+		{"far below it", ui.Gutter, 200},
+		{"on a heading", ui.Gutter, ui.BodyTop(false)},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if _, ok := m.readingAt(want.x, want.y); ok {
+				t.Error("that is not a reading")
+			}
+		})
+	}
+	elsewhere := m
+	elsewhere.view = viewQuery
+	if _, ok := elsewhere.readingAt(ui.Gutter+1, ui.BodyTop(false)+2); ok {
+		t.Error("the readings are on the dashboard and nowhere else")
+	}
+}
+
+// A reading whose name begins another reading's name does not answer for it.
+func TestAReadingDoesNotAnswerForAnother(t *testing.T) {
+	for _, want := range []struct {
+		name  string
+		said  string
+		label string
+		is    bool
+	}{
+		{"the same", "cache", "cache", true},
+		{"followed by its bar", "cache   [||||]   100%   ok", "cache", true},
+		{"a longer name", "index cache   [||||]", "cache", false},
+		{"a name that starts the same", "idle in transaction   0", "idle indexes", false},
+		{"nothing", "cache", "", false},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if got := named4Reading(want.said, want.label); got != want.is {
+				t.Errorf("named4Reading(%q, %q) = %v, want %v",
+					want.said, want.label, got, want.is)
+			}
+		})
 	}
 }

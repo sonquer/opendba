@@ -132,12 +132,7 @@ func DSN(config driver.Config) string {
 	return target.String()
 }
 
-func application(config driver.Config) string {
-	if config.Application == "" {
-		return "tui4db"
-	}
-	return "tui4db/" + config.Application
-}
+func application(config driver.Config) string { return config.ApplicationName() }
 
 func hostPort(config driver.Config) string {
 	host := config.Host

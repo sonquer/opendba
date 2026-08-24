@@ -28,17 +28,17 @@ func (m Model) copied(msg copyMsg) (tea.Model, tea.Cmd) {
 		return m, m.notify("there is nothing to copy yet")
 	}
 	rows := m.results.rows
-	said := ui.Plural(len(rows), "row", "rows")
+	said := ui.Plural(len(rows), "row", "rows") + " are"
 	if !msg.whole {
 		at := min(max(m.results.cursor, 0), len(rows)-1)
-		rows, said = rows[at:at+1], "the row"
+		rows, said = rows[at:at+1], "the row is"
 	}
 	text, err := text4Clipboard(m.results.columns, rows, msg.format)
 	if err != nil {
 		return m, m.notify("that could not be written: " + err.Error())
 	}
 	return m, tea.Batch(tea.SetClipboard(text),
-		m.notify(fmt.Sprintf("copied %s as %s", said, msg.format)))
+		m.notify(fmt.Sprintf("%s on the clipboard, as %s", said, msg.format)))
 }
 
 // copiedCell puts the one value under the cursor on the clipboard, which is
@@ -48,7 +48,7 @@ func (m Model) copiedCell() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, m.notify("there is nothing to copy yet")
 	}
-	return m, tea.Batch(tea.SetClipboard(value), m.notify("copied the value"))
+	return m, tea.Batch(tea.SetClipboard(value), m.notify("the value is on the clipboard"))
 }
 
 func text4Clipboard(columns []string, rows [][]any, format export.Format) (string, error) {

@@ -189,7 +189,15 @@ type Theme struct {
 	KeycapStyle lipgloss.Style
 	BadgeStyle  lipgloss.Style
 	Panel       lipgloss.Style
-	TableHead   lipgloss.Style
+
+	// Toast is the ground a passing sentence is drawn on. It has a background
+	// of its own because it sits over whatever screen it interrupted, and text
+	// with no ground under it reads as part of that screen rather than as
+	// something the program just said. The ground is the one the keycaps use:
+	// the selection colour is a shade off black and disappears on the black a
+	// terminal usually is.
+	Toast     lipgloss.Style
+	TableHead lipgloss.Style
 
 	// Tab and TabIdle are the two states of a tab, and TabKey is the cap the
 	// key that reaches one is printed on. The tab being worked in is a block of
@@ -239,6 +247,7 @@ func NewTheme(p Palette) *Theme {
 		Divider:     lipgloss.NewStyle().Foreground(p.Border),
 		Selected2:   lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Selection),
 		KeycapStyle: lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap).Padding(0, 1),
+		Toast:       lipgloss.NewStyle().Foreground(p.OnSelection).Background(p.Keycap).Padding(1, 2),
 		BadgeStyle: lipgloss.NewStyle().Foreground(p.OnBadge).Background(p.Badge).
 			Bold(true).Padding(0, 1),
 		Tab:     lipgloss.NewStyle().Foreground(p.Accent).Background(p.Selection).Bold(true),

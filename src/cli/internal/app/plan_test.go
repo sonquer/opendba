@@ -122,7 +122,7 @@ func TestNothingIsExplainedWhenThereIsNothingToExplain(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("it has to say why not")
 			}
-			if said := refused.(Model).text; !strings.Contains(said, want.said) {
+			if said := refused.(Model).text(); !strings.Contains(said, want.said) {
 				t.Errorf("text = %q, want something about %q", said, want.said)
 			}
 		})
@@ -141,7 +141,7 @@ func TestTimingAWriteIsRefused(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("it has to say why not")
 	}
-	if said := refused.(Model).text; !strings.Contains(said, "would change data") {
+	if said := refused.(Model).text(); !strings.Contains(said, "would change data") {
 		t.Errorf("text = %q", said)
 	}
 }

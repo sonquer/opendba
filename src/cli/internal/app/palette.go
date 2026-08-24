@@ -21,10 +21,34 @@ type quitMsg struct{}
 
 type removeMsg struct{ name string }
 
+// command is one thing the list can do: what it is called, the key it answers
+// to, and the message it sends. There is no sentence about what it does — a
+// list where some rows carry prose and others do not reads as a list somebody
+// gave up on halfway, and a command whose name does not say what it does wants
+// a better name rather than a footnote.
 type command struct {
 	title string
-	hint  string
+	key   string
 	msg   tea.Msg
+
+	// where is the screens this command belongs to. A command that makes no
+	// sense where you are is worse than a command you have to search for:
+	// "close this tab" on the dashboard is an offer the program cannot keep.
+	// Empty means everywhere.
+	where []view
+}
+
+// here reports whether a command belongs on the screen in front.
+func (c command) here(current view) bool {
+	if len(c.where) == 0 {
+		return true
+	}
+	for _, allowed := range c.where {
+		if allowed == current {
+			return true
+		}
+	}
+	return false
 }
 
 type palette struct {
@@ -35,44 +59,73 @@ type palette struct {
 }
 
 const (
-	paletteWidth   = 54
+	paletteWidth   = 64
 	minPaletteRows = 3
 )
 
-func newPalette(theme *ui.Theme, keys keymap) palette {
+// editing and asking are the screens whose commands are about what is on them
+// rather than about the program.
+var (
+	onEditor = []view{viewQuery}
+	onAsk    = []view{viewAsk}
+)
+
+func newPalette(theme *ui.Theme, keys keymap, current view) palette {
 	filter := input(theme, "", false)
-	return palette{
-		theme:  theme,
-		filter: filter,
-		items: []command{
-			{title: "dashboard", hint: keys.Home.Help().Key, msg: gotoMsg{view: viewDashboard}},
-			{title: "ask", hint: keys.Ask.Help().Key, msg: gotoMsg{view: viewAsk}},
-			{title: "query editor", hint: keys.Query.Help().Key, msg: gotoMsg{view: viewQuery}},
-			{title: "explain the statement", hint: keys.Explain.Help().Key, msg: explainMsg{}},
-			{title: "history", hint: keys.History.Help().Key, msg: gotoMsg{view: viewHistory}},
-			{title: "export the result", hint: keys.Export.Help().Key, msg: exportMsg{}},
-			{title: "mouse on or off", hint: "off lets the terminal select text", msg: mouseMsg{}},
-			{title: "copy the result as csv", hint: keys.CopyRow.Help().Key,
-				msg: copyMsg{whole: true, format: export.FormatCSV}},
-			{title: "copy the result as json", hint: "the whole result",
-				msg: copyMsg{whole: true, format: export.FormatJSON}},
-			{title: "copy the result as markdown", hint: "the whole result",
-				msg: copyMsg{whole: true, format: export.FormatMarkdown}},
-			{title: "new tab", hint: keys.NewTab.Help().Key, msg: newSheetMsg{}},
-			{title: "close this tab", hint: keys.CloseTab.Help().Key, msg: askCloseMsg{}},
-			{title: "next tab", hint: keys.NextTab.Help().Key, msg: walkSheetMsg{step: 1}},
-			{title: "previous tab", hint: keys.PrevTab.Help().Key, msg: walkSheetMsg{step: -1}},
-			{title: "tables", hint: keys.Schema.Help().Key, msg: gotoMsg{view: viewSchema}},
-			{title: "indexes", hint: keys.Indexes.Help().Key, msg: gotoMsg{view: viewIndexes}},
-			{title: "reload everything", hint: keys.Reload.Help().Key, msg: reloadMsg{}},
-			{title: "database and schemas", hint: keys.Catalog.Help().Key, msg: gotoMsg{view: viewCatalog}},
-			{title: "connections", hint: keys.Connections.Help().Key, msg: gotoMsg{view: viewSwitch}},
-			{title: "new connection", hint: keys.New.Help().Key, msg: newConnectionMsg{}},
-			{title: "ai settings", hint: "instances and models", msg: gotoMsg{view: viewAI}},
-			{title: "release the model", hint: "gives back the memory it holds", msg: releaseMsg{}},
-			{title: "keys and safety", hint: keys.Help.Help().Key, msg: gotoMsg{view: viewHelp}},
-			{title: "quit", hint: keys.Quit.Help().Key, msg: quitMsg{}},
-		},
+	offered := make([]command, 0, 32)
+	for _, item := range every4Palette(keys) {
+		if item.here(current) {
+			offered = append(offered, item)
+		}
+	}
+	return palette{theme: theme, filter: filter, items: offered}
+}
+
+func every4Palette(keys keymap) []command {
+	return []command{
+		{title: "dashboard", key: keys.Home.Help().Key, msg: gotoMsg{view: viewDashboard}},
+		{title: "ask", key: keys.Ask.Help().Key, msg: gotoMsg{view: viewAsk}},
+		{title: "query editor", key: keys.Query.Help().Key, msg: gotoMsg{view: viewQuery}},
+		{title: "tables", key: keys.Schema.Help().Key, msg: gotoMsg{view: viewSchema}},
+		{title: "indexes", key: keys.Indexes.Help().Key, msg: gotoMsg{view: viewIndexes}},
+		{title: "history", key: keys.History.Help().Key, msg: gotoMsg{view: viewHistory}},
+		{title: "database and schemas", key: keys.Catalog.Help().Key,
+			msg: gotoMsg{view: viewCatalog}},
+		{title: "connections", key: keys.Connections.Help().Key, msg: gotoMsg{view: viewSwitch}},
+		{title: "new connection", key: keys.New.Help().Key, msg: newConnectionMsg{}},
+
+		{title: "run the statement", key: keys.Run.Help().Key, where: onEditor,
+			msg: runNowMsg{}},
+		{title: "explain the statement", key: keys.Explain.Help().Key, where: onEditor,
+			msg: explainMsg{}},
+		{title: "export the result", key: keys.Export.Help().Key, where: onEditor,
+			msg: exportMsg{}},
+		{title: "copy the result as csv", key: keys.CopyRow.Help().Key, where: onEditor,
+			msg: copyMsg{whole: true, format: export.FormatCSV}},
+		{title: "copy the result as json", where: onEditor,
+			msg: copyMsg{whole: true, format: export.FormatJSON}},
+		{title: "copy the result as markdown", where: onEditor,
+			msg: copyMsg{whole: true, format: export.FormatMarkdown}},
+		{title: "new tab", key: keys.NewTab.Help().Key, where: onEditor, msg: newSheetMsg{}},
+		{title: "close this tab", key: keys.CloseTab.Help().Key, where: onEditor,
+			msg: askCloseMsg{}},
+		{title: "next tab", key: keys.NextTab.Help().Key, where: onEditor,
+			msg: walkSheetMsg{step: 1}},
+		{title: "previous tab", key: keys.PrevTab.Help().Key, where: onEditor,
+			msg: walkSheetMsg{step: -1}},
+
+		{title: "conversations", key: keys.History.Help().Key, where: onAsk,
+			msg: openChatsMsg{}},
+		{title: "new conversation", key: keys.NewTab.Help().Key, where: onAsk,
+			msg: newChatMsg{}},
+
+		{title: "reload everything", key: keys.Reload.Help().Key, msg: reloadMsg{}},
+		{title: "settings", msg: preferencesMsg{}},
+		{title: "assistant and models", msg: gotoMsg{view: viewAI}},
+		{title: "release the model", msg: releaseMsg{}},
+		{title: "mouse on or off", msg: mouseMsg{}},
+		{title: "keys and safety", key: keys.Help.Help().Key, msg: gotoMsg{view: viewHelp}},
+		{title: "quit", key: keys.Quit.Help().Key, msg: quitMsg{}},
 	}
 }
 
@@ -146,7 +199,7 @@ func (p palette) view(width, height int) string {
 	}
 	items := make([]row, 0, len(shown))
 	for _, item := range shown {
-		items = append(items, row{key: item.title, label: item.title, note: item.hint})
+		items = append(items, row{key: item.title, label: item.title, cap: item.key})
 	}
 	list = list.withRows(items)
 	list.cursor = p.cursor

@@ -433,7 +433,7 @@ func TestFormMasksSecrets(t *testing.T) {
 		t.Fatalf("secret = %q", typed.secret("password"))
 	}
 	moved, _, _ := typed.update(keyMsg("tab"))
-	view := plain(moved.view(theme))
+	view := plain(moved.view(theme, 80))
 	if strings.Contains(view, "hunter2") {
 		t.Fatalf("the password must never be shown:\n%s", view)
 	}
@@ -495,7 +495,7 @@ func TestFormRendering(t *testing.T) {
 		choiceField("color", "environment", colorNames(), "green", ""),
 		actionField("save", "save", ""),
 	)
-	view := plain(built.view(theme))
+	view := plain(built.view(theme, 80))
 	for _, want := range []string{"host", "localhost", "user", "environment", "green", "[ save ]", "the server to connect to"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q:\n%s", want, view)
@@ -518,7 +518,7 @@ func TestFormShowsShortChoiceListsInFull(t *testing.T) {
 		toggleField("access", "access", []string{"READ ONLY", "READ / WRITE"}, true, ""),
 		choiceField("ssl", "ssl", []string{"prefer", "require", "verify-ca", "verify-full", "disable"}, "prefer", ""),
 	)
-	view := plain(built.view(theme))
+	view := plain(built.view(theme, 80))
 	if !strings.Contains(view, "READ ONLY") || !strings.Contains(view, "READ / WRITE") {
 		t.Errorf("a short list must show every option:\n%s", view)
 	}
@@ -760,7 +760,7 @@ func TestNameComesFirstAndRequiredFieldsAreMarked(t *testing.T) {
 			t.Errorf("%q is not required and must not be marked", key)
 		}
 	}
-	view := plain(details.form.view(details.theme))
+	view := plain(details.form.view(details.theme, 80))
 	if !strings.Contains(view, "name        *") {
 		t.Errorf("required fields must carry a mark:\n%s", view)
 	}
@@ -812,8 +812,8 @@ func TestPastingIntoAFieldRaisesAToast(t *testing.T) {
 	if model.form.value("name") != "production-eu" {
 		t.Fatalf("name = %q", model.form.value("name"))
 	}
-	if !strings.Contains(model.text, "pasted 13 characters into name") {
-		t.Fatalf("toast = %q", model.text)
+	if !strings.Contains(model.text(), "pasted 13 characters into name") {
+		t.Fatalf("toast = %q", model.text())
 	}
 	if !strings.Contains(plain(model.content()), "pasted 13 characters") {
 		t.Error("the toast must be shown")
@@ -823,11 +823,11 @@ func TestPastingIntoAFieldRaisesAToast(t *testing.T) {
 	}
 
 	expired, _ := model.Update(toastMsg{sequence: model.sequence})
-	if expired.(SetupModel).text != "" {
+	if expired.(SetupModel).text() != "" {
 		t.Error("the toast must fade")
 	}
 	stale, _ := model.Update(toastMsg{sequence: model.sequence - 1})
-	if stale.(SetupModel).text == "" {
+	if stale.(SetupModel).text() == "" {
 		t.Error("an older toast must not clear a newer one")
 	}
 }
@@ -836,8 +836,8 @@ func TestPastingASingleCharacterReadsWell(t *testing.T) {
 	setup, _ := newSetup(t)
 	details := detailed(t, setup)
 	pasted, _ := details.Update(tea.PasteMsg{Content: "x"})
-	if !strings.Contains(pasted.(SetupModel).text, "pasted 1 character into") {
-		t.Errorf("toast = %q", pasted.(SetupModel).text)
+	if !strings.Contains(pasted.(SetupModel).text(), "pasted 1 character into") {
+		t.Errorf("toast = %q", pasted.(SetupModel).text())
 	}
 }
 
@@ -853,8 +853,8 @@ func TestPastingWhereNothingCanBeTypedSaysSo(t *testing.T) {
 	if model.form.value("ssl") != "prefer" {
 		t.Errorf("a choice must not take pasted text: %q", model.form.value("ssl"))
 	}
-	if !strings.Contains(model.text, "nothing was pasted") {
-		t.Errorf("toast = %q", model.text)
+	if !strings.Contains(model.text(), "nothing was pasted") {
+		t.Errorf("toast = %q", model.text())
 	}
 }
 
@@ -863,7 +863,7 @@ func TestPastingIsIgnoredWhileTheWizardConnects(t *testing.T) {
 	m := NewSetupModel(setup)
 	m.stage = stageTesting
 	pasted, cmd := m.Update(tea.PasteMsg{Content: "x"})
-	if cmd != nil || pasted.(SetupModel).text != "" {
+	if cmd != nil || pasted.(SetupModel).text() != "" {
 		t.Error("a connecting wizard has nowhere to paste")
 	}
 }

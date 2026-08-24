@@ -1,8 +1,12 @@
 package app
 
 import (
+	"strings"
+
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/sonquer/tui4db/src/cli/internal/export"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
@@ -56,7 +60,194 @@ func (m Model) clicked(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	if at, ok := m.treeAt(mouse.X, mouse.Y); ok {
 		return m.pickedInTree(at)
 	}
+	if m.inEditor(mouse.X, mouse.Y) {
+		return m.caretAt(mouse.X, mouse.Y)
+	}
+	if at, ok := m.readingAt(mouse.X, mouse.Y); ok {
+		m.reading = at
+		return m.readingPage()
+	}
+	if hit, ok := m.hintAt(mouse.X, mouse.Y); ok {
+		return m.key(tea.KeyPressMsg{Code: hit.code, Mod: hit.mod, Text: hit.text})
+	}
 	return m, nil
+}
+
+// inEditor says whether a click landed in the statement being written.
+func (m Model) inEditor(x, y int) bool {
+	if m.view != viewQuery || m.zoomed || !m.overResults(x) {
+		return false
+	}
+	top := ui.BodyTop(true)
+	return y >= top && y < top+m.editorRows()
+}
+
+// caretAt puts the cursor where the pointer is. The textarea can be told which
+// column to sit in but not which line, so the line is walked to: the distance
+// is known, and walking it is what the arrow keys would have done anyway.
+func (m Model) caretAt(x, y int) (tea.Model, tea.Cmd) {
+	m.focus = focusEditor
+	cmd := m.editor.Focus()
+	left, top := m.editorOrigin()
+	wanted := y - top + m.editor.ScrollYOffset()
+	for range abs(wanted - m.editor.Line()) {
+		if wanted > m.editor.Line() {
+			m.editor.CursorDown()
+			continue
+		}
+		m.editor.CursorUp()
+	}
+	m.editor.SetCursorColumn(max(x-left-editorGutter, 0))
+	return m, cmd
+}
+
+// readingAt says which reading of the dashboard a click landed on.
+//
+// The readings are laid out in two columns of grouped blocks, so where each one
+// ends up is the result of the whole layout rather than of anything countable.
+// Rather than working that out a second time and getting it wrong, the drawn
+// body is read back: the line under the pointer is taken, the half of it the
+// pointer is in is taken, and whichever reading is named there is the one.
+func (m Model) readingAt(x, y int) (int, bool) {
+	if m.view != viewDashboard || m.onSessions || m.wizard != nil {
+		return 0, false
+	}
+	readings := m.readings(every)
+	if len(readings) == 0 {
+		return 0, false
+	}
+	lines := strings.Split(ansi.Strip(m.body()), "\n")
+	at := y - ui.BodyTop(false) + m.offset
+	if at < 0 || at >= len(lines) {
+		return 0, false
+	}
+	said := side4Dashboard(lines[at], x-ui.Gutter, ui.FrameWidth(m.width))
+	for i, reading := range readings {
+		if named4Reading(said, reading.Label) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// side4Dashboard is the half of a drawn line the pointer is in, which is which
+// column of readings it is over. A window too narrow for two columns has one,
+// and the whole line is the answer.
+func side4Dashboard(line string, column, width int) string {
+	if width < twoColumns {
+		return bare4Reading(line)
+	}
+	half := width / 2
+	runes := []rune(line)
+	from, to := 0, min(half, len(runes))
+	if column >= half {
+		from, to = min(half, len(runes)), len(runes)
+	}
+	return bare4Reading(string(runes[from:to]))
+}
+
+// bare4Reading takes the cursor marker off the front of a line, so the reading
+// under the cursor is named the same way as every other one.
+func bare4Reading(line string) string {
+	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "▌"))
+}
+
+// named4Reading reports whether a drawn line is the one this reading is on. The
+// label has to be followed by something rather than only begin the line, or
+// every reading whose name starts the same way would answer for the first.
+func named4Reading(said, label string) bool {
+	if label == "" || !strings.HasPrefix(said, label) {
+		return false
+	}
+	rest := said[len(label):]
+	return rest == "" || strings.HasPrefix(rest, " ")
+}
+
+// hit is a key the footer offered and somebody pressed with the mouse.
+type hit struct {
+	code rune
+	mod  tea.KeyMod
+	text string
+}
+
+// hintAt says which of the keys in the footer a click landed on. Where each one
+// sits is measured by drawing them one at a time with the same help model that
+// draws the row, so what is on screen and what answers a click are the same
+// thing measured twice rather than two guesses.
+func (m Model) hintAt(x, y int) (hit, bool) {
+	if y != ui.FooterRow(m.height, m.view == viewQuery && !m.zoomed) {
+		return hit{}, false
+	}
+	at := ui.Gutter
+	separator := lipgloss.Width(
+		m.help.Styles.ShortSeparator.Inline(true).Render(m.help.ShortSeparator))
+	for _, binding := range m.keys.footer(m.view, m.suggest.active(), m.zoomed,
+		m.onSessions, m.lists[m.which()].typing, m.inflight) {
+		if !binding.Enabled() {
+			continue
+		}
+		width := lipgloss.Width(m.help.ShortHelpView([]key.Binding{binding}))
+		if x >= at && x < at+width {
+			return pressing(binding)
+		}
+		at += width + separator
+	}
+	return hit{}, false
+}
+
+// pressing turns a binding back into the key that would have been pressed. Only
+// the first key a binding answers to is used: it is the one the footer drew.
+func pressing(binding key.Binding) (hit, bool) {
+	keys := binding.Keys()
+	if len(keys) == 0 {
+		return hit{}, false
+	}
+	return pressed4Name(keys[0])
+}
+
+// pressed4Name turns the name of a key back into the key itself, which is what a
+// binding holds and what the program answers to.
+func pressed4Name(name string) (hit, bool) {
+	codes := map[string]rune{
+		"enter": tea.KeyEnter, "esc": tea.KeyEscape, "tab": tea.KeyTab,
+		"backspace": tea.KeyBackspace, "up": tea.KeyUp, "down": tea.KeyDown,
+		"left": tea.KeyLeft, "right": tea.KeyRight, "home": tea.KeyHome,
+		"end": tea.KeyEnd, "pgup": tea.KeyPgUp, "pgdown": tea.KeyPgDown,
+		"space": tea.KeySpace, "f5": tea.KeyF5, "f6": tea.KeyF6,
+	}
+	modifiers := map[string]tea.KeyMod{
+		"ctrl": tea.ModCtrl, "alt": tea.ModAlt,
+		"shift": tea.ModShift, "super": tea.ModSuper,
+	}
+	parts := strings.Split(name, "+")
+	pressed := hit{}
+	for _, part := range parts[:len(parts)-1] {
+		mod, ok := modifiers[part]
+		if !ok {
+			return hit{}, false
+		}
+		pressed.mod |= mod
+	}
+	last := parts[len(parts)-1]
+	if code, ok := codes[last]; ok {
+		pressed.code = code
+		return pressed, true
+	}
+	if len([]rune(last)) != 1 {
+		return hit{}, false
+	}
+	pressed.code = []rune(last)[0]
+	if pressed.mod == 0 {
+		pressed.text = last
+	}
+	return pressed, true
+}
+
+func abs(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 // treeAt says which row of the schema a click landed on.
@@ -158,7 +349,7 @@ func (m Model) dropped(tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {
 		return m, m.notify("that could not be written: " + err.Error())
 	}
 	return m, tea.Batch(tea.SetClipboard(text),
-		m.notify("copied "+ui.Plural(len(rows), "row", "rows")))
+		m.notify(ui.Plural(len(rows), "row", "rows")+" are on the clipboard"))
 }
 
 // rolled4Query scrolls whatever the pointer is over. The editor screen is two

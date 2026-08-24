@@ -468,7 +468,7 @@ func (e exporter) view(width, height int) string {
 	if e.refusal != "" {
 		lines = append(lines, e.theme.Severity(ui.SevWarn).Render("⚠ "+wrap(e.refusal, inner-2)), "")
 	}
-	lines = append(lines, e.form.view(e.theme))
+	lines = append(lines, e.form.view(e.theme, inner))
 	if e.busy {
 		lines = append(lines, "", e.theme.Muted.Render(
 			"writing "+ui.Plural(e.rowsSeen, "row", "rows")+" so far"))

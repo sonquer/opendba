@@ -13,8 +13,8 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
-// remembering builds a model that keeps what it runs, in a store of its own.
-func remembering(t *testing.T, settings config.HistorySettings) Model {
+// keepingHistory builds a model that keeps what it runs, in a store of its own.
+func keepingHistory(t *testing.T, settings config.HistorySettings) Model {
 	t.Helper()
 	store, err := history.Open(filepath.Join(t.TempDir(), "history.db"), settings)
 	if err != nil {
@@ -39,7 +39,7 @@ func kept(t *testing.T, m Model) []history.Entry {
 
 // What has been run is written down, with what it did.
 func TestWhatHasBeenRunIsWrittenDown(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT 1")
 	ran, cmd := press(t, typed, "ctrl+r")
@@ -62,7 +62,7 @@ func TestWhatHasBeenRunIsWrittenDown(t *testing.T) {
 
 // A profile that says not to keep the statement keeps that it ran and no more.
 func TestAStatementCanBeKeptWithoutKeepingTheStatement(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: false, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: false, Limit: 50})
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT 1")
 	ran, cmd := press(t, typed, "ctrl+r")
@@ -86,7 +86,7 @@ func TestNothingIsWrittenDownWithNowhereToWriteIt(t *testing.T) {
 	if cmd := m.wroteDown(queriedMsg{statement: "SELECT 1"}); cmd != nil {
 		t.Error("nothing to write it to means nothing to do")
 	}
-	kept := remembering(t, config.HistorySettings{Enabled: true})
+	kept := keepingHistory(t, config.HistorySettings{Enabled: true})
 	if cmd := kept.wroteDown(queriedMsg{statement: "  "}); cmd != nil {
 		t.Error("and an empty statement is not a statement")
 	}
@@ -95,7 +95,7 @@ func TestNothingIsWrittenDownWithNowhereToWriteIt(t *testing.T) {
 // The screen lists what has been run, searches it, and says when there is
 // nothing there.
 func TestTheHistoryScreenListsAndSearches(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
 	for i, statement := range []string{"SELECT 1", "SELECT * FROM users"} {
 		editing, _ := press(t, m, "e")
 		if i > 0 {
@@ -139,7 +139,7 @@ func TestTheHistoryScreenListsAndSearches(t *testing.T) {
 // Enter puts a statement back in a tab of its own, so nothing being written is
 // lost to going back for something older.
 func TestAStatementComesBackInATabOfItsOwn(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT * FROM users")
 	ran, cmd := press(t, typed, "ctrl+r")
@@ -168,7 +168,7 @@ func TestAStatementComesBackInATabOfItsOwn(t *testing.T) {
 
 // A statement that was not kept cannot be brought back, and says so.
 func TestAStatementThatWasNotKeptCannotComeBack(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: false, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: false, Limit: 50})
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT 1")
 	ran, cmd := press(t, typed, "ctrl+r")
@@ -180,14 +180,14 @@ func TestAStatementThatWasNotKeptCannotComeBack(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("it has to say why not")
 	}
-	if !strings.Contains(refused.text, "was not kept") {
-		t.Errorf("text = %q", refused.text)
+	if !strings.Contains(refused.text(), "was not kept") {
+		t.Errorf("text = %q", refused.text())
 	}
 }
 
 // Space keeps a statement past the point the rest are trimmed away.
 func TestSpaceKeepsAStatement(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
 	editing, _ := press(t, m, "e")
 	typed := typeInto(t, editing, "SELECT 1")
 	ran, cmd := press(t, typed, "ctrl+r")
@@ -252,7 +252,7 @@ func TestTheListSaysWhatEachStatementDid(t *testing.T) {
 
 // A history that cannot be read says why rather than looking empty.
 func TestAHistoryThatCannotBeReadSaysWhy(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
 	broken, _ := m.Update(recalledMsg{err: errors.New("the file is locked")})
 	shown := broken.(Model)
 	shown.view = viewHistory
@@ -267,7 +267,7 @@ func TestAHistoryThatCannotBeReadSaysWhy(t *testing.T) {
 
 // A history with nothing in it says so.
 func TestAnEmptyHistorySaysSo(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
 	opened, cmd := m.show(viewHistory)
 	shown := settle(t, opened.(Model), cmd)
 	if !strings.Contains(plain(shown.content()), "nothing here") {
@@ -291,7 +291,7 @@ func TestAnEmptyHistorySaysSo(t *testing.T) {
 // Backspace takes the search back a letter, and does nothing when there is
 // nothing to take back.
 func TestBackspaceTakesTheSearchBack(t *testing.T) {
-	m := remembering(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
 	opened, cmd := m.show(viewHistory)
 	shown := settle(t, opened.(Model), cmd)
 

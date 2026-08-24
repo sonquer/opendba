@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,6 +42,10 @@ type stopMsg struct {
 type tickMsg struct{ generation int }
 
 // activity is what the server is doing right now, and the means to stop it.
+// activity holds ours: how many of the sessions the server reported were made
+// by this program and are not being drawn. It is counted rather than dropped
+// quietly, because a list that hides rows without saying so is a list nobody
+// can trust the length of.
 type activity struct {
 	theme    *ui.Theme
 	sessions []driver.Session
@@ -52,13 +57,19 @@ type activity struct {
 	failure  string
 	slow     time.Duration
 	stuck    time.Duration
+
+	// own is whether the sessions this program made are drawn, and ours is how
+	// many were left out when they are not.
+	own  bool
+	ours int
 }
 
-func newActivity(theme *ui.Theme, safety config.SafetySettings) activity {
+func newActivity(theme *ui.Theme, settings config.Settings) activity {
 	return activity{
 		theme: theme,
-		slow:  duration(safety.SlowQuery, 30*time.Second),
-		stuck: duration(safety.StuckQuery, 5*time.Minute),
+		slow:  duration(settings.Safety.SlowQuery, 30*time.Second),
+		stuck: duration(settings.Safety.StuckQuery, 5*time.Minute),
+		own:   settings.Appearance.OwnSessions,
 	}
 }
 
@@ -82,10 +93,11 @@ func (a activity) resize(width int) activity {
 	return a.rebuild()
 }
 
+// rebuild draws the table, including when there is nothing in it. An empty
+// table with its column names still on it says what the dashboard would show
+// and that there is nothing to show; a sentence where the table was makes the
+// screen jump every time the last statement finishes.
 func (a activity) rebuild() activity {
-	if len(a.sessions) == 0 {
-		return a
-	}
 	at := a.cursor
 	a.table = table.New(
 		table.WithColumns(columnsFor(activityHeaders,
@@ -106,11 +118,30 @@ func (a activity) withSessions(msg sessionsMsg, width int) activity {
 		a.failure = msg.err.Error()
 		return a
 	}
-	a.sessions, a.updated = msg.sessions, msg.at
+	a.sessions, a.ours = a.sift(msg.sessions)
+	a.updated = msg.at
 	if a.cursor >= len(a.sessions) {
 		a.cursor = max(0, len(a.sessions)-1)
 	}
 	return a.rebuild()
+}
+
+// sift takes out the sessions this program made, unless it has been asked to
+// leave them in, and says how many it took.
+func (a activity) sift(sessions []driver.Session) ([]driver.Session, int) {
+	if a.own {
+		return sessions, 0
+	}
+	kept := make([]driver.Session, 0, len(sessions))
+	hidden := 0
+	for _, session := range sessions {
+		if driver.Ours(session.Application) {
+			hidden++
+			continue
+		}
+		kept = append(kept, session)
+	}
+	return kept, hidden
 }
 
 var activityHeaders = []string{"pid", "user", "state", "waiting", "time", "statement"}
@@ -181,14 +212,16 @@ func (a activity) view(width int, focused bool) string {
 	switch {
 	case a.failure != "":
 		return head + "\n\n" + a.theme.Error.Render("  ✗ "+a.failure)
-	case len(a.sessions) == 0:
-		return head + "\n\n" + a.theme.Muted.Render("  nothing is running")
 	}
 	rendered := a.table.View()
 	if !focused {
 		rendered = plainCursor(rendered)
 	}
-	return head + "\n\n" + lipgloss.NewStyle().MaxWidth(width).Render(rendered) + "\n" + a.legend()
+	drawn := head + "\n\n" + lipgloss.NewStyle().MaxWidth(width).Render(rendered)
+	if legend := a.legend(); legend != "" {
+		return drawn + "\n" + legend
+	}
+	return drawn
 }
 
 // count says how much of the server this list is, which is worth knowing and is
@@ -196,10 +229,14 @@ func (a activity) view(width int, focused bool) string {
 // read is not: it refreshes on its own every few seconds, so the answer is
 // always the same and always nothing.
 func (a activity) count() string {
-	if len(a.sessions) == 0 {
+	if len(a.sessions) == 0 && a.ours == 0 {
 		return ""
 	}
-	return a.theme.Muted.Render(ui.Plural(len(a.sessions), "session", "sessions"))
+	said := ui.Plural(len(a.sessions), "session", "sessions")
+	if a.ours > 0 {
+		said = ui.Dotted(said, strconv.Itoa(a.ours)+" of ours hidden")
+	}
+	return a.theme.Muted.Render(said)
 }
 
 // plainCursor takes the highlight off the row under the cursor while the table
@@ -358,4 +395,13 @@ func (m Model) stopped(msg stoppedMsg) (tea.Model, tea.Cmd) {
 		verb = "closed"
 	}
 	return m, tea.Batch(m.readSessions(), m.notify(verb+" session "+msg.id))
+}
+
+// showingOwn changes whether the dashboard draws the sessions this program
+// made. What is on screen is left as it is: the next beat is a few seconds
+// away and redrawing the list from a setting rather than from the server would
+// be showing a count nobody measured.
+func (a activity) showingOwn(own bool) activity {
+	a.own = own
+	return a
 }

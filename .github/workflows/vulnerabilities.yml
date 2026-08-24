@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: src/cli/go.mod
 
       - name: Scan both modules
         run: go run ./src/tools/cmd/dev vuln --ci

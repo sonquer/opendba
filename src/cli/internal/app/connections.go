@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -30,13 +31,35 @@ type removedMsg struct {
 	err  error
 }
 
+// connections is the list of profiles, with what is known about each one
+// beside it. Only the connection in use can say what it is doing: the rest are
+// names on disk, and opening every one of them to draw a list would be a list
+// that costs a round trip per row to look at.
 type connections struct {
 	picker
 	failure string
+
+	// busy is what each connection is doing, by name. Only the one in use is
+	// ever in it.
+	busy map[string]string
 }
 
 func newConnections(theme *ui.Theme) connections {
-	return connections{picker: newPicker(theme, "no connections are configured")}
+	return connections{
+		picker: newPicker(theme, "no connections are configured"),
+		busy:   map[string]string{},
+	}
+}
+
+// working records what the connection in use is running, so the list can say so
+// beside its name.
+func (c connections) working(name string, running int) connections {
+	busy := map[string]string{}
+	if running > 0 {
+		busy[name] = strconv.Itoa(running) + " running"
+	}
+	c.busy = busy
+	return c
 }
 
 func (c connections) withProfiles(msg profilesMsg, width int) connections {
@@ -53,7 +76,9 @@ func (c connections) withProfiles(msg profilesMsg, width int) connections {
 				connection.Driver,
 				strings.ToLower(connection.Mode.Label()),
 				cli.Target(connection),
+				cli.Application(connection),
 			),
+			cap:     c.busy[connection.Name],
 			current: connection.Name == msg.current,
 		})
 	}

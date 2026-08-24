@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
@@ -16,6 +17,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/ai"
 	"github.com/sonquer/tui4db/src/cli/internal/ai/agent"
 	"github.com/sonquer/tui4db/src/cli/internal/ai/providers/local"
+	"github.com/sonquer/tui4db/src/cli/internal/chats"
 	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
@@ -46,6 +48,22 @@ type conversation interface {
 	// Close lets go of what the back-end is holding, which for a model running
 	// here is the memory it was loaded into.
 	Close() error
+}
+
+// remembering is a conversation that can hand back what has been said and take
+// it back again, which is what keeping one and opening it later needs. It is
+// separate from conversation, the way Warmer and Prober are separate from
+// Client: the screen works without it, and a test driving the screen should not
+// have to implement it to say nothing.
+type remembering interface {
+	Messages() []ai.Message
+	Resume(messages []ai.Message)
+}
+
+// recalls asks a conversation whether it is one that remembers.
+func recalls(talk conversation) (remembering, bool) {
+	held, ok := talk.(remembering)
+	return held, ok
 }
 
 // approval is a question the assistant asks the screen and waits for. The
@@ -188,6 +206,18 @@ type chat struct {
 	// a goroutine until it is answered, which is why refusing has to send an
 	// answer rather than simply forgetting the question.
 	pending *approval
+
+	// id is what this conversation is kept under, and started is when it began.
+	// A conversation nothing has been asked in yet has no id, because it is not
+	// a conversation until somebody says something.
+	id      int64
+	started time.Time
+
+	// thread counts the conversations this screen has held. A save is slower
+	// than beginning another one, so the name a save comes back with belongs to
+	// the conversation it was for and not to whichever is on screen when it
+	// lands.
+	thread int
 }
 
 func newChat(theme *ui.Theme, instance string) chat {
@@ -400,7 +430,74 @@ func (m Model) finished(msg askEndedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.talk.ended(msg.err)
 	m.stopAsk = nil
-	return m.pinned(), m.talk.prompt.Focus()
+	return m.pinned(), tea.Batch(m.talk.prompt.Focus(), m.keep())
+}
+
+// keep writes the conversation down at the end of a turn. It never fails a
+// conversation: somewhere to put one is worth having and not worth losing an
+// answer over, so a failure is a sentence rather than an error.
+func (m Model) keep() tea.Cmd {
+	held, ok := m.kept()
+	if !ok {
+		return nil
+	}
+	store := m.session.Chats
+	thread := m.talk.thread
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), rememberTimeout)
+		defer cancel()
+		id, err := store.Save(ctx, held)
+		if err != nil {
+			return keptMsg{err: err, thread: thread}
+		}
+		return keptMsg{id: id, thread: thread}
+	}
+}
+
+// kept is the conversation as it would be written down, or nothing when there
+// is nowhere to write it or nothing to say.
+func (m Model) kept() (chats.Chat, bool) {
+	if m.session.Chats == nil || m.assistant == nil {
+		return chats.Chat{}, false
+	}
+	remembers, ok := recalls(m.assistant)
+	if !ok {
+		return chats.Chat{}, false
+	}
+	said := remembers.Messages()
+	if len(said) == 0 {
+		return chats.Chat{}, false
+	}
+	return chats.Chat{
+		ID:             m.talk.id,
+		ConnectionID:   m.session.Connection.Name,
+		ConnectionName: m.session.Connection.Name,
+		Instance:       m.talk.instance,
+		Title:          chats.Title(said, titleWidth),
+		StartedAt:      m.talk.started,
+		Messages:       said,
+	}, true
+}
+
+// titleWidth is how much of the first question a conversation is named after.
+const titleWidth = 72
+
+// keptMsg says a conversation reached the disk, and what it is called by.
+type keptMsg struct {
+	id     int64
+	thread int
+	err    error
+}
+
+func (m Model) wasKept(msg keptMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m, m.notify("this conversation is not being kept: " + msg.err.Error())
+	}
+	if msg.thread != m.talk.thread {
+		return m, nil
+	}
+	m.talk.id = msg.id
+	return m, nil
 }
 
 // scroll4Ask walks the conversation. It cannot use the scrolling every other
@@ -463,6 +560,10 @@ func (m Model) askKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.choosing()
 	case key.Matches(msg, m.keys.Page):
 		return m.scroll4Ask(msg), nil
+	case key.Matches(msg, m.keys.History):
+		return m.openChats()
+	case key.Matches(msg, m.keys.NewTab):
+		return m.startChat()
 	case key.Matches(msg, m.keys.Thinking):
 		m.talk.thinking = !m.talk.thinking
 		return m.pinned(), nil
@@ -585,6 +686,56 @@ func (a *chat) record(event agent.Event) {
 	case agent.EventDone:
 		current.done = true
 	}
+}
+
+// transcript draws a conversation that was kept, by replaying it through the
+// same recorder a live one goes through.
+//
+// It could have read the messages and built the exchanges directly, and then
+// there would be two sets of rules for what a conversation looks like and one
+// day they would disagree. Turning the messages back into the events they were
+// drawn from means there is one set, in record, and a conversation opened
+// tomorrow reads exactly as it did today.
+func transcript(messages []ai.Message) []exchange {
+	var held chat
+	for _, message := range messages {
+		if message.Role == ai.RoleUser {
+			held.exchanges = append(held.exchanges, exchange{question: message.Content})
+			continue
+		}
+		for _, event := range replayed(message) {
+			held.record(event)
+		}
+	}
+	for i := range held.exchanges {
+		held.exchanges[i].done = true
+	}
+	return held.exchanges
+}
+
+// replayed turns one message back into the events it was drawn from, in the
+// order they arrived: a model reasons, then answers, then calls something.
+func replayed(message ai.Message) []agent.Event {
+	if message.Role == ai.RoleTool {
+		if message.Result == nil {
+			return nil
+		}
+		return []agent.Event{{Kind: agent.EventResult, Result: message.Result}}
+	}
+	if message.Role != ai.RoleAssistant {
+		return nil
+	}
+	var events []agent.Event
+	if message.Reasoning != "" {
+		events = append(events, agent.Event{Kind: agent.EventReasoning, Text: message.Reasoning})
+	}
+	if message.Content != "" {
+		events = append(events, agent.Event{Kind: agent.EventText, Text: message.Content})
+	}
+	for i := range message.Calls {
+		events = append(events, agent.Event{Kind: agent.EventCall, Call: &message.Calls[i]})
+	}
+	return events
 }
 
 // step is a tool call written the way a person reads it: what was called, and

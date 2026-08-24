@@ -33,6 +33,7 @@ const (
 	viewAsk       view = "ask"
 	viewAI        view = "ai"
 	viewHistory   view = "history"
+	viewSettings  view = "settings"
 )
 
 // part is which of the two reads a message belongs to, so a refresh that asked
@@ -87,13 +88,19 @@ type Model struct {
 	modal   *modal
 	page    *details
 	plan    *plan
-	reading int
-	listing int
-	lists   [2]browse
-	fields  map[string][]driver.Column
-	keys    keymap
-	help    help.Model
-	offset  int
+	chats   *chatList
+
+	// preferences is the settings screen, built when it is opened rather than
+	// held, because it is a form over a file that anything else may have
+	// changed since the last look.
+	preferences *preferences
+	reading     int
+	listing     int
+	lists       [2]browse
+	fields      map[string][]driver.Column
+	keys        keymap
+	help        help.Model
+	offset      int
 
 	findings []driver.Finding
 	tables   []driver.Table
@@ -201,7 +208,7 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 		recall:    newRecall(theme),
 		talk:      newChat(theme, ""),
 		ai:        newAISettings(theme),
-		running:   newActivity(theme, session.Settings.Safety),
+		running:   newActivity(theme, session.Settings),
 		fields:    map[string][]driver.Column{},
 	}
 }
@@ -423,7 +430,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.expire(msg)
 		return m, nil
 	case profilesMsg:
-		m.list = m.list.withProfiles(msg, ui.FrameWidth(m.width))
+		m.list = m.list.
+			working(m.session.Connection.Name, len(m.running.sessions)).
+			withProfiles(msg, ui.FrameWidth(m.width))
 		return m, nil
 	case removeMsg:
 		return m, m.remove(msg.name)
@@ -463,10 +472,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reloadMsg:
 		m.loading = true
 		return m, tea.Batch(m.load(), m.spinner.Tick)
+	case runNowMsg:
+		return m.attempt()
 	case runMsg:
 		return m.run(msg.statement)
 	case newConnectionMsg:
 		return m.compose()
+	case preferencesMsg:
+		return m.openPreferences()
+	case forgetHistoryMsg:
+		return m.forgetHistory()
+	case forgetChatsMsg:
+		return m.forgetChats()
+	case clearedMsg:
+		return m.cleared(msg)
+	case openChatsMsg:
+		return m.openChats()
+	case listedChatsMsg:
+		return m.listedChats(msg)
+	case openedChatMsg:
+		return m.openedChat(msg)
+	case forgetChatMsg:
+		return m.forgetChat(msg)
+	case newChatMsg:
+		return m.startChat()
+	case keptMsg:
+		return m.wasKept(msg)
 	case explainMsg:
 		return m.explain(msg)
 	case explainedMsg:
@@ -604,6 +635,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.modal != nil {
 		return m.modalKey(msg)
 	}
+	if m.chats != nil {
+		return m.chatsKey(msg)
+	}
 	if m.exporter != nil {
 		return m.exportKey(msg)
 	}
@@ -630,6 +664,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.view == viewHistory {
 		return m.historyKey(msg)
+	}
+	if m.view == viewSettings && m.preferences != nil {
+		return m.preferencesKey(msg)
 	}
 	if m.view == viewDashboard && m.onSessions && m.dashboardOwnsKey(msg) {
 		return m.activityKey(msg)
@@ -875,7 +912,10 @@ func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 const wheelRows = 3
 
 func (m Model) openPalette() (tea.Model, tea.Cmd) {
-	opened := newPalette(m.theme, m.keys).withTabs(m.commands())
+	opened := newPalette(m.theme, m.keys, m.view)
+	if m.view == viewQuery {
+		opened = opened.withTabs(m.commands())
+	}
 	m.palette = &opened
 	return m, opened.filter.Focus()
 }
@@ -1091,6 +1131,10 @@ func (m Model) confirmRun(statement string, verdict sqlguard.Result) *modal {
 
 type runMsg struct{ statement string }
 
+// runNowMsg is the command list asking for the statement to be run, which goes
+// through the same classification a key does rather than round it.
+type runNowMsg struct{}
+
 // Verdict is what the guard makes of the statement that would run, which in a
 // buffer holding a script is the one the cursor is in rather than all of them.
 func (m Model) Verdict() sqlguard.Result {
@@ -1148,6 +1192,9 @@ func (m Model) content() string {
 	if m.modal != nil {
 		return ui.Overlay(screen, m.modal.view(m.width), m.width, m.height)
 	}
+	if m.chats != nil {
+		return ui.Overlay(screen, m.chats.view(m.width, m.height), m.width, m.height)
+	}
 	if m.exporter != nil {
 		return ui.Overlay(screen, m.exporter.view(m.width, m.height), m.width, m.height)
 	}
@@ -1159,7 +1206,7 @@ func (m Model) content() string {
 	}
 
 	if toast := m.render(m.theme); toast != "" {
-		return ui.Corner(screen, toast, m.width, m.height)
+		return ui.TopRight(screen, toast, m.width, m.view == viewQuery && !m.zoomed)
 	}
 	return screen
 }
@@ -1226,6 +1273,8 @@ func (m Model) body() string {
 		return m.aiBody()
 	case viewHistory:
 		return m.historyBody()
+	case viewSettings:
+		return m.preferencesBody()
 	case viewSwitch:
 		return m.list.view(ui.FrameWidth(m.width))
 	case viewCatalog:

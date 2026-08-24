@@ -28,9 +28,14 @@ const (
 )
 
 type field struct {
-	key      string
-	label    string
-	hint     string
+	key   string
+	label string
+	hint  string
+
+	// section is the heading this field belongs under, announced once when it
+	// changes. A form of fifteen rows with no headings is a wall: the eye has
+	// nowhere to stop and no way to tell which of them belong together.
+	section  string
 	kind     fieldKind
 	input    textinput.Model
 	choices  []string
@@ -306,9 +311,25 @@ func (f form) validate() error {
 	return errors.New(strings.Join(problems, ", "))
 }
 
-func (f form) view(theme *ui.Theme) string {
+// under puts a field under a heading.
+func (f field) under(section string) field {
+	f.section = section
+	return f
+}
+
+func (f form) view(theme *ui.Theme, width int) string {
 	lines := make([]string, 0, len(f.fields)+1)
+	section := ""
 	for i, entry := range f.fields {
+		if entry.section != section {
+			if len(lines) > 0 {
+				lines = append(lines, "")
+			}
+			if entry.section != "" {
+				lines = append(lines, theme.Section(entry.section, "", width), "")
+			}
+			section = entry.section
+		}
 		lines = append(lines, f.row(theme, entry, i == f.focus))
 	}
 	if hint := f.current().hint; hint != "" {

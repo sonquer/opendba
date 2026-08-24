@@ -42,6 +42,18 @@ type scripted struct {
 	warmErr error
 	warmed  bool
 	closed  bool
+
+	// messages is what a conversation that remembers hands back, which is what
+	// keeping one and opening it later runs on.
+	messages []ai.Message
+}
+
+// Messages and Resume make this a conversation that remembers, the way an agent
+// is.
+func (s *scripted) Messages() []ai.Message { return s.messages }
+
+func (s *scripted) Resume(messages []ai.Message) {
+	s.messages = append([]ai.Message(nil), messages...)
 }
 
 // Warm is the load, held open when a test wants to look at the screen while it
@@ -65,6 +77,8 @@ func (s *scripted) Close() error {
 
 func (s *scripted) Ask(ctx context.Context, question string, out chan<- agent.Event) error {
 	s.asked = append(s.asked, question)
+	s.messages = append(s.messages, ai.Message{Role: ai.RoleUser, Content: question})
+	defer func() { s.messages = append(s.messages, s.answered()) }()
 	if s.statement != "" {
 		if err := s.allowed.Statement(ctx, s.statement); err != nil {
 			s.refused = err
@@ -96,6 +110,45 @@ func (s *scripted) Ask(ctx context.Context, question string, out chan<- agent.Ev
 		}
 	}
 	return s.err
+}
+
+// answered is the message an assistant would have left behind for the events
+// this conversation sent.
+func (s *scripted) answered() ai.Message {
+	said := ai.Message{Role: ai.RoleAssistant}
+	for _, event := range s.events {
+		switch event.Kind {
+		case agent.EventText:
+			said.Content += event.Text
+		case agent.EventReasoning:
+			said.Reasoning += event.Text
+		case agent.EventCall:
+			if event.Call != nil {
+				said.Calls = append(said.Calls, *event.Call)
+			}
+		}
+	}
+	return said
+}
+
+// forgetful is a conversation that cannot hand anything back, which the screen
+// has to keep working without: the interface it needs is separate from the one
+// it is built on precisely so that this compiles.
+type forgetful struct{ events []agent.Event }
+
+func (f *forgetful) Warm(context.Context) error { return nil }
+
+func (f *forgetful) Close() error { return nil }
+
+func (f *forgetful) Ask(ctx context.Context, _ string, out chan<- agent.Event) error {
+	for _, event := range f.events {
+		select {
+		case out <- event:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func talking(t *testing.T, talk *scripted) Model {

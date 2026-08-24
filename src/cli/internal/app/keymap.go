@@ -87,7 +87,12 @@ type keymap struct {
 
 	// Explain asks the server what it would do with a statement rather than
 	// doing it.
-	Explain  key.Binding
+	Explain key.Binding
+
+	// Forget throws one kept thing away. It is a control key rather than a
+	// letter because the lists it works in are searched by typing, and a letter
+	// cannot both be typed and mean something.
+	Forget   key.Binding
 	enhanced bool
 }
 
@@ -146,6 +151,7 @@ func newKeymap() keymap {
 		CopyRow:     binding("copy the row", "Y"),
 		History:     binding("history", "ctrl+g"),
 		Explain:     binding("explain", "f6"),
+		Forget:      binding("forget", "ctrl+x"),
 	}
 }
 
@@ -169,6 +175,13 @@ func (k keymap) Discard() key.Binding { return relabel(k.Back, "cancel") }
 func (k keymap) Send() key.Binding { return relabel(k.Choose, "send") }
 
 func (k keymap) Stop() key.Binding { return relabel(k.Back, "stop or back") }
+
+// Conversations and NewConversation are the history and new-tab keys said in
+// the words of the ask screen, because opening what was said before and putting
+// the current one away are the same two ideas as on the editor screen.
+func (k keymap) Conversations() key.Binding { return relabel(k.History, "conversations") }
+
+func (k keymap) NewConversation() key.Binding { return relabel(k.NewTab, "new conversation") }
 
 // Halt is esc once more, in the words of a statement that is still running. It
 // is only ever drawn while one is, so the key that goes back and the key that
@@ -305,7 +318,12 @@ func (k keymap) footer(current view, completing, zoomed, running, filtering, inf
 		}
 		return screenKeys{k.Up, k.Down, k.Choose, k.Find, k.Order, k.Reverse, k.Home}
 	case viewAsk:
-		return screenKeys{k.Send(), k.Stop(), k.Page, k.Thinking, k.Switch, k.Commands}
+		return screenKeys{
+			k.Send(), k.Stop(), k.Conversations(), k.NewConversation(),
+			k.Thinking, k.Switch, k.Commands,
+		}
+	case viewSettings:
+		return screenKeys{k.Above, k.Below, k.Choose, k.Home, k.Leave}
 	case viewAI:
 		return screenKeys{k.Up, k.Down, k.Focus, k.Choose, k.Remove, k.Home}
 	case viewHistory:

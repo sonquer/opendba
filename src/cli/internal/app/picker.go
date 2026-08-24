@@ -10,10 +10,13 @@ import (
 
 // row is one line of any list in this program: a connection, a database, a
 // table, a command.
+// row is one line of any list. cap is the key the row answers to, drawn on a
+// keycap at the far right so it is never confused with the prose beside it.
 type row struct {
 	key     string
 	label   string
 	note    string
+	cap     string
 	mark    string
 	section string
 	depth   int
@@ -23,11 +26,16 @@ type row struct {
 
 // picker is the list every screen shares: a cursor that wraps, sections that
 // announce themselves once, and one way of drawing a row.
+//
+// caps is how wide the column of keys is, measured once from the rows it was
+// given. Without it a row ending in a key and a row ending in a sentence end in
+// the same place, and the keys stop being a column anybody can read down.
 type picker struct {
 	theme  *ui.Theme
 	rows   []row
 	hints  map[string]string
 	cursor int
+	caps   int
 	empty  string
 }
 
@@ -37,6 +45,12 @@ func newPicker(theme *ui.Theme, empty string) picker {
 
 func (p picker) withRows(rows []row) picker {
 	p.rows = rows
+	p.caps = 0
+	for _, item := range rows {
+		if held := lipgloss.Width(p.theme.KeycapStyle.Render(item.cap)); item.cap != "" && held > p.caps {
+			p.caps = held
+		}
+	}
 	if p.cursor >= len(rows) {
 		p.cursor = max(0, len(rows)-1)
 	}
@@ -101,11 +115,40 @@ func (p picker) line(item row, width int, active bool) string {
 		label += p.theme.Subtle.Render(" ·")
 	}
 	left := marker + strings.Repeat("  ", item.depth) + p.box(item, active) + label
-	if item.note == "" {
+	right := p.aside(item, max(width-lipgloss.Width(left)-2, 8))
+	if right == "" {
 		return left
 	}
-	note := ui.Truncate(item.note, max(width-lipgloss.Width(left)-2, 8))
-	return ui.SplitLine(left, p.theme.Muted.Render(note), width)
+	return ui.SplitLine(left, right, width)
+}
+
+// aside is what sits at the right of a row: what the row is about, and then the
+// key it answers to on a cap of its own. They are drawn apart on purpose. A
+// column where one row holds a keystroke and the next holds a sentence is a
+// column the eye cannot run down, and a key printed as plain text beside prose
+// does not read as something to press.
+func (p picker) aside(item row, room int) string {
+	column := p.caps
+	cap4Key := strings.Repeat(" ", column)
+	if item.cap != "" {
+		drawn := p.theme.KeycapStyle.Render(item.cap)
+		cap4Key = strings.Repeat(" ", max(column-lipgloss.Width(drawn), 0)) + drawn
+	}
+	if column > 0 {
+		room -= column + 2
+	}
+	note := ""
+	if item.note != "" && room > 0 {
+		note = p.theme.Muted.Render(ui.Truncate(item.note, room))
+	}
+	switch {
+	case column == 0:
+		return note
+	case note == "":
+		return cap4Key
+	default:
+		return note + "  " + cap4Key
+	}
 }
 
 // box draws the state of a row in a form, where a row is chosen rather than

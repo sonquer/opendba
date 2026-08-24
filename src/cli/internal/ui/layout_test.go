@@ -206,3 +206,32 @@ func TestAScreenWithoutTabsIsDrawnWhereItAlwaysWas(t *testing.T) {
 		t.Errorf("the body must stay on row %d, frame:\n%s", at, frame)
 	}
 }
+
+// The row the footer is drawn on is the row a click on a key has to be counted
+// from, so it is checked against a frame rather than trusted.
+func TestTheFooterIsWhereTheMouseLooksForIt(t *testing.T) {
+	theme := Default()
+	for _, want := range []struct {
+		name   string
+		tabs   string
+		tabbed bool
+	}{
+		{"without tabs", "", false},
+		{"with tabs", "tabs-here", true},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			for _, height := range []int{11, 24, 40} {
+				frame := theme.Chrome(Frame{
+					Width: 60, Height: height, Header: "header-here", Tabs: want.tabs,
+					Body: "body-here", Footer: "footer-here",
+				})
+				rows := strings.Split(frame, "\n")
+				at := FooterRow(height, want.tabbed)
+				if at >= len(rows) || !strings.Contains(rows[at], "footer-here") {
+					t.Errorf("at %d rows, the footer must be on row %d:\n%s",
+						height, at, frame)
+				}
+			}
+		})
+	}
+}

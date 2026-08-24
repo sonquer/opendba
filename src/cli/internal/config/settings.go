@@ -33,6 +33,13 @@ type AppearanceSettings struct {
 	// result matters more to some people than clicking a tab does. "on" is the
 	// default; "off" gives the mouse back to the terminal.
 	Mouse string `toml:"mouse,omitempty"`
+
+	// OwnSessions is whether the dashboard draws the connections this program
+	// made. It is off by default: reading the health of a server and listing
+	// what it is running are themselves two sessions running two statements,
+	// and a dashboard mostly showing its own reflection is a dashboard that
+	// buries the one query somebody wanted to see.
+	OwnSessions bool `toml:"own_sessions,omitempty"`
 }
 
 // MouseWanted reports whether the terminal should be asked for the mouse.
@@ -48,6 +55,15 @@ type HistorySettings struct {
 	Enabled  bool `toml:"enabled"`
 	StoreSQL bool `toml:"store_sql"`
 	Limit    int  `toml:"limit"`
+}
+
+// ChatSettings is what becomes of a conversation with the assistant once it is
+// over. Keeping one means keeping everything that was said, the rows a tool
+// read included, because a conversation stored without them reads back but
+// cannot be carried on.
+type ChatSettings struct {
+	Enabled bool `toml:"enabled"`
+	Limit   int  `toml:"limit"`
 }
 
 // AIInstance is one configured way to reach a model: which back-end, which
@@ -94,6 +110,7 @@ type Settings struct {
 	Appearance AppearanceSettings `toml:"appearance"`
 	Safety     SafetySettings     `toml:"safety"`
 	History    HistorySettings    `toml:"history"`
+	Chats      ChatSettings       `toml:"chats"`
 	AI         AISettings         `toml:"ai"`
 }
 
@@ -112,6 +129,7 @@ func DefaultSettings() Settings {
 			StuckQuery:     "5m",
 		},
 		History: HistorySettings{Enabled: true, StoreSQL: true, Limit: 500},
+		Chats:   ChatSettings{Enabled: true, Limit: 100},
 		AI: AISettings{
 			Enabled:  false,
 			Provider: "local",
@@ -130,6 +148,9 @@ func (s Settings) Validate() error {
 	}
 	if s.History.Limit < 0 {
 		return fmt.Errorf("history limit cannot be negative, got %d", s.History.Limit)
+	}
+	if s.Chats.Limit < 0 {
+		return fmt.Errorf("conversation limit cannot be negative, got %d", s.Chats.Limit)
 	}
 	return s.AI.validate()
 }

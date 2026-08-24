@@ -11,6 +11,7 @@ import (
 	"github.com/sonquer/tui4db/src/cli/internal/cli"
 	"github.com/sonquer/tui4db/src/cli/internal/config"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
+	"github.com/sonquer/tui4db/src/cli/internal/ui"
 )
 
 type fakeWorkspace struct {
@@ -420,5 +421,43 @@ func TestSavingAnEditedProfile(t *testing.T) {
 	reopened, cmd := editing.Update(mine)
 	if !reopened.(Model).loading || cmd == nil {
 		t.Error("the connection in use must be opened again")
+	}
+}
+
+// The list of connections says what is known about each one, and what the one
+// in use is doing.
+func TestTheConnectionListSaysWhatIsKnown(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 120, 32
+	m.running = m.running.withSessions(sessionsMsg{
+		sessions: []driver.Session{
+			{ID: "1", Application: "psql", State: "active"},
+			{ID: "2", Application: "psql", State: "idle"},
+		},
+	}, 100)
+
+	browsing, cmd := m.browse()
+	shown := settle(t, browsing.(Model), cmd)
+	view := plain(shown.content())
+	for _, want := range []string{"production-eu", "sqlite", "read only",
+		"tui4db/production-eu", "2 running"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the list must say %q:\n%s", want, view)
+		}
+	}
+}
+
+// A connection nobody is using says nothing about what it is doing.
+func TestAConnectionNobodyIsUsingSaysNothing(t *testing.T) {
+	list := newConnections(ui.Default()).working("production-eu", 0)
+	if len(list.busy) != 0 {
+		t.Errorf("busy = %v, nothing is running", list.busy)
+	}
+	held := newConnections(ui.Default()).working("production-eu", 3)
+	if held.busy["production-eu"] != "3 running" {
+		t.Errorf("busy = %v", held.busy)
+	}
+	if held.working("production-eu", 0).busy["production-eu"] != "" {
+		t.Error("and it stops saying so once nothing is")
 	}
 }

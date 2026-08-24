@@ -52,6 +52,11 @@ in any mode.
 On a page opened with `enter` — a reading, a table, an index, a row — `a` puts
 that page into the box as a question. It is not sent until you send it.
 
+`ctrl+g` opens the conversations you have had. `enter` carries one on from where
+it left off, `ctrl+x` forgets one, `ctrl+n` begins another, and typing searches.
+A conversation is kept whole, including the rows a tool read for it, which is
+what lets it be carried on and why the settings screen can empty the lot.
+
 `enter` sends, `esc` stops an answer that is still arriving, and a line ending
 in a backslash is continued rather than sent. `ctrl+c` closes the program, and
 asks first.
@@ -86,6 +91,13 @@ When something goes wrong badly enough to end the program, what happened is
 written to a file under the state directory rather than to a screen that is
 about to be cleared: `crash-<when>.log`, and `engine.log` beside it, which is
 what the inference library itself was saying at the time.
+
+## Settings
+
+The `settings` command reaches everything in `settings.toml` that is not the
+assistant, and empties the query history or the conversations. The row limit,
+the timeouts and the access mode reach the server when a connection is opened,
+so they apply to the next one.
 
 ## Elsewhere
 

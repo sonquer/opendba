@@ -22,6 +22,10 @@ func (p Paths) VaultFile() string { return filepath.Join(p.Config, "secrets.age"
 
 func (p Paths) HistoryFile() string { return filepath.Join(p.State, "history.db") }
 
+// ChatsFile is where conversations with the assistant are kept. State rather
+// than config: it is what the program has done, not how it was told to behave.
+func (p Paths) ChatsFile() string { return filepath.Join(p.State, "chats.db") }
+
 // ModelsDir is where downloaded models are kept. They are data rather than
 // configuration and rather than cache: they are gigabytes, they are worth
 // keeping, and a cleaner that empties caches must not take them.

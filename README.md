@@ -147,6 +147,19 @@ wide result moves sideways with `←→` and `enter` opens one row as a list of 
 and values, which is the only readable way to look at a table with thirty
 columns.
 
+## What you have asked
+
+`ctrl+g` on the ask screen opens the conversations you have had: `enter` carries
+one on from where it left off, `ctrl+x` forgets one, `ctrl+n` begins another,
+and typing searches them.
+
+A conversation is kept whole, the results of the tools it ran included. That is
+what makes carrying one on possible — the model needs the rows it read to answer
+the next question about them — and it means those rows are written to
+`chats.db`, at `0600`, alongside the query history. `[chats] enabled = false` in
+`settings.toml` turns it off, `limit` is how many are kept, and the settings
+screen has a button that empties it.
+
 ## What you have run
 
 `ctrl+g` opens the history: the statement, when it ran, how many rows it
@@ -182,6 +195,24 @@ and letting go copies them. This goes out over OSC 52, which tmux refuses unless
 The mouse can be given back to the terminal, from the command list or with
 `mouse = "off"` under `[appearance]`, since a terminal reporting the mouse
 cannot select text with it.
+
+## Settings
+
+The `settings` command opens them: the shape of a bar, whether the program takes
+the mouse, whether the dashboard draws its own sessions, what a connection opens
+as, whether a write is confirmed, the row
+limit, the two timeouts, and what is kept of your queries and conversations. It
+also empties either store, behind a question with the count in it.
+
+The row limit, the timeouts and the access mode are handed to the server when a
+connection is opened, so changing them here changes the next one. The screen
+says so rather than leaving you to wonder.
+
+Every connection tells the server it is `tui4db/<profile>`, and the dashboard
+uses that to leave its own sessions out: reading the health of a server and
+listing what it is running are two sessions running two statements, and they
+would otherwise be most of what the dashboard showed. It says how many it left
+out, and `own_sessions = true` puts them back.
 
 ## The safety model
 
@@ -237,7 +268,7 @@ single shortcut. `ctrl+k` does the same and is the one to use while typing.
 | `ctrl+r` | run the statement |
 | `ctrl+e` | write the result to a file |
 | `f6` | what the server would do with the statement |
-| `ctrl+g` | what you have run |
+| `ctrl+g` | what you have run, and on the ask screen what you have asked |
 | `y` `Y` | copy the value, copy the row |
 | `ctrl+up` `ctrl+down` | resize the editor |
 | `z` | zoom a result to the whole window |
@@ -465,6 +496,7 @@ $XDG_DATA_HOME/tui4db/       (or ~/.local/share/tui4db/)
 
 $XDG_STATE_HOME/tui4db/      (or ~/.local/state/tui4db/)
   history.db               statements you have run
+  chats.db                 conversations with the assistant
   engine.log               what llama.cpp said this run
   crash-<when>.log         an account of a failure that ended the program
 ```
@@ -512,8 +544,6 @@ Named here rather than left to be discovered:
 
 - **Relations** are on the driver interface and both drivers implement them, but
   nothing calls them yet.
-- **There is no settings screen for anything but the assistant**, so the rest of
-  `settings.toml` is edited by hand.
 - **MySQL, MariaDB and SQL Server** are planned behind the same driver
   interface. Only PostgreSQL and SQLite exist.
 

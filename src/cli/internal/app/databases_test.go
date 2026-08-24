@@ -280,7 +280,7 @@ func TestAProfileThatCannotBeWrittenIsOnlyAnnounced(t *testing.T) {
 	if !strings.Contains(plain(reported.(Model).content()), "read only") {
 		t.Errorf("content = %s", plain(reported.(Model).content()))
 	}
-	if quiet, cmd := m.Update(rememberedMsg{}); cmd != nil || quiet.(Model).text != "" {
+	if quiet, cmd := m.Update(rememberedMsg{}); cmd != nil || quiet.(Model).text() != "" {
 		t.Error("a write that worked says nothing")
 	}
 }

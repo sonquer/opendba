@@ -171,6 +171,14 @@ func Corner(background, content string, width, height int) string {
 		height-lipgloss.Height(content)-3)
 }
 
+// TopRight draws content in the top right of the body, which is where the
+// program says things in passing: out of the way of what is being read, in the
+// one place the eye goes back to.
+func TopRight(background, content string, width int, tabbed bool) string {
+	return compose(background, content,
+		width-lipgloss.Width(content)-gutter, BodyTop(tabbed))
+}
+
 // At draws content over a background at an exact position.
 func At(background, content string, x, y int) string {
 	return compose(background, content, x, y)
@@ -203,6 +211,12 @@ func BodyTop(tabbed bool) int {
 // TabStripRows is what a tab strip costs a screen: the blank row that keeps it
 // off the header, and the rows of the tabs themselves.
 const TabStripRows = 1 + TabRows
+
+// FooterRow is the row the keys are drawn on, which is the last row Chrome
+// writes: the body, the blank line under it, and the rule.
+func FooterRow(height int, tabbed bool) int {
+	return BodyTop(tabbed) + BodyHeight(height) + 2
+}
 
 func compose(background, content string, x, y int) string {
 	return lipgloss.NewCompositor(

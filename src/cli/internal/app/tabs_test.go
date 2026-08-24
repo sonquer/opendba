@@ -143,15 +143,6 @@ func TestARunningTabSaysSoWhereverItIsNamed(t *testing.T) {
 	if !strings.Contains(plain(running.tabBar(80)), "•") {
 		t.Errorf("the strip must mark a tab that is waiting:\n%s", plain(running.tabBar(80)))
 	}
-	found := false
-	for _, entry := range running.commands() {
-		if entry.hint == "still running" {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("and so must the command that reaches it")
-	}
 }
 
 // Every tab is a command, so a tab is reached by name and not only by walking.
@@ -384,27 +375,6 @@ func TestAResultForNoTabIsDropped(t *testing.T) {
 	})
 	if dropped.(Model).results.present {
 		t.Error("a result nobody is waiting for must not be drawn")
-	}
-}
-
-// The command list says what each tab is holding.
-func TestACommandSaysWhatItsTabIsHolding(t *testing.T) {
-	for _, want := range []struct {
-		name  string
-		sheet worksheet
-		hint  string
-	}{
-		{"nothing yet", worksheet{}, "nothing has run yet"},
-		{"a table", worksheet{kind: sheetTable}, "table"},
-		{"rows", worksheet{results: results{present: true, rows: [][]any{{1}, {2}}}}, "2 rows"},
-		{"a failure", worksheet{results: results{present: true, failure: "boom"}}, "failed"},
-		{"still going", worksheet{inflight: true}, "still running"},
-	} {
-		t.Run(want.name, func(t *testing.T) {
-			if got := workbench(t).hint(want.sheet); got != want.hint {
-				t.Errorf("hint = %q, want %q", got, want.hint)
-			}
-		})
 	}
 }
 

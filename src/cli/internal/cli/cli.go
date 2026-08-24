@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/sonquer/tui4db/src/cli/internal/chats"
 	"github.com/sonquer/tui4db/src/cli/internal/config"
 	"github.com/sonquer/tui4db/src/cli/internal/driver"
 	"github.com/sonquer/tui4db/src/cli/internal/driver/postgres"
@@ -76,6 +77,11 @@ type Session struct {
 	// nil rather than an error because a history that cannot be written is a
 	// reason to say so, not a reason to refuse to open a database.
 	History *history.Store
+
+	// Chats is where conversations with the assistant are kept, or nil when the
+	// settings say not to keep them or the file could not be opened. Nil rather
+	// than an error, for the same reason History is.
+	Chats *chats.Store
 
 	// Dialect is what parses a statement into its parts. The guard has one of
 	// its own and keeps it to itself, which is right for a guard; the editor
@@ -319,6 +325,8 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		return Session{}, nil, err
 	}
 	recorder, warning := a.history(settings)
+	conversations, trouble := a.chats(settings)
+	warning = ui.Dotted(warning, trouble)
 	session := Session{
 		Version:      a.Version,
 		Warning:      warning,
@@ -331,14 +339,32 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		Guard:        sqlguard.New(dialect),
 		Dialect:      dialect,
 		History:      recorder,
+		Chats:        conversations,
 		Theme:        appearance(settings),
 	}
 	return session, func() {
 		if recorder != nil {
 			_ = recorder.Close()
 		}
+		if conversations != nil {
+			_ = conversations.Close()
+		}
 		_ = conn.Close()
 	}, nil
+}
+
+// chats opens where conversations with the assistant are kept. Like the
+// history, a store that will not open is a sentence rather than a refusal: the
+// database is what somebody came here for.
+func (a App) chats(settings config.Settings) (*chats.Store, string) {
+	if !settings.Chats.Enabled {
+		return nil, ""
+	}
+	store, err := chats.Open(a.Store.Paths.ChatsFile(), settings.Chats)
+	if err != nil {
+		return nil, "conversations are not being kept: " + err.Error()
+	}
+	return store, ""
 }
 
 // history opens the store the statements you have run are kept in. A store that
@@ -451,6 +477,13 @@ func (a App) connections() int {
 			connection.Name, connection.Driver, connection.Mode.Label(), Target(connection)))
 	}
 	return ExitOK
+}
+
+// Application is what a connection tells the server it is. It is the same name
+// the dashboard sifts its own sessions out by, worked out in one place so the
+// list and the sifting cannot disagree.
+func Application(connection config.Connection) string {
+	return driver.Config{Application: connection.Name}.ApplicationName()
 }
 
 func Target(connection config.Connection) string {

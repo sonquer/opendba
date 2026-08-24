@@ -346,11 +346,11 @@ func TestAISettingsInThePalette(t *testing.T) {
 	m := loaded(t, healthy())
 	opened, _ := press(t, m, "/")
 	typed := opened
-	for _, key := range []string{"a", "i"} {
+	for _, key := range []string{"a", "s", "s", "i"} {
 		typed, _ = press(t, typed, key)
 	}
-	if !strings.Contains(plain(typed.content()), "ai settings") {
-		t.Fatal("the palette does not offer the settings")
+	if !strings.Contains(plain(typed.content()), "assistant and models") {
+		t.Fatal("the palette does not offer the assistant settings")
 	}
 }
 
