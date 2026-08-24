@@ -509,13 +509,18 @@ func TestEveryKeyInTheFooterAnswersWhereItIsDrawn(t *testing.T) {
 			return m
 		}},
 		{"the editor", func(t *testing.T) Model { return manyRows(t, 4) }},
+		{"a narrow editor", func(t *testing.T) Model {
+			m := manyRows(t, 4)
+			m.width = 72
+			return m
+		}},
 	} {
 		t.Run(want.name, func(t *testing.T) {
 			m := want.build(t)
 			row := ui.FooterRow(m.height, m.view == viewQuery && !m.zoomed)
 			drawn := plain(m.footer(0))
 			from := 0
-			for _, binding := range m.footerKeys(ui.FrameWidth(m.width)) {
+			for _, binding := range m.footerKeys() {
 				label := binding.Help().Key
 				column, ok := columnOf(drawn, label+" "+binding.Help().Desc, from)
 				if !ok {

@@ -1247,18 +1247,23 @@ func (m Model) body() string {
 // spelled out rather than drawn as a glyph, so the same keys are three times as
 // wide and a row that fits on one machine runs off the other.
 func (m Model) footer(more int) string {
-	inner := ui.FrameWidth(m.width)
-	hint := m.theme.Subtle.Render(scrollHint(more))
-	left := m.help.ShortHelpView(m.footerKeys(inner - lipgloss.Width(hint) - 2))
-	return ui.SplitLine(left, hint, inner)
+	return ui.SplitLine(m.help.ShortHelpView(m.footerKeys()),
+		m.theme.Subtle.Render(scrollHint(more)), ui.FrameWidth(m.width))
 }
+
+// scrollRoom is what the footer keeps free on the right for the scroll hint. It
+// is a fixed allowance rather than the width of the hint that is there now,
+// because a row of keys that grew and shrank while a list was scrolled would be
+// a row nobody could aim at.
+const scrollRoom = 13
 
 // footerKeys is the keys the footer has room to draw, in order. Off macOS a
 // modifier is spelled out rather than drawn as a glyph, so the same eight keys
 // are half again as wide and a row that fits on one machine runs off the other,
 // taking the width of every row of the screen with it. Drawing and clicking
 // both go through here so that a key nobody can see is a key nobody can press.
-func (m Model) footerKeys(room int) []key.Binding {
+func (m Model) footerKeys() []key.Binding {
+	room := ui.FrameWidth(m.width) - scrollRoom
 	offered := m.keys.footer(m.view, m.suggest.active(), m.zoomed, m.onSessions,
 		m.lists[m.which()].typing, m.inflight)
 	separator := lipgloss.Width(

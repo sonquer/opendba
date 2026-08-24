@@ -7,6 +7,9 @@
 
 <p align="center">
   <a href="https://github.com/sonquer/opendba/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/sonquer/opendba/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/sonquer/opendba/actions/workflows/nightly.yml"><img alt="nightly" src="https://github.com/sonquer/opendba/actions/workflows/nightly.yml/badge.svg"></a>
+  <a href="https://github.com/sonquer/opendba/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/sonquer/opendba?sort=semver"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/sonquer/opendba"><img alt="openssf scorecard" src="https://api.scorecard.dev/projects/github.com/sonquer/opendba/badge"></a>
   <a href="#licence"><img alt="licence" src="https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue"></a>
   <img alt="go" src="https://img.shields.io/badge/go-1.26-00ADD8">
   <img alt="status" src="https://img.shields.io/badge/status-in%20development-orange">
@@ -39,12 +42,40 @@ server, what is running on it right now, what it holds, and an editor to ask it
 questions. Every statement is parsed before it is sent, and on a read-only
 profile anything that would change data is refused rather than warned about.
 
-It is in development. There are no binary releases yet.
+It is in development.
 
 ## Install
 
+Every release publishes a signed archive for Linux, macOS and Windows, on both
+amd64 and arm64. Pick one from the
+[latest release](https://github.com/sonquer/opendba/releases/latest), unpack it,
+and put `opendba` on your `PATH`.
+
 ```bash
 go install github.com/sonquer/opendba/src/cli/cmd/opendba@latest
+```
+
+`go install` resolves the `src/cli/vX.Y.Z` tag, which every release pushes
+alongside the plain one, because the product is a nested module.
+
+Nothing else is needed at run time. There is no cgo, no libpq, and no SQLite to
+install: everything the program talks to a database with is compiled into it.
+
+### Nightly builds
+
+[The `nightly` release](https://github.com/sonquer/opendba/releases/tag/nightly)
+is `main` as it stood last night, built for the same six targets and replaced
+every night. Its version reads `X.Y.Z-nightly.<date>.<commit>`, so it sorts
+after the release it was cut from. It is not supported and carries no
+compatibility promise.
+
+### Verifying what you downloaded
+
+Every archive, every SBOM and `checksums.txt` carry build provenance, for
+releases and nightlies alike. Check one before you run it:
+
+```bash
+gh attestation verify opendba_0.1.0_linux_amd64.tar.gz --repo sonquer/opendba
 ```
 
 ## Quick start

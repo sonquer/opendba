@@ -2,47 +2,62 @@ name: release
 
 on:
   push:
-    tags: ["v*.*.*"]
+    tags: ["v*"]
+  workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CGO_ENABLED: "0"
 
 jobs:
   release:
+    name: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version-file: src/cli/go.mod
+          go-version-file: go.work
+          cache: false
 
       - name: Verify the tag matches VERSION
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          file="$(tr -d '[:space:]' < VERSION)"
-          if [ "$tag" != "$file" ]; then
-            echo "tag $GITHUB_REF_NAME does not match VERSION ($file)" >&2
-            exit 1
-          fi
+        run: go run ./src/tools/cmd/dev version --check "$GITHUB_REF_NAME"
 
       - name: Run every gate
         run: go run ./src/tools/cmd/dev check --ci --summary "$GITHUB_STEP_SUMMARY"
 
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Install the SBOM generator goreleaser expects
+        uses: anchore/sbom-action/download-syft@v0
         with:
-          version: latest
+          syft-version: v1.51.0
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: v2.18.0
           args: release --clean
-          workdir: src/cli
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
-      - uses: actions/attest-build-provenance@v2
+      - name: Attest everything the release publishes
+        uses: actions/attest-build-provenance@v4
         with:
-          subject-path: src/cli/dist/*.tar.gz
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sbom.json
+            dist/checksums.txt

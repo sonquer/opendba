@@ -163,7 +163,7 @@ func (m Model) hintAt(x, y int) (hit, bool) {
 	at := ui.Gutter
 	separator := lipgloss.Width(
 		m.help.Styles.ShortSeparator.Inline(true).Render(m.help.ShortSeparator))
-	for _, binding := range m.footerKeys(ui.FrameWidth(m.width)) {
+	for _, binding := range m.footerKeys() {
 		width := lipgloss.Width(m.help.ShortHelpView([]key.Binding{binding}))
 		if x >= at && x < at+width {
 			return pressing(binding)

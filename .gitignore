@@ -30,7 +30,7 @@
 
 # opendba
 /bin/
-/dist/
+dist/
 
 # coverage output, never committed
 /coverage/

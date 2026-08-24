@@ -2,28 +2,52 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"golang.org/x/term"
 )
 
-func Prompt(prompt string) ([]byte, error) {
-	descriptor := int(os.Stdin.Fd())
-	if !term.IsTerminal(descriptor) {
+// console is the three things reading a password needs from a terminal, taken
+// as arguments so that the reading can be tested without one.
+type console struct {
+	descriptor int
+	isTerminal func(int) bool
+	read       func(int) ([]byte, error)
+	out        io.Writer
+}
+
+func stdin() console {
+	return console{
+		descriptor: int(os.Stdin.Fd()),
+		isTerminal: term.IsTerminal,
+		read:       term.ReadPassword,
+		out:        os.Stderr,
+	}
+}
+
+func Prompt(prompt string) ([]byte, error) { return asked(stdin(), prompt) }
+
+// asked writes the prompt where the answer will not be piped into anything, and
+// reads the answer without echoing it.
+func asked(c console, prompt string) ([]byte, error) {
+	if !c.isTerminal(c.descriptor) {
 		return nil, fmt.Errorf("reading a password needs a terminal")
 	}
-	fmt.Fprint(os.Stderr, prompt)
-	secret, err := term.ReadPassword(descriptor)
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprint(c.out, prompt)
+	secret, err := c.read(c.descriptor)
+	fmt.Fprintln(c.out)
 	if err != nil {
 		return nil, fmt.Errorf("read the password: %w", err)
 	}
 	return secret, nil
 }
 
-func PassphrasePrompt() ([]byte, error) {
-	secret, err := Prompt("vault passphrase: ")
+func PassphrasePrompt() ([]byte, error) { return passphrase(stdin()) }
+
+func passphrase(c console) ([]byte, error) {
+	secret, err := asked(c, "vault passphrase: ")
 	if err != nil {
 		return nil, err
 	}

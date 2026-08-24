@@ -96,6 +96,44 @@ func TestEnsureReportsFailures(t *testing.T) {
 	})
 }
 
+func TestEnsureBuildsAVersionedToolInAModuleOfItsOwn(t *testing.T) {
+	runner := &recordingRunner{emit: true}
+	builder := newBuilder(t, runner)
+
+	if _, err := builder.Ensure(context.Background(), Actions); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	if len(runner.calls) != 2 {
+		t.Fatalf("calls = %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[0], "go get -tool "+Actions.Package+"@"+Actions.Version) {
+		t.Errorf("fetch = %q", runner.calls[0])
+	}
+	if runner.dirs[0] == builder.ToolsDir || runner.dirs[1] != runner.dirs[0] {
+		t.Errorf("a versioned tool must be built outside the workspace, got %v", runner.dirs)
+	}
+	if _, err := os.Stat(runner.dirs[0]); !os.IsNotExist(err) {
+		t.Errorf("the throwaway module was left behind at %q", runner.dirs[0])
+	}
+}
+
+func TestEnsureReportsAFetchThatFails(t *testing.T) {
+	t.Run("runner error", func(t *testing.T) {
+		builder := newBuilder(t, &recordingRunner{err: errors.New("no network")})
+		_, err := builder.Ensure(context.Background(), Actions)
+		if err == nil || !strings.Contains(err.Error(), "fetch actionlint") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("fetch failed", func(t *testing.T) {
+		builder := newBuilder(t, &recordingRunner{result: exec.Result{ExitCode: 1, Stderr: "unknown revision"}})
+		_, err := builder.Ensure(context.Background(), Actions)
+		if err == nil || !strings.Contains(err.Error(), "unknown revision") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
 func TestPathCarriesTheExtensionWindowsNeeds(t *testing.T) {
 	builder := Builder{BinDir: "/bin"}
 	path := builder.Path(Lint)

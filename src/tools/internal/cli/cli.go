@@ -63,7 +63,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return ExitOK
 	}
 	if command == "version" {
-		return a.version()
+		return a.version(ctx, rest)
 	}
 	if command == "run" {
 		return a.runProduct(rest)
@@ -152,21 +152,6 @@ func (a App) runProduct(args []string) int {
 		return ExitFailure
 	}
 	return code
-}
-
-func (a App) version() int {
-	space, err := workspace.Discover(a.Dir)
-	if err != nil {
-		fmt.Fprintln(a.Stderr, err)
-		return ExitFailure
-	}
-	data, err := os.ReadFile(filepath.Join(space.Root, "VERSION"))
-	if err != nil {
-		fmt.Fprintln(a.Stderr, err)
-		return ExitFailure
-	}
-	fmt.Fprintln(a.Stdout, strings.TrimSpace(string(data)))
-	return ExitOK
 }
 
 func (a App) interactive(command string, opts options) bool {
@@ -282,6 +267,7 @@ func (a App) suite(space workspace.Workspace, command string, opts options) (cor
 		Policy:      opts.policy,
 		CoverageDir: a.coverageDir(space, opts),
 		Builder:     a.builder(space),
+		Race:        command == "race",
 	}
 	full := checks.Suite(settings)
 	filtered, err := filter(full, prefixFor(command), opts.module, space)
@@ -359,9 +345,11 @@ commands:
   build      compile every module
   lint       run golangci-lint, built from the version pinned in src/tools
   vuln       run govulncheck, built the same way
+  workflows  run actionlint over the GitHub Actions workflows
+  race       run the tests under the race detector, which needs cgo
   run        start opendba with the values from .env, passing the rest through
   screens    render every screen of the interface, to look at what changed
-  version    print the version from the VERSION file
+  version    read or rewrite the VERSION file
   help       show this message
 
 flags:
@@ -374,6 +362,16 @@ flags:
   --out <dir>          where screens are written, default <root>/.screens
   --against <dir>      print how the screens differ from the ones already there
   --connection <name>  render the screens against a profile instead of a fixture
+
+version flags:
+  --tag                print v<version> instead of the bare version
+  --module-tag         print src/cli/v<version>, the tag go install resolves
+  --snapshot           print what an unreleased build of this commit calls itself
+  --exact              leave the patch alone when building a snapshot version
+  --commit <sha>       the commit a snapshot names, default the one checked out
+  --check <tag>        fail unless the tag matches the VERSION file
+  --set <bump>         rewrite VERSION: patch, minor, major, or X.Y.Z
+  --github <file>      append version, tag, module_tag and branch to this file
 `, a.name(), a.name(), float64(DefaultMinCoverage))
 }
 
@@ -388,17 +386,19 @@ func split(args []string) (string, []string) {
 }
 
 var commands = map[string]string{
-	"dev":      "",
-	"check":    "",
-	"cover":    "cover",
-	"comments": "comments",
-	"format":   "format",
-	"build":    "build",
-	"lint":     "lint",
-	"vuln":     "vuln",
-	"version":  "",
-	"run":      "",
-	"screens":  "",
+	"dev":       "",
+	"check":     "",
+	"cover":     "cover",
+	"comments":  "comments",
+	"format":    "format",
+	"build":     "build",
+	"lint":      "lint",
+	"vuln":      "vuln",
+	"race":      "race",
+	"workflows": "workflows",
+	"version":   "",
+	"run":       "",
+	"screens":   "",
 }
 
 func known(command string) bool {

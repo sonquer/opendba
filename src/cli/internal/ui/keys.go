@@ -44,12 +44,19 @@ var plainModifiers = map[string]string{
 
 // Keystroke renders a Bubble Tea key name the way the platform writes it:
 // ⌃⏎ on macOS, ctrl+enter elsewhere.
-func Keystroke(key string) string {
+func Keystroke(key string) string { return keystroke(key, runtime.GOOS == "darwin") }
+
+// keystroke is Keystroke with the platform as an argument, so that both of the
+// ways a key can be written are drawn and measured in a test rather than only
+// the way the machine running it happens to write them. The difference is not
+// cosmetic: ctrl+r is three times the width of ⌃R, and a row of keys that fits
+// on one machine runs off the frame on the other.
+func keystroke(key string, mac bool) string {
 	parts := strings.Split(key, "+")
 	last := parts[len(parts)-1]
 	modifiers := parts[:len(parts)-1]
 
-	if runtime.GOOS != "darwin" {
+	if !mac {
 		out := ""
 		for _, modifier := range modifiers {
 			out += plainModifiers[modifier]

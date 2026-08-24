@@ -100,7 +100,9 @@ go run ./src/tools/cmd/dev cover      # coverage with the gate and the report
 go run ./src/tools/cmd/dev comments   # the comment gate
 go run ./src/tools/cmd/dev vuln       # govulncheck over both modules
 go run ./src/tools/cmd/dev lint       # golangci-lint, pinned in src/tools/go.mod
-go run ./src/tools/cmd/dev version    # the version from VERSION
+go run ./src/tools/cmd/dev workflows  # actionlint over .github/workflows
+go run ./src/tools/cmd/dev race       # the tests under the race detector, needs cgo
+go run ./src/tools/cmd/dev version    # read or rewrite VERSION
 go run ./src/tools/cmd/dev run        # start opendba with the values from .env
 go run ./src/tools/cmd/grammar        # regenerate the vendored parsers
 ```
@@ -108,6 +110,14 @@ go run ./src/tools/cmd/grammar        # regenerate the vendored parsers
 External tools are pinned as `tool` dependencies of `src/tools` and built into
 `.local/bin` on demand. Nothing is installed globally, and `@latest` never
 decides which version of a linter judges a pull request.
+
+`actionlint` is the one exception, and it names its version in
+`internal/toolbin` instead. It needs `go.yaml.in/yaml/v4` at rc.3, and `gosec`,
+which arrives with `golangci-lint`, needs rc.6; the two cannot share a module.
+It is built from a throwaway module outside the workspace, from a version that
+is still written down in one place, so the pinning promise holds even though the
+mechanism differs. `race` is not in `dev check`: the detector needs cgo, and
+every other check runs with `CGO_ENABLED=0`.
 
 `.env` is a convenience of the tooling, never of the product. A program that
 reads configuration from the directory it happens to run in can be redirected by
@@ -152,10 +162,32 @@ to know what a `pgtype.Numeric` is.
 
 ## Versioning and releases
 
-The version lives in `VERSION` and follows SemVer. A release is a tag `vX.Y.Z`
-that matches that file; the release workflow refuses to publish when the two
-disagree. The product is a nested module, so `go install` resolves the matching
-`src/cli/vX.Y.Z` tag, which is pushed alongside the plain one.
+The version lives in `VERSION` and follows SemVer, and `dev version` is the only
+thing that reads or rewrites it. Nothing about a version is parsed in YAML or in
+a shell script.
+
+A release starts with the `release-prep` workflow, run by hand with `patch`,
+`minor`, `major`, or an exact `X.Y.Z`. It rewrites `VERSION`, opens a pull
+request, and stops. Merging that pull request lands a change to `VERSION` on
+`main`, which starts `tag.yml`: it creates `vX.Y.Z` and `src/cli/vX.Y.Z` at the
+merge commit and dispatches `release.yml`. The second tag is what `go install`
+resolves, because the product is a nested module.
+
+`release.yml` refuses to publish when the tag and `VERSION` disagree, and it
+runs every gate again before it builds anything.
+
+`tag.yml` starts the release with an explicit `workflow_dispatch` rather than
+relying on the tag push, because a tag pushed with `GITHUB_TOKEN` does not start
+a workflow. The alternative is a GitHub App token; the dispatch needs no secret
+at all, so that is what is used.
+
+Nightlies are built from `main` every night into one rolling prerelease under
+the tag `nightly`, deleted and recreated each time so that exactly one exists.
+Their version is `X.Y.Z-nightly.<date>.<commit>`, with the patch bumped first so
+the build sorts after the release it was cut from rather than claiming to
+precede it. `git.ignore_tags` in `.goreleaser.yml` keeps both `nightly` and the
+nested-module tags out of the release tooling's view of history; without it
+`git describe` on `main` finds `nightly`.
 
 Release notes are generated from the commit log, which is why the subject line
 of a commit is written for somebody reading it in a release.

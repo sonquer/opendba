@@ -23,6 +23,7 @@ type Options struct {
 	Policy      policy.Policy
 	CoverageDir string
 	Builder     toolbin.Builder
+	Race        bool
 }
 
 func ProfilePath(coverageDir string, module workspace.Module) string {
@@ -51,12 +52,17 @@ func GeneratedFilter(space workspace.Workspace, summary cover.Summary) func(stri
 }
 
 func Suite(opts Options) core.Suite {
-	suite := core.Suite{Comments(opts.Workspace.Root)}
+	suite := core.Suite{Comments(opts.Workspace.Root), Workflows(opts)}
 	for _, module := range opts.Workspace.Modules {
 		suite = append(suite, Format(module, opts.Runner), Build(module, opts.Runner))
 	}
 	for _, module := range opts.Workspace.Modules {
 		suite = append(suite, Coverage(opts, module))
+	}
+	if opts.Race {
+		for _, module := range opts.Workspace.Modules {
+			suite = append(suite, Race(module, opts.Runner))
+		}
 	}
 	for _, module := range opts.Workspace.Modules {
 		suite = append(suite, Lint(opts, module), Vulnerabilities(opts, module))
@@ -170,6 +176,25 @@ func Build(module workspace.Module, runner exec.Runner) core.Check {
 	}
 }
 
+// Race is not in the default suite: the detector needs cgo, and every other
+// check runs without it.
+func Race(module workspace.Module, runner exec.Runner) core.Check {
+	return commandCheck{
+		name:     "race",
+		describe: "tests pass under the race detector",
+		module:   module,
+		runner:   runner,
+		args:     []string{"test", "./...", "-race", "-count=1"},
+		failOn:   func(r exec.Result) bool { return !r.OK() },
+		summary: func(r exec.Result) string {
+			if r.OK() {
+				return "no races"
+			}
+			return "races or failures"
+		},
+	}
+}
+
 type toolCheck struct {
 	name     string
 	describe string
@@ -181,7 +206,12 @@ type toolCheck struct {
 	builder  toolbin.Builder
 }
 
-func (c toolCheck) Name() string { return c.name + ":" + c.module.Name }
+func (c toolCheck) Name() string {
+	if c.module.Name == "" {
+		return c.name
+	}
+	return c.name + ":" + c.module.Name
+}
 
 func (c toolCheck) Describe() string { return c.describe }
 
@@ -229,6 +259,21 @@ func Vulnerabilities(opts Options, module workspace.Module) core.Check {
 		args:     []string{"./..."},
 		failed:   "known vulnerabilities",
 		module:   module,
+		runner:   opts.Runner,
+		builder:  opts.Builder,
+	}
+}
+
+// Workflows turns actionlint's external linters off, so that a laptop without
+// shellcheck and a runner with it reach the same verdict.
+func Workflows(opts Options) core.Check {
+	return toolCheck{
+		name:     "workflows",
+		describe: "actionlint reports nothing in .github/workflows",
+		tool:     toolbin.Actions,
+		args:     []string{"-shellcheck=", "-pyflakes=", "-color"},
+		failed:   "workflow findings",
+		module:   workspace.Module{Dir: opts.Workspace.Root},
 		runner:   opts.Runner,
 		builder:  opts.Builder,
 	}

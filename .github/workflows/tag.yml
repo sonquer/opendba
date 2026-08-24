@@ -1,0 +1,50 @@
+name: tag
+
+on:
+  push:
+    branches: [main]
+    paths: ["VERSION"]
+
+permissions: {}
+
+concurrency:
+  group: tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: tag the release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: src/tools/go.sum
+
+      - name: Read the version that was just merged
+        id: version
+        run: go run ./src/tools/cmd/dev version --github "$GITHUB_OUTPUT"
+
+      - name: Tag the product and the nested module, then start the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD: ${{ github.sha }}
+          TAG: ${{ steps.version.outputs.tag }}
+          MODULE_TAG: ${{ steps.version.outputs.module_tag }}
+        run: |
+          if gh api "repos/$REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists, nothing to do" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh api -X POST "repos/$REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$HEAD"
+          gh api -X POST "repos/$REPOSITORY/git/refs" -f "ref=refs/tags/$MODULE_TAG" -f "sha=$HEAD"
+          gh workflow run release.yml --ref "$TAG"
+          echo "tagged $TAG and $MODULE_TAG at $HEAD" >> "$GITHUB_STEP_SUMMARY"

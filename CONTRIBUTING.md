@@ -63,10 +63,23 @@ committed, so nobody else needs one.
 
 ## Releases
 
-The version lives in `VERSION` and follows [SemVer](https://semver.org).
-A release is a tag `vX.Y.Z` matching that file; the release workflow refuses to
-publish when they disagree. Because the product is a nested module, `go install`
-resolves the matching `src/cli/vX.Y.Z` tag, which is pushed alongside.
+The version lives in `VERSION` and follows [SemVer](https://semver.org), and
+`go run ./src/tools/cmd/dev version` is what reads it.
+
+To cut a release, run the **release-prep** workflow from the Actions tab with
+`patch`, `minor`, `major`, or an exact `X.Y.Z`. It rewrites `VERSION` and opens
+a pull request; review it like any other. Merging it tags `vX.Y.Z` and
+`src/cli/vX.Y.Z` at the merge commit and starts the release, which runs every
+gate again before publishing. The second tag is what `go install` resolves,
+because the product is a nested module.
+
+The release is started by an explicit dispatch rather than by the tag push,
+because a tag pushed with `GITHUB_TOKEN` does not start a workflow. If that ever
+needs to change, the drop-in alternative is `actions/create-github-app-token`:
+push the tags with an App token and `release.yml` fires on the push as usual.
+
+Nightlies build `main` every night into a single rolling prerelease under the
+tag `nightly`. They are not supported, and nothing about them is a promise.
 
 ## Licence
 

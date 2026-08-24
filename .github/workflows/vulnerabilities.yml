@@ -7,19 +7,26 @@ on:
   schedule:
     - cron: "23 5 * * *"
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: vulnerabilities-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
         with:
-          go-version-file: src/cli/go.mod
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
 
       - name: Scan both modules
         run: go run ./src/tools/cmd/dev vuln --ci
@@ -32,8 +39,10 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v5.0.0
         with:
           fail-on-severity: moderate
           comment-summary-in-pr: on-failure

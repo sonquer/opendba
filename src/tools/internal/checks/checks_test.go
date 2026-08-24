@@ -20,6 +20,7 @@ type fakeRunner struct {
 	results     map[string]exec.Result
 	errs        map[string]error
 	calls       []string
+	dirs        []string
 	profile     string
 	buildsTools bool
 	toolExit    int
@@ -30,6 +31,7 @@ type fakeRunner struct {
 func (f *fakeRunner) Run(_ context.Context, dir string, name string, args ...string) (exec.Result, error) {
 	command := exec.Format(name, args...)
 	f.calls = append(f.calls, command)
+	f.dirs = append(f.dirs, dir)
 	if err, ok := f.errs[name]; ok {
 		return exec.Result{}, err
 	}
@@ -329,7 +331,7 @@ func TestSuiteCoversEveryModule(t *testing.T) {
 	}
 	suite := Suite(Options{Workspace: space, Runner: &fakeRunner{}, Policy: policy.Default(), CoverageDir: t.TempDir()})
 	want := []string{
-		"comments",
+		"comments", "workflows",
 		"format:cli", "build:cli", "format:tools", "build:tools",
 		"cover:cli", "cover:tools",
 		"lint:cli", "vuln:cli", "lint:tools", "vuln:tools",
@@ -343,6 +345,106 @@ func TestSuiteCoversEveryModule(t *testing.T) {
 			t.Errorf("suite[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
+}
+
+func TestSuiteAddsTheRaceChecksOnlyWhenAsked(t *testing.T) {
+	space := workspace.Workspace{
+		Root: t.TempDir(),
+		Modules: []workspace.Module{
+			{Name: "cli", Path: "example.com/m/src/cli", Dir: t.TempDir()},
+			{Name: "tools", Path: "example.com/m/src/tools", Dir: t.TempDir()},
+		},
+	}
+	opts := Options{Workspace: space, Runner: &fakeRunner{}, Policy: policy.Default(), CoverageDir: t.TempDir(), Race: true}
+	names := Suite(opts).Names()
+	for _, want := range []string{"race:cli", "race:tools"} {
+		if !contains(names, want) {
+			t.Errorf("suite = %v, missing %q", names, want)
+		}
+	}
+	opts.Race = false
+	for _, got := range Suite(opts).Names() {
+		if strings.HasPrefix(got, "race") {
+			t.Errorf("suite carries %q without Race", got)
+		}
+	}
+}
+
+func TestRaceRunsTheDetector(t *testing.T) {
+	module := testModule(t)
+	runner := &fakeRunner{}
+	check := Race(module, runner)
+	if check.Name() != "race:cli" || check.Describe() == "" {
+		t.Fatalf("metadata = %q", check.Name())
+	}
+	report, err := check.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != core.StatusPass || report.Summary != "no races" {
+		t.Fatalf("report = %+v", report)
+	}
+	if !strings.Contains(runner.calls[0], "-race") {
+		t.Errorf("race check ran %q", runner.calls[0])
+	}
+}
+
+func TestRaceReportsFailures(t *testing.T) {
+	runner := &fakeRunner{results: map[string]exec.Result{"go test": {ExitCode: 1, Stdout: "DATA RACE"}}}
+	report, err := Race(testModule(t), runner).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != core.StatusFail || report.Summary != "races or failures" || len(report.Detail) == 0 {
+		t.Fatalf("report = %+v", report)
+	}
+}
+
+func TestWorkflowsRunsAtTheWorkspaceRoot(t *testing.T) {
+	root := t.TempDir()
+	runner := &fakeRunner{buildsTools: true}
+	opts := toolOptions(t, testModule(t), runner)
+	opts.Workspace.Root = root
+	check := Workflows(opts)
+	if check.Name() != "workflows" || check.Describe() == "" {
+		t.Fatalf("Name() = %q, want a check with no module suffix", check.Name())
+	}
+	report, err := check.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != core.StatusPass {
+		t.Fatalf("report = %+v", report)
+	}
+	last := len(runner.calls) - 1
+	if runner.dirs[last] != root {
+		t.Errorf("actionlint ran in %q, want the workspace root %q", runner.dirs[last], root)
+	}
+	for _, want := range []string{"-shellcheck=", "-pyflakes="} {
+		if !strings.Contains(runner.calls[last], want) {
+			t.Errorf("actionlint ran %q, missing %q", runner.calls[last], want)
+		}
+	}
+}
+
+func TestWorkflowsReportsFindings(t *testing.T) {
+	runner := &fakeRunner{buildsTools: true, toolExit: 1, toolOutput: "ci.yml:1:1: bad"}
+	report, err := Workflows(toolOptions(t, testModule(t), runner)).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != core.StatusFail || report.Summary != "workflow findings" {
+		t.Fatalf("report = %+v", report)
+	}
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGeneratedFilterExcludesGeneratedPackages(t *testing.T) {

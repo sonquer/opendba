@@ -6,8 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -18,40 +17,110 @@ env:
 
 jobs:
   gates:
-    name: gates (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    name: gates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
         with:
-          go-version-file: src/cli/go.mod
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
           cache-dependency-path: |
             src/cli/go.sum
             src/tools/go.sum
 
       - name: Cache the pinned tools
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .local/bin
-          key: tools-${{ matrix.os }}-${{ hashFiles('src/tools/go.sum') }}
+          key: tools-ubuntu-latest-${{ hashFiles('src/tools/go.sum', 'src/tools/internal/toolbin/toolbin.go') }}
 
       - name: Run every gate
-        shell: bash
-        run: |
-          go run ./src/tools/cmd/dev check --ci --summary "$GITHUB_STEP_SUMMARY"
+        run: go run ./src/tools/cmd/dev check --ci --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the coverage report
-        if: always() && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.html
           if-no-files-found: warn
+
+  tests:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            src/cli/go.sum
+            src/tools/go.sum
+
+      - name: Run the tests and the coverage gate
+        shell: bash
+        run: go run ./src/tools/cmd/dev cover --ci --html=false
+
+  cross:
+    name: cross (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: src/cli/go.sum
+
+      - name: Compile the product for this target
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./src/cli/...
+
+  workflows:
+    name: workflow audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: zizmorcore/zizmor-action@v0.6.2
+        with:
+          version: v1.29.0
+          config: .github/zizmor.yml
 
   pages:
     name: publish coverage
@@ -66,7 +135,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage
           path: site
@@ -74,9 +143,9 @@ jobs:
       - name: Use the report as the site index
         run: cp site/coverage.html site/index.html
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
