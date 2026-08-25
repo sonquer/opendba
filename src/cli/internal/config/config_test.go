@@ -103,9 +103,6 @@ func TestEnsureCreatesPrivateDirectories(t *testing.T) {
 }
 
 func TestEnsureTightensLoosePermissions(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("permissions are not enforced on windows")
-	}
 	root := t.TempDir()
 	loose := filepath.Join(root, "config")
 	if err := os.MkdirAll(loose, 0o755); err != nil {
@@ -119,7 +116,7 @@ func TestEnsureTightensLoosePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o700 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 		t.Errorf("mode = %04o, want 0700", info.Mode().Perm())
 	}
 }
@@ -655,13 +652,50 @@ func TestTheWorkspaceRootSurvivesTheFile(t *testing.T) {
 	}
 }
 
-// fullPath builds a path the system running the tests calls a full one. A path
-// beginning with a separator is a full path on Unix and is not one on Windows,
-// where a full path names the volume it is on.
+// fullPath builds a path the system running the tests calls a full one. It is
+// grown from the temporary directory rather than from a separator, because a
+// path beginning with a separator is a full path on Unix and is not one on
+// Windows, where a full path names the volume it is on.
 func fullPath(parts ...string) string {
-	root := string(filepath.Separator)
-	if runtime.GOOS == "windows" {
-		root = `C:\`
+	return filepath.Join(append([]string{os.TempDir()}, parts...)...)
+}
+
+// TestWriteSecureFileFailsWhenTheTemporaryNameIsTaken reaches the write that
+// goes wrong on every system rather than only where a directory can be made
+// unwritable: the file is written beside its target first, and a directory
+// standing in that place is refused everywhere.
+func TestWriteSecureFileFailsWhenTheTemporaryNameIsTaken(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "profiles.toml")
+	if err := os.Mkdir(filepath.Join(dir, ".profiles.toml.tmp"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	return filepath.Join(append([]string{root}, parts...)...)
+	if err := writeSecureFile(target, []byte("x")); err == nil {
+		t.Fatal("want an error when the temporary file cannot be written")
+	}
+}
+
+// TestLoadingReportsAFileItCannotRead is the other half of a configuration that
+// is there but unreadable: on a system that enforces permissions it is a file
+// somebody loosened, and on one that does not it is a directory standing where
+// a file belongs. Both arrive here as the same refusal.
+func TestLoadingReportsAFileItCannotRead(t *testing.T) {
+	t.Run("profiles", func(t *testing.T) {
+		store := newStore(t)
+		if err := os.Mkdir(store.Paths.ProfilesFile(), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.LoadProfiles(); err == nil {
+			t.Fatal("want an error when the profiles cannot be read")
+		}
+	})
+	t.Run("settings", func(t *testing.T) {
+		store := newStore(t)
+		if err := os.Mkdir(store.Paths.SettingsFile(), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.LoadSettings(); err == nil {
+			t.Fatal("want an error when the settings cannot be read")
+		}
+	})
 }

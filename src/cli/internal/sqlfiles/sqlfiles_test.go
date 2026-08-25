@@ -150,15 +150,12 @@ func TestWritingMakesTheWorkspace(t *testing.T) {
 	}
 }
 
-// rooted builds a path that is a full path on the system running the tests. A
+// rooted builds a path that is a full path on the system running the tests. It
+// is grown from the temporary directory rather than from a separator, because a
 // path beginning with a separator is a full path on Unix and is not one on
 // Windows, where a full path names the volume it is on.
 func rooted(parts ...string) string {
-	root := string(filepath.Separator)
-	if runtime.GOOS == "windows" {
-		root = `C:\`
-	}
-	return filepath.Join(append([]string{root}, parts...)...)
+	return filepath.Join(append([]string{os.TempDir()}, parts...)...)
 }
 
 func TestWritingLeavesNoTemporaryFileBehind(t *testing.T) {
