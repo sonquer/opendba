@@ -26,6 +26,10 @@ type sessionsMsg struct {
 	sessions []driver.Session
 	at       time.Time
 	err      error
+
+	// on says which connection was asked, since a read asked for on one lands
+	// while another may be in front.
+	on sessionID
 }
 
 type stoppedMsg struct {
@@ -266,12 +270,13 @@ func (m Model) readSessions() tea.Cmd {
 		return nil
 	}
 	conn := m.session.Conn
+	on := m.link.key()
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), catalogTimeout)
 		defer cancel()
 
 		sessions, err := conn.Sessions(ctx)
-		return sessionsMsg{sessions: sessions, at: time.Now(), err: err}
+		return sessionsMsg{sessions: sessions, at: time.Now(), err: err, on: on}
 	}
 }
 

@@ -585,3 +585,16 @@ func TestAFileThatIsNotADatabaseIsNotAStore(t *testing.T) {
 		t.Error("want an error")
 	}
 }
+
+// Settings are a fact of the file rather than of one connection, so a store
+// shared by several of them answers to what the settings say now.
+func TestAStoreFollowsTheSettings(t *testing.T) {
+	shared := kept(t, config.ChatSettings{Enabled: true, Limit: 10})
+	same := shared.Following(config.ChatSettings{Enabled: true, Limit: 99})
+	if same != shared {
+		t.Error("following the settings must not open a second handle")
+	}
+	if shared.settings.Limit != 99 {
+		t.Errorf("settings = %+v", shared.settings)
+	}
+}

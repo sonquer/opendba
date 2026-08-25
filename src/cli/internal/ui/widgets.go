@@ -55,6 +55,13 @@ func (t *Theme) Mode(mode string) string {
 	return t.BadgeStyle.Background(t.P.Warn).Render(mode)
 }
 
+// TabRun names the connection a run of tabs is worked through, in the colour
+// that connection is drawn in everywhere else. It is drawn only once the tabs
+// disagree, so tabs on one connection cost the strip nothing.
+func (t *Theme) TabRun(env EnvColor, name string) string {
+	return t.TabIdle.Foreground(env.Swatch()).Render(" " + env.Glyph() + " " + name)
+}
+
 // Headline is the one line someone who does not run databases for a living reads
 // and stops at: a word for the state on a badge, what it is about, and how much
 // came back fine.

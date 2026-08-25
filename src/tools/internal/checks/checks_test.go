@@ -267,6 +267,75 @@ func TestCoverageCheckPasses(t *testing.T) {
 	}
 }
 
+func TestCoverageInstrumentsOnlyWhatItMeasures(t *testing.T) {
+	module := testModule(t)
+	listed := "example.com/m/src/cli\n" +
+		"example.com/m/src/cli/internal/parser/generated/postgresql\n" +
+		"example.com/m/src/cli/internal/app\n"
+	runner := &fakeRunner{
+		results: map[string]exec.Result{"go list": {Stdout: listed}, "go test": {}},
+		profile: profileAllCovered,
+	}
+	opts := coverageOptions(t, module, runner, 95)
+	opts.Policy.Coverage.Exempt = []string{"cli/internal/parser/generated"}
+
+	if _, err := Coverage(opts, module).Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	test := ""
+	for _, call := range runner.calls {
+		if strings.Contains(call, "go test") {
+			test = call
+		}
+	}
+	if strings.Contains(test, "generated") {
+		t.Errorf("an exempt package was instrumented anyway: %q", test)
+	}
+	for _, want := range []string{"example.com/m/src/cli/internal/app", "-coverpkg="} {
+		if !strings.Contains(test, want) {
+			t.Errorf("go test ran %q, missing %q", test, want)
+		}
+	}
+}
+
+func TestCoverageFallsBackWhenEveryPackageIsExempt(t *testing.T) {
+	module := testModule(t)
+	runner := &fakeRunner{
+		results: map[string]exec.Result{"go list": {Stdout: "example.com/m/src/cli/internal/app\n"}, "go test": {}},
+		profile: profileAllCovered,
+	}
+	opts := coverageOptions(t, module, runner, 95)
+	opts.Policy.Coverage.Exempt = []string{"cli"}
+
+	if _, err := Coverage(opts, module).Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, call := range runner.calls {
+		if strings.Contains(call, "go test") && !strings.Contains(call, "-coverpkg=./...") {
+			t.Errorf("go test ran %q, want the whole module back", call)
+		}
+	}
+}
+
+func TestCoverageReportsAListingItCannotRead(t *testing.T) {
+	module := testModule(t)
+	t.Run("go list fails", func(t *testing.T) {
+		runner := &fakeRunner{results: map[string]exec.Result{
+			"go list": {ExitCode: 1, Stderr: "no such module"},
+		}}
+		_, err := Coverage(coverageOptions(t, module, runner, 95), module).Run(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "no such module") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("runner error", func(t *testing.T) {
+		runner := &fakeRunner{errs: map[string]error{"go": errors.New("no toolchain")}}
+		if _, err := Coverage(coverageOptions(t, module, runner, 95), module).Run(context.Background()); err == nil {
+			t.Fatal("want an error")
+		}
+	})
+}
+
 func TestCoverageCheckFailsBelowGate(t *testing.T) {
 	module := testModule(t)
 	runner := &fakeRunner{results: map[string]exec.Result{"go test": {}}, profile: profileHalfCovered}

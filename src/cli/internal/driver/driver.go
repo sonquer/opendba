@@ -343,7 +343,20 @@ type ResultSet interface {
 	Err() error
 	Truncated() bool
 	Duration() time.Duration
+
+	// Close finishes the transaction the statement ran in, which is where a
+	// writable profile keeps its work, so its error is the statement's error too.
 	Close() error
+}
+
+// Finish closes a result and returns the first thing that went wrong: a
+// statement that failed, or work that was not kept.
+func Finish(result ResultSet) error {
+	err := result.Err()
+	if closed := result.Close(); err == nil {
+		err = closed
+	}
+	return err
 }
 
 type PlanNode struct {

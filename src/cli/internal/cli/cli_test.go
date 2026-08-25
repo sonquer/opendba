@@ -73,12 +73,15 @@ func newHarness(t *testing.T, connections ...config.Connection) harness {
 		}
 	}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	kept := NewKeep()
+	t.Cleanup(func() { _ = kept.Close() })
 	return harness{
 		store:  store,
 		stdout: stdout,
 		stderr: stderr,
 		app: App{
 			Store:    store,
+			Kept:     kept,
 			Registry: Registry(),
 			Secrets:  Secrets(paths, func() ([]byte, error) { return []byte("passphrase"), nil }),
 			Dialects: sqldialect.Default(),
@@ -968,7 +971,7 @@ func TestTheWorkspaceRemembersWhereYouWent(t *testing.T) {
 	connection.Database = "app"
 	h := newHarness(t, connection)
 
-	if err := h.app.Remember("local", "reporting", "billing", []string{"billing"}); err != nil {
+	if err := h.app.Remember(connection.ID, "reporting", "billing", []string{"billing"}); err != nil {
 		t.Fatal(err)
 	}
 	profiles, err := h.store.LoadProfiles()
@@ -987,7 +990,7 @@ func TestTheWorkspaceRemembersWhereYouWent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.app.Remember("local", "reporting", "billing", []string{"billing"}); err != nil {
+	if err := h.app.Remember(connection.ID, "reporting", "billing", []string{"billing"}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.Stat(h.store.Paths.ProfilesFile())

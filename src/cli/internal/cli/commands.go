@@ -89,14 +89,12 @@ func (a App) query(ctx context.Context, session Session, opts options, statement
 		fmt.Fprintln(a.Stderr, err)
 		return ExitFailure
 	}
-	defer func() { _ = result.Close() }()
-
 	columns := result.Columns()
 	var rows [][]string
 	for result.Next() {
 		rows = append(rows, ui.Strings(result.Values()))
 	}
-	if err := result.Err(); err != nil {
+	if err := driver.Finish(result); err != nil {
 		fmt.Fprintln(a.Stderr, err)
 		return ExitFailure
 	}

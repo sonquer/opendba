@@ -11,7 +11,6 @@ import (
 	"github.com/sonquer/opendba/src/cli/internal/cli"
 	"github.com/sonquer/opendba/src/cli/internal/config"
 	"github.com/sonquer/opendba/src/cli/internal/driver"
-	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 type fakeWorkspace struct {
@@ -53,11 +52,11 @@ func (w *fakeWorkspace) OpenDatabase(ctx context.Context, name, database string)
 	return session, cleanup, nil
 }
 
-func (w *fakeWorkspace) Remember(name, database, schema string, schemas []string) error {
+func (w *fakeWorkspace) Remember(profile, database, schema string, schemas []string) error {
 	if w.remember != nil {
 		return w.remember
 	}
-	line := name + "/" + database + "/" + schema
+	line := profile + "/" + database + "/" + schema
 	if len(schemas) > 0 {
 		line += "/" + strings.Join(schemas, "+")
 	}
@@ -102,8 +101,8 @@ func browsing(t *testing.T, workspace cli.Workspace) Model {
 	t.Helper()
 	m := loadedWith(t, healthy(), workspace)
 	listed, cmd := press(t, m, "ctrl+p")
-	if cmd == nil {
-		t.Fatal("the connections screen must read the profiles")
+	if cmd == nil || listed.switcher == nil {
+		t.Fatal("ctrl+p must open the switcher and read the profiles")
 	}
 	updated, _ := listed.Update(cmd())
 	return updated.(Model)
@@ -132,52 +131,60 @@ func TestTheConnectionsScreenReportsAStoreItCannotRead(t *testing.T) {
 	}
 }
 
-func TestTheConnectionsScreenIsEmptyWithoutProfiles(t *testing.T) {
+// With nothing configured there is still somewhere you are working, so the
+// switcher shows the session you are on and nothing to open beside it.
+func TestTheSwitcherShowsTheSessionEvenWithNothingConfigured(t *testing.T) {
 	workspace := workspaceWith(t)
 	workspace.profiles = config.Profiles{}
 	m := browsing(t, workspace)
-	if !strings.Contains(plain(m.content()), "no connections are configured") {
-		t.Errorf("content = %s", plain(m.content()))
+	view := plain(m.content())
+	if !strings.Contains(view, "production-eu") || !strings.Contains(view, "in use") {
+		t.Errorf("the session you are on is still a row:\n%s", view)
 	}
-	if _, cmd := press(t, m, "enter"); cmd != nil {
-		t.Error("there is nothing to open")
+	if len(m.rows4Switch()) != 1 {
+		t.Errorf("rows = %d, nothing is configured to open", len(m.rows4Switch()))
 	}
 	if _, cmd := press(t, m, "d"); cmd != nil {
-		t.Error("there is nothing to remove")
+		t.Error("a session is not something this removes")
 	}
-	if moved, _ := press(t, m, "down"); moved.list.cursor != 0 {
-		t.Errorf("there is nothing to move through: %d", moved.list.cursor)
+	if moved, _ := press(t, m, "down"); moved.switcher.cursor != 0 {
+		t.Errorf("one row is nowhere to move to: %d", moved.switcher.cursor)
 	}
 }
 
 func TestMovingThroughTheConnections(t *testing.T) {
 	m := browsing(t, workspaceWith(t))
-	down, _ := press(t, m, "down")
-	if down.list.cursor != 1 {
-		t.Fatalf("cursor = %d", down.list.cursor)
+	rows := len(m.rows4Switch())
+	if rows < 2 {
+		t.Fatalf("rows = %d", rows)
 	}
-	wrapped, _ := press(t, down, "j")
-	if wrapped.list.cursor != 0 {
-		t.Fatalf("the list must wrap: %d", wrapped.list.cursor)
+	down, _ := press(t, m, "down")
+	if down.switcher.cursor != 1 {
+		t.Fatalf("cursor = %d", down.switcher.cursor)
+	}
+	wrapped := down
+	for range rows - 1 {
+		wrapped, _ = press(t, wrapped, "j")
+	}
+	if wrapped.switcher.cursor != 0 {
+		t.Fatalf("the list must wrap: %d", wrapped.switcher.cursor)
 	}
 	up, _ := press(t, wrapped, "k")
-	if up.list.cursor != 1 {
-		t.Fatalf("cursor = %d", up.list.cursor)
+	if up.switcher.cursor != rows-1 {
+		t.Fatalf("cursor = %d", up.switcher.cursor)
 	}
-	back, _ := press(t, up, "esc")
-	if back.view != viewDashboard {
-		t.Fatalf("view = %s", back.view)
+	if back, _ := press(t, up, "esc"); back.switcher != nil {
+		t.Error("esc closes it")
 	}
-	closed, _ := press(t, up, "ctrl+p")
-	if closed.view != viewDashboard {
-		t.Fatalf("view = %s", closed.view)
+	if closed, _ := press(t, up, "ctrl+p"); closed.switcher != nil {
+		t.Error("and so does the key that opened it")
 	}
 }
 
 func TestSwitchingToAnotherConnection(t *testing.T) {
 	workspace := workspaceWith(t)
 	m := browsing(t, workspace)
-	chosen, _ := press(t, m, "down")
+	chosen := on4Switch(t, m, key4Profile("2"))
 	switching, cmd := press(t, chosen, "enter")
 	if cmd == nil || !switching.loading || switching.view != viewDashboard {
 		t.Fatalf("switching must open the connection: loading=%v view=%s", switching.loading, switching.view)
@@ -193,8 +200,11 @@ func TestSwitchingToAnotherConnection(t *testing.T) {
 	if !strings.Contains(plain(m.content()), "now on staging") {
 		t.Errorf("a switch must be announced:\n%s", plain(m.content()))
 	}
-	loadedAgain, _ := m.Update(m.load()())
-	if len(loadedAgain.(Model).tables) == 0 {
+	if len(m.tables) != 0 {
+		t.Error("the new connection has not been read yet, and must not show the old one's")
+	}
+	loadedAgain := settle(t, m, m.load())
+	if len(loadedAgain.tables) == 0 {
 		t.Error("the new connection must be read")
 	}
 	m.release()
@@ -203,51 +213,34 @@ func TestSwitchingToAnotherConnection(t *testing.T) {
 	}
 }
 
-// There is nothing to open on the connection already in use, so enter goes a
-// level in instead: to the database and the schemas it is reading.
-func TestEnterOnTheConnectionInUseGoesIn(t *testing.T) {
-	workspace := workspaceWith(t)
-	m := browsing(t, workspace)
-	inside, cmd := press(t, m, "enter")
-	if inside.view != viewCatalog || cmd == nil {
-		t.Errorf("view = %s", inside.view)
-	}
-	if inside.loading {
-		t.Error("nothing is reconnected")
-	}
-	if len(workspace.opened) != 0 {
-		t.Errorf("opened = %v", workspace.opened)
-	}
-}
-
 func TestAFailedSwitchKeepsTheCurrentConnection(t *testing.T) {
 	workspace := workspaceWith(t)
 	workspace.open = errors.New("password not found in the keychain")
 	m := browsing(t, workspace)
-	chosen, _ := press(t, m, "down")
+	chosen := on4Switch(t, m, key4Profile("2"))
 	switching, cmd := press(t, chosen, "enter")
 	failed, _ := switching.Update(runFirst(t, cmd))
 	m = failed.(Model)
 	if m.session.Connection.Name != "production-eu" {
 		t.Fatalf("the old connection must stand: %q", m.session.Connection.Name)
 	}
-	if m.view != viewSwitch || m.loading {
+	if m.switcher == nil || m.loading {
 		t.Fatalf("view = %s loading = %v", m.view, m.loading)
 	}
 	if !strings.Contains(plain(m.content()), "password not found in the keychain") {
-		t.Errorf("content = %s", plain(m.content()))
+		t.Errorf("the row must say why:\n%s", plain(m.content()))
 	}
 }
 
 func TestRemovingAConnectionNeedsItsNameTypedBack(t *testing.T) {
 	workspace := workspaceWith(t)
-	m := browsing(t, workspace)
+	m := on4Switch(t, browsing(t, workspace), key4Profile("2"))
 	asked, cmd := press(t, m, "d")
 	if cmd == nil || asked.modal == nil {
 		t.Fatal("removal must ask first")
 	}
 	view := plain(asked.content())
-	if !strings.Contains(view, "remove production-eu?") || !strings.Contains(view, "type the name to") {
+	if !strings.Contains(view, "remove staging?") || !strings.Contains(view, "type the name to") {
 		t.Errorf("content = %s", view)
 	}
 	if refused, cmd := press(t, asked, "enter"); cmd != nil || refused.modal == nil {
@@ -255,7 +248,7 @@ func TestRemovingAConnectionNeedsItsNameTypedBack(t *testing.T) {
 	}
 
 	typed := asked
-	for _, key := range strings.Split("production-eu", "") {
+	for _, key := range strings.Split("staging", "") {
 		typed, _ = press(t, typed, key)
 	}
 	confirmed, cmd := press(t, typed, "enter")
@@ -264,35 +257,35 @@ func TestRemovingAConnectionNeedsItsNameTypedBack(t *testing.T) {
 	}
 	asking, _ := confirmed.Update(cmd())
 	m = asking.(Model)
-	removing, cmd := m, m.remove("production-eu")
+	removing, cmd := m, m.remove("staging")
 	removed, _ := removing.Update(cmd())
 	m = removed.(Model)
-	if len(workspace.removed) != 1 || workspace.removed[0] != "production-eu" {
+	if len(workspace.removed) != 1 || workspace.removed[0] != "staging" {
 		t.Fatalf("removed = %v", workspace.removed)
 	}
 	relisted, _ := m.Update(runFirst(t, m.profiles()))
-	if !strings.Contains(plain(relisted.(Model).content()), "production-eu is gone") {
-		t.Errorf("content = %s", plain(relisted.(Model).content()))
+	if !strings.Contains(relisted.(Model).text(), "staging is gone") {
+		t.Errorf("said = %q", relisted.(Model).text())
 	}
-	if len(relisted.(Model).list.rows) != 1 {
-		t.Errorf("the list must be read again: %+v", relisted.(Model).list.rows)
+	if len(relisted.(Model).rows4Switch()) != 2 {
+		t.Errorf("the list must be read again: %+v", relisted.(Model).rows4Switch())
 	}
 }
 
 func TestAFailedRemovalIsReported(t *testing.T) {
 	workspace := workspaceWith(t)
 	workspace.remove = errors.New("the keychain is locked")
-	m := browsing(t, workspace)
+	m := on4Switch(t, browsing(t, workspace), key4Profile("2"))
 	asked, _ := press(t, m, "d")
 	typed := asked
-	for _, key := range strings.Split("production-eu", "") {
+	for _, key := range strings.Split("staging", "") {
 		typed, _ = press(t, typed, key)
 	}
 	confirmed, cmd := press(t, typed, "enter")
 	asking, _ := confirmed.Update(cmd())
-	failed, _ := asking.(Model).Update(runFirst(t, asking.(Model).remove("production-eu")))
-	if !strings.Contains(plain(failed.(Model).content()), "the keychain is locked") {
-		t.Errorf("content = %s", plain(failed.(Model).content()))
+	failed, _ := asking.(Model).Update(runFirst(t, asking.(Model).remove("staging")))
+	if !strings.Contains(failed.(Model).text(), "the keychain is locked") {
+		t.Errorf("said = %q", failed.(Model).text())
 	}
 }
 
@@ -302,7 +295,7 @@ func TestQuittingFromTheConnectionsScreen(t *testing.T) {
 	if asked.modal == nil {
 		t.Error("ctrl+c must ask before it leaves")
 	}
-	if _, cmd := press(t, m, "x"); cmd != nil {
+	if _, cmd := press(t, m, "z"); cmd != nil {
 		t.Error("an unknown key does nothing")
 	}
 }
@@ -364,13 +357,19 @@ func TestAWizardThatSavedNothingReturnsToTheList(t *testing.T) {
 
 func TestTheConnectionsScreenIsReachedFromTheEditor(t *testing.T) {
 	m := loadedWith(t, healthy(), workspaceWith(t))
+	m.width, m.height = 110, 32
 	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "SELECT 1")
 	listed, cmd := press(t, editing, "ctrl+p")
-	if cmd == nil || listed.view != viewSwitch {
-		t.Fatalf("view = %s", listed.view)
+	if cmd == nil || listed.switcher == nil {
+		t.Fatal("ctrl+p must open the switcher over the editor")
 	}
-	if !strings.Contains(plain(listed.footer(0)), "open") {
-		t.Errorf("the list footer must name its own keys: %s", plain(listed.footer(0)))
+	if listed.view != viewQuery {
+		t.Errorf("view = %s, an overlay does not take you anywhere", listed.view)
+	}
+	shown := plain(settle(t, listed, cmd).content())
+	if !strings.Contains(shown, "connections") || !strings.Contains(shown, "SELECT") {
+		t.Errorf("it is drawn over the editor it was opened from:\n%s", shown)
 	}
 }
 
@@ -410,11 +409,11 @@ func TestSavingAnEditedProfile(t *testing.T) {
 
 	elsewhere := SetupDone{Connection: config.Connection{ID: "another", Name: "staging"}, Saved: true}
 	stayed, _ := editing.Update(elsewhere)
-	if stayed.(Model).view == viewDashboard || stayed.(Model).loading {
-		t.Error("saving somebody else's profile is not a reason to leave yours")
+	if stayed.(Model).loading {
+		t.Error("saving somebody else's profile is not a reason to reopen yours")
 	}
-	if !strings.Contains(plain(stayed.(Model).content()), "staging is saved") {
-		t.Errorf("but it must say it saved:\n%s", plain(stayed.(Model).content()))
+	if !strings.Contains(stayed.(Model).text(), "staging is saved") {
+		t.Errorf("but it must say it saved: %q", stayed.(Model).text())
 	}
 
 	mine := SetupDone{Connection: editing.session.Connection, Saved: true}
@@ -436,28 +435,267 @@ func TestTheConnectionListSaysWhatIsKnown(t *testing.T) {
 		},
 	}, 100)
 
-	browsing, cmd := m.browse()
+	browsing, cmd := m.openSwitcher()
 	shown := settle(t, browsing.(Model), cmd)
 	view := plain(shown.content())
-	for _, want := range []string{"production-eu", "sqlite", "read only",
-		"opendba/production-eu", "2 running"} {
+	for _, want := range []string{"production-eu", "sqlite", "read only", "2 running"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the list must say %q:\n%s", want, view)
 		}
 	}
 }
 
-// A connection nobody is using says nothing about what it is doing.
+// A connection nobody is using says nothing about what it is doing, and the
+// count is per connection now that several of them are open at once.
 func TestAConnectionNobodyIsUsingSaysNothing(t *testing.T) {
-	list := newConnections(ui.Default()).working("production-eu", 0)
-	if len(list.busy) != 0 {
-		t.Errorf("busy = %v, nothing is running", list.busy)
+	m := loaded(t, healthy())
+	if len(m.busy4Links()) != 0 {
+		t.Errorf("busy = %v, nothing is running", m.busy4Links())
 	}
-	held := newConnections(ui.Default()).working("production-eu", 3)
-	if held.busy["production-eu"] != "3 running" {
-		t.Errorf("busy = %v", held.busy)
+	m.running = m.running.withSessions(sessionsMsg{
+		sessions: []driver.Session{{ID: "1"}, {ID: "2"}, {ID: "3"}},
+	}, 100)
+	if got := m.busy4Links()[m.id]; got != "3 running" {
+		t.Errorf("busy = %v", m.busy4Links())
 	}
-	if held.working("production-eu", 0).busy["production-eu"] != "" {
-		t.Error("and it stops saying so once nothing is")
+}
+
+// Opening another connection keeps the first one open. It used to be closed on
+// the way, which is why a tab could only ever be about one server.
+func TestOpeningAnotherConnectionKeepsTheFirstOne(t *testing.T) {
+	workspace := workspaceWith(t)
+	m := browsing(t, workspace)
+	first := m.session.Conn
+
+	chosen := on4Switch(t, m, key4Profile("2"))
+	switching, cmd := press(t, chosen, "enter")
+	switched, _ := switching.Update(runFirst(t, cmd))
+	m = switched.(Model)
+
+	if len(m.links) != 2 {
+		t.Fatalf("links = %d, both connections stay open", len(m.links))
 	}
+	if m.links[0].session.Conn != first {
+		t.Error("the first connection is still the first one")
+	}
+	if workspace.closed != 0 {
+		t.Errorf("closed = %d, nothing is closed on the way", workspace.closed)
+	}
+	if m.linked != 1 || m.session.Connection.Name != "staging" {
+		t.Errorf("linked = %d on %q", m.linked, m.session.Connection.Name)
+	}
+}
+
+// Opening a connection this program already holds opens another session on it.
+// It used to be given straight back, which is why two windows onto one server
+// were impossible.
+func TestOpeningAProfileThatIsAlreadyOpenOpensASecondSession(t *testing.T) {
+	workspace := workspaceWith(t)
+	m := browsing(t, workspace)
+	held := m.session.Conn
+
+	again, _ := m.Update(switchedMsg{
+		session: m.session,
+		cleanup: func() { workspace.closed++ },
+		profile: "production-eu",
+	})
+	m = again.(Model)
+
+	if len(m.links) != 2 {
+		t.Fatalf("links = %d, opening it again is a session of its own", len(m.links))
+	}
+	if workspace.closed != 0 {
+		t.Errorf("closed = %d, the handle it opened is kept", workspace.closed)
+	}
+	if m.links[0].id == m.links[1].id {
+		t.Error("and the two must be told apart")
+	}
+	if m.links[0].session.Conn != held {
+		t.Error("the one that was already open is untouched")
+	}
+	if m.links[1].seq != 2 {
+		t.Errorf("seq = %d, the second session on a database is the second", m.links[1].seq)
+	}
+	if !strings.Contains(m.label4Link(m.links[1]), "#2") {
+		t.Errorf("label = %q, and says so", m.label4Link(m.links[1]))
+	}
+}
+
+// Every connection this program opened is closed when it leaves, and the one it
+// started on is left to the caller that owns it.
+func TestEveryConnectionThisProgramOpenedIsClosedWhenItLeaves(t *testing.T) {
+	workspace := workspaceWith(t)
+	m := browsing(t, workspace)
+	chosen, _ := press(t, m, "down")
+	switching, cmd := press(t, chosen, "enter")
+	switched, _ := switching.Update(runFirst(t, cmd))
+
+	switched.(Model).release()
+	if workspace.closed != 1 {
+		t.Errorf("closed = %d, one of the two was opened here", workspace.closed)
+	}
+}
+
+// twoConnections is a program with a tab on each of two servers: the first tab
+// stays on the connection it started on, and the second is moved to the other.
+func twoConnections(t *testing.T) (Model, *fakeWorkspace) {
+	t.Helper()
+	workspace := workspaceWith(t)
+	m := loadedWith(t, healthy(), workspace)
+	m.width, m.height = 110, 32
+	editing, _ := press(t, m, "e")
+	first := typeInto(t, editing, "SELECT 1")
+
+	second, _ := press(t, first, "ctrl+n")
+	listed, cmd := press(t, second, "ctrl+p")
+	browsed, _ := listed.Update(cmd())
+	chosen := on4Switch(t, browsed.(Model), key4Profile("2"))
+	switching, cmd := press(t, chosen, "enter")
+	switched, _ := switching.Update(runFirst(t, cmd))
+	back, _ := press(t, switched.(Model), "e")
+	return back, workspace
+}
+
+// A tab belongs to a connection, and coming back to it comes back to that
+// connection: the header, the mode and the schema beside it all follow the tab.
+func TestATabRemembersWhichConnectionItIsOn(t *testing.T) {
+	m, _ := twoConnections(t)
+	if m.session.Connection.Name != "staging" || m.on != m.link.key() {
+		t.Fatalf("the tab that moved is on %q", m.session.Connection.Name)
+	}
+	if len(m.links) != 2 {
+		t.Fatalf("links = %d", len(m.links))
+	}
+
+	back, _ := press(t, m, "ctrl+1")
+	if back.session.Connection.Name != "production-eu" {
+		t.Errorf("connection = %q, the first tab never left it", back.session.Connection.Name)
+	}
+	if back.statement() != "SELECT 1" {
+		t.Errorf("statement = %q", back.statement())
+	}
+	if !strings.Contains(plain(back.header()), "production-eu") {
+		t.Errorf("the header follows the tab in front:\n%s", plain(back.header()))
+	}
+	forward, _ := press(t, back, "ctrl+2")
+	if forward.session.Connection.Name != "staging" {
+		t.Errorf("connection = %q, and so does going back the other way",
+			forward.session.Connection.Name)
+	}
+}
+
+// Two tabs on two connections are two access modes, and each statement answers
+// to the mode of the connection its own tab is worked through.
+func TestTwoTabsOnDifferentConnectionsClassifyAgainstTheirOwn(t *testing.T) {
+	m, _ := twoConnections(t)
+	writable := typeInto(t, m, "DELETE FROM users")
+	if !writable.Verdict().NeedsConfirmation() {
+		t.Fatalf("staging is READ / WRITE: %+v", writable.Verdict())
+	}
+	asked, _ := press(t, writable, "f5")
+	if asked.modal == nil {
+		t.Error("so a write is asked about rather than refused")
+	}
+
+	back, _ := press(t, writable, "ctrl+1")
+	refusing := typeInto(t, back, "DELETE FROM users")
+	if !refusing.Verdict().Blocked() {
+		t.Fatalf("production-eu is READ ONLY: %+v", refusing.Verdict())
+	}
+	refused, _ := press(t, refusing, "f5")
+	if refused.modal != nil {
+		t.Error("and a write there is refused rather than asked about")
+	}
+}
+
+// The strip says which connection a tab is on only once the tabs disagree, so
+// the usual case of one connection costs it nothing.
+func TestTheStripNamesAConnectionOnlyWhenTabsDisagree(t *testing.T) {
+	one := workbench(t)
+	one.width = 110
+	if strings.Contains(plain(one.tabBar(110)), "production-eu") {
+		t.Errorf("one connection needs no naming:\n%s", plain(one.tabBar(110)))
+	}
+
+	m, _ := twoConnections(t)
+	strip := plain(m.tabBar(110))
+	for _, want := range []string{"production-eu", "staging"} {
+		if !strings.Contains(strip, want) {
+			t.Errorf("the strip must name %q once they differ:\n%s", want, strip)
+		}
+	}
+}
+
+// Coming back to a connection that has been read reads nothing again, because a
+// tab switch that costs a catalogue sweep is a tab switch nobody makes twice.
+func TestSwitchingTabsDoesNotReadTheServerAgain(t *testing.T) {
+	m, _ := twoConnections(t)
+	back := settle(t, m, nil)
+	first, cmd := press(t, back, "ctrl+1")
+	settle(t, first, cmd)
+	before := first.links[0].session.Conn.(*fakeConn).counted()["tables"]
+
+	again, cmd := press(t, first, "ctrl+2")
+	settle(t, again, cmd)
+	returned, cmd := press(t, again, "ctrl+1")
+	settle(t, returned, cmd)
+	if got := first.links[0].session.Conn.(*fakeConn).counted()["tables"]; got != before {
+		t.Errorf("tables read %d times, want %d: coming back reads nothing", got, before)
+	}
+}
+
+// A result arriving for a tab on another connection is written down under that
+// connection, not under whichever one happens to be in front.
+func TestABackgroundResultIsFiledUnderItsOwnConnection(t *testing.T) {
+	m, _ := twoConnections(t)
+	first := m.sheets[0]
+	first.token, first.inflight = 42, true
+	m.sheets[0] = first
+
+	landed, _ := m.Update(queriedMsg{
+		statement: "SELECT 1", columns: []string{"n"},
+		rows: [][]any{{int64(1)}}, token: 42,
+	})
+	arrived := landed.(Model)
+	if arrived.session.Connection.Name != "staging" {
+		t.Fatalf("the front tab must not have moved: %q", arrived.session.Connection.Name)
+	}
+	if !arrived.sheets[0].results.present {
+		t.Error("and the result belongs to the tab that asked")
+	}
+}
+
+// What the server is doing belongs to the connection it was asked of. The list
+// used to land on whichever connection was in front when it came back.
+func TestSessionsLandOnTheConnectionTheyWereReadFrom(t *testing.T) {
+	m, _ := twoConnections(t)
+	background := m.links[0].key()
+	if background == m.link.key() {
+		t.Fatal("the test needs the other connection in front")
+	}
+
+	landed, _ := m.Update(sessionsMsg{
+		sessions: []driver.Session{{ID: "1"}, {ID: "2"}},
+		on:       background,
+	})
+	arrived := landed.(Model)
+	if len(arrived.running.sessions) != 0 {
+		t.Errorf("the connection in front asked for nothing: %d", len(arrived.running.sessions))
+	}
+	if got := len(arrived.links[0].running.sessions); got != 2 {
+		t.Errorf("sessions = %d, the connection that was read must have them", got)
+	}
+}
+
+// on4Switch walks the switcher to one row.
+func on4Switch(t *testing.T, m Model, wanted string) Model {
+	t.Helper()
+	for range len(m.rows4Switch()) {
+		if chosen, ok := m.chosen4Switch(); ok && chosen.key == wanted {
+			return m
+		}
+		m, _ = press(t, m, "down")
+	}
+	t.Fatalf("there is no row %q", wanted)
+	return m
 }

@@ -56,7 +56,8 @@ feeding it keys.
 4. `pkg/sqlguard` decides whether it may be sent, from that report and the
    access mode of the profile.
 5. `driver.Conn.Query` runs it inside a transaction, read-only on a read-only
-   profile.
+   profile. A read-only profile throws that transaction away; a READ / WRITE
+   profile commits it, unless the statement failed or the run was given up on.
 6. A `driver.ResultSet` is drained into `[][]any`, and `ui.Cell` draws each
    value into the grid.
 
@@ -68,6 +69,10 @@ Four layers, and none of them may be quietly weakened:
 1. the database role — documented, user-owned, the only real boundary,
 2. session pinning (`default_transaction_read_only`, timeouts),
 3. a read-only transaction around every read.
+
+A statement PostgreSQL will not run inside a transaction block, such as
+`DROP DATABASE` or `CREATE INDEX CONCURRENTLY`, is refused by layer 0 rather
+than given a way around layer 3.
 
 Multi-statement input is refused in every access mode. The golden tables in
 `pkg/sqlguard` are the specification of what is refused; the grammars under

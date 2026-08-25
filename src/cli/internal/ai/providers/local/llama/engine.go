@@ -40,6 +40,10 @@ func (e *Engine) LogTo(path string) *Engine {
 // returns whatever the first call decided.
 func (e *Engine) Ready() error {
 	e.once.Do(func() {
+		if err := searchPath(e.directory); err != nil {
+			e.err = fmt.Errorf("open the inference library in %s: %w: %w", e.directory, local.ErrNoLibrary, err)
+			return
+		}
 		if err := llama.Load(e.directory); err != nil {
 			e.err = fmt.Errorf("open the inference library in %s: %w: %w", e.directory, local.ErrNoLibrary, err)
 			return

@@ -119,6 +119,14 @@ func Open(path string, settings config.ChatSettings) (*Store, error) {
 	return &Store{db: database, settings: settings, now: time.Now}, nil
 }
 
+// Following makes the store answer to the settings as they are now. They are a
+// fact of the file rather than of one connection, so a store shared by several
+// of them must not hold the copy the first one opened it with.
+func (s *Store) Following(settings config.ChatSettings) *Store {
+	s.settings = settings
+	return s
+}
+
 func (s *Store) Close() error {
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("close the conversations: %w", err)

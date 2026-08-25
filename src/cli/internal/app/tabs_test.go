@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -548,5 +550,125 @@ func TestADialogThatAsksForANameWillNotTakeAnEmptyOne(t *testing.T) {
 	stays, _ := press(t, asked, "enter")
 	if stays.modal == nil {
 		t.Error("enter with nothing typed must leave the question up")
+	}
+}
+
+// A run that has come back has nothing left to cancel, and the context it was
+// given must go with it: every successful statement used to leave one behind.
+func TestARunThatCameBackReleasesItsContext(t *testing.T) {
+	conn := healthy()
+	m := loadedWith(t, conn, workspaceWith(t))
+	editing, _ := press(t, m, "e")
+	typed := typeInto(t, editing, "SELECT 1")
+	ran, cmd := press(t, typed, "ctrl+r")
+	finished := settle(t, ran, cmd)
+
+	if finished.inflight || finished.stopQuery != nil {
+		t.Fatal("a result that arrived leaves nothing running")
+	}
+	select {
+	case <-conn.ranWith().Done():
+	default:
+		t.Error("the context of a finished run must be released")
+	}
+}
+
+// Closing a tab gives up on the statement it was waiting for, which is what the
+// dialog says it does. The last tab is emptied rather than removed, and that
+// path used to leave the statement running with nowhere to arrive.
+func TestClosingATabGivesUpOnItsStatement(t *testing.T) {
+	for _, want := range []struct {
+		name  string
+		tabs  int
+		close int
+	}{
+		{"the last tab", 1, 0},
+		{"one of several", 2, 0},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			m := typeInto(t, workbench(t), "SELECT 1")
+			for range want.tabs - 1 {
+				m, _ = press(t, m, "ctrl+n")
+			}
+			ctx, stop := context.WithCancel(context.Background())
+			m.sheets[want.close].stopQuery = stop
+			m.sheets[want.close].inflight = true
+			if want.close == m.sheet {
+				m.worksheet = m.sheets[want.close]
+			}
+
+			closed := m.closeSheet(want.close)
+			select {
+			case <-ctx.Done():
+			default:
+				t.Error("closing the tab must give up on what it was waiting for")
+			}
+			if closed.inflight {
+				t.Error("and nothing is left running in the tab that took its place")
+			}
+		})
+	}
+}
+
+// A statement left running in another tab says what it did when it lands. A
+// failure always says so: never hearing that one failed is the whole cost of
+// leaving it running.
+func TestAResultForAnotherTabSaysWhatItDid(t *testing.T) {
+	for _, want := range []struct {
+		name  string
+		view  view
+		err   error
+		says  string
+		quiet bool
+	}{
+		{name: "a failure on the editor screen", view: viewQuery,
+			err: errors.New("connection lost"), says: "connection lost"},
+		{name: "a failure from anywhere else", view: viewDashboard,
+			err: errors.New("connection lost"), says: "connection lost"},
+		{name: "a result away from the editor", view: viewDashboard, says: "1 row"},
+		{name: "a result on the editor screen", view: viewQuery, quiet: true},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			m := typeInto(t, workbench(t), "SELECT 1")
+			m.width, m.height = 110, 32
+			waiting := 7
+			m.token, m.inflight = waiting, true
+			second, _ := press(t, m, "ctrl+n")
+			second.view = want.view
+
+			landed, _ := second.Update(queriedMsg{
+				statement: "SELECT 1", columns: []string{"n"},
+				rows: [][]any{{int64(1)}}, token: waiting, err: want.err,
+			})
+			said := plain(landed.(Model).content())
+			if want.quiet {
+				if strings.Contains(said, "row") {
+					t.Errorf("the strip already marks it:\n%s", said)
+				}
+				return
+			}
+			if !strings.Contains(said, want.says) {
+				t.Errorf("a result from another tab must say %q:\n%s", want.says, said)
+			}
+		})
+	}
+}
+
+// Quitting says what is still out, which is the last chance to notice it.
+func TestQuittingSaysWhatIsStillRunning(t *testing.T) {
+	m := workbench(t)
+	m.width, m.height = 110, 32
+	quiet, _ := press(t, m, "ctrl+c")
+	if quiet.modal == nil {
+		t.Fatal("quitting asks first")
+	}
+	if strings.Contains(plain(quiet.modal.view(110)), "running") {
+		t.Error("nothing is running, so nothing is said about it")
+	}
+
+	m.inflight = true
+	asked, _ := press(t, m, "ctrl+c")
+	if !strings.Contains(plain(asked.modal.view(110)), "1 statement still running") {
+		t.Errorf("dialog = %s", plain(asked.modal.view(110)))
 	}
 }

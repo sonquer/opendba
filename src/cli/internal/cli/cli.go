@@ -7,6 +7,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/sonquer/opendba/src/cli/internal/chats"
 	"github.com/sonquer/opendba/src/cli/internal/config"
@@ -39,7 +40,7 @@ type Workspace interface {
 	Profiles() (config.Profiles, error)
 	Open(ctx context.Context, name string) (Session, func(), error)
 	OpenDatabase(ctx context.Context, name, database string) (Session, func(), error)
-	Remember(name, database, schema string, schemas []string) error
+	Remember(profile, database, schema string, schemas []string) error
 	Remove(ctx context.Context, name string) error
 	Setup() Setup
 }
@@ -47,6 +48,11 @@ type Workspace interface {
 type App struct {
 	Store    config.Store
 	Registry *driver.Registry
+
+	// Kept holds what belongs to the program rather than to one connection. An
+	// App without one opens a handle per session, which is what a command that
+	// opens one connection and then leaves wants.
+	Kept     *Keep
 	Secrets  *secretref.Store
 	Dialects *sqldialect.Factory
 	Stdout   io.Writer
@@ -82,6 +88,14 @@ type Session struct {
 
 	// Dialect is what parses a statement into its parts.
 	Dialect sqldialect.Dialect
+
+	// Release closes this session's connection. It is the same closer open
+	// returns, and calling it twice closes nothing twice, so an interface that can
+	// disconnect and a caller that always cleans up do not have to agree on which
+	// of them owns it. What is kept beside the program rather than beside the
+	// connection — the history and the conversations — outlives it and is closed
+	// by whoever built the App.
+	Release func()
 }
 
 func Registry() *driver.Registry {
@@ -219,15 +233,17 @@ func (a App) OpenDatabase(ctx context.Context, name, database string) (Session, 
 }
 
 // Remember writes the database and schemas a session moved to back to the
-// profile, so the next run opens where the last one left off.
-func (a App) Remember(name, database, schema string, schemas []string) error {
+// profile, so the next run opens where the last one left off. The profile is
+// named by its identifier rather than by its name: a name can be changed
+// between the read and the write, and a rename must not write the wrong row.
+func (a App) Remember(profile, database, schema string, schemas []string) error {
 	profiles, err := a.Store.LoadProfiles()
 	if err != nil {
 		return err
 	}
-	connection, ok := profiles.ByName(name)
+	connection, ok := profiles.Find(profile)
 	if !ok {
-		return fmt.Errorf("no connection named %q", name)
+		return fmt.Errorf("no connection with id %q", profile)
 	}
 	if connection.Database == database && connection.DefaultSchema == schema &&
 		slices.Equal(connection.Schemas, schemas) {
@@ -318,6 +334,8 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 	recorder, warning := a.history(settings)
 	conversations, trouble := a.chats(settings)
 	warning = ui.Dotted(warning, trouble)
+	var once sync.Once
+	release := func() { once.Do(func() { _ = conn.Close() }) }
 	session := Session{
 		Version:      a.Version,
 		Warning:      warning,
@@ -332,16 +350,9 @@ func (a App) open(ctx context.Context, opts options) (Session, func(), error) {
 		History:      recorder,
 		Chats:        conversations,
 		Theme:        appearance(settings),
+		Release:      release,
 	}
-	return session, func() {
-		if recorder != nil {
-			_ = recorder.Close()
-		}
-		if conversations != nil {
-			_ = conversations.Close()
-		}
-		_ = conn.Close()
-	}, nil
+	return session, release, nil
 }
 
 // chats opens where conversations with the assistant are kept.
@@ -349,11 +360,7 @@ func (a App) chats(settings config.Settings) (*chats.Store, string) {
 	if !settings.Chats.Enabled {
 		return nil, ""
 	}
-	store, err := chats.Open(a.Store.Paths.ChatsFile(), settings.Chats)
-	if err != nil {
-		return nil, "conversations are not being kept: " + err.Error()
-	}
-	return store, ""
+	return a.Kept.Chats(a.Store.Paths.ChatsFile(), settings.Chats)
 }
 
 // history opens the store the statements you have run are kept in.
@@ -361,11 +368,7 @@ func (a App) history(settings config.Settings) (*history.Store, string) {
 	if !settings.History.Enabled {
 		return nil, ""
 	}
-	store, err := history.Open(a.Store.Paths.HistoryFile(), settings.History)
-	if err != nil {
-		return nil, "the history is not being kept: " + err.Error()
-	}
-	return store, ""
+	return a.Kept.History(a.Store.Paths.HistoryFile(), settings.History)
 }
 
 func pick(profiles config.Profiles, name string) (config.Connection, error) {

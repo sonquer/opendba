@@ -24,7 +24,7 @@ func chatting(t *testing.T, talk *scripted) Model {
 	m := talking(t, talk)
 	m.width, m.height = 110, 40
 	m.session.Chats = store
-	m.session.Settings.Chats = config.ChatSettings{Enabled: true, Limit: 100}
+	m.settings.Chats = config.ChatSettings{Enabled: true, Limit: 100}
 	return m
 }
 

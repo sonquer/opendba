@@ -57,7 +57,7 @@ func TestTheKeymapIsTheOnlySourceOfHelp(t *testing.T) {
 			}
 		}
 	}
-	for _, screen := range []view{viewDashboard, viewQuery, viewAsk, viewAI, viewSwitch, viewCatalog, viewHelp, viewSchema} {
+	for _, screen := range []view{viewDashboard, viewQuery, viewAsk, viewAI, viewHelp, viewSchema} {
 		footer := keys.footer(screen, false, false, false, false, false)
 		if len(footer) == 0 {
 			t.Errorf("%s has no footer", screen)
@@ -72,9 +72,7 @@ func TestTheKeymapIsTheOnlySourceOfHelp(t *testing.T) {
 			t.Errorf("%s must offer the way back: %+v", screen, footer)
 		}
 	}
-	if !offers(keys.footer(viewCatalog, false, false, false, false, false), "save") {
-		t.Error("a form says what enter does to it")
-	}
+
 	if completing := keys.footer(viewQuery, true, false, false, false, false); completing[0].Help().Desc != "accept" {
 		t.Errorf("a list of suggestions owns the keys: %+v", completing[0].Help())
 	}
@@ -143,20 +141,26 @@ func TestNoTwoKeysClaimTheSameThing(t *testing.T) {
 
 // TestTheTwoBrowsingKeysGoToDifferentScreens presses them rather than reading
 // the labels, because the bug this is about was a label that told the truth
-// about a key that did something else.
-func TestTheTwoBrowsingKeysGoToDifferentScreens(t *testing.T) {
-	m := loaded(t, healthy())
+// about a key that did something else. They open two dialogs now, one about
+// where you are working and one about what that connection is reading.
+func TestTheTwoBrowsingKeysOpenTheirOwnDialog(t *testing.T) {
+	m := loadedWith(t, healthy(), workspaceWith(t))
 	m.width, m.height = 100, 32
-	databases, _ := press(t, m, "ctrl+d")
-	connections, _ := press(t, m, "ctrl+p")
-	if databases.view == connections.view {
-		t.Fatalf("ctrl+d and ctrl+p both open %s", databases.view)
+	databases, one := press(t, m, "ctrl+d")
+	connections, two := press(t, m, "ctrl+p")
+	if databases.catalog == nil || databases.switcher != nil {
+		t.Fatalf("ctrl+d opens the databases of the session in front")
 	}
-	if databases.view != viewCatalog {
-		t.Fatalf("ctrl+d opens %s, and the footer says databases", databases.view)
+	if connections.switcher == nil || connections.catalog != nil {
+		t.Fatalf("ctrl+p opens the connections")
 	}
-	if connections.view != viewSwitch {
-		t.Fatalf("ctrl+p opens %s, and the footer says connections", connections.view)
+	shown := pump(t, databases, one)
+	if at, ok := shown.catalog.selected(); !ok || !strings.HasPrefix(at.key, rowDatabase) {
+		t.Errorf("the databases must be listed, got %q", at.key)
+	}
+	listed := pump(t, connections, two)
+	if on, ok := listed.chosen4Switch(); !ok || !strings.HasPrefix(on.key, rowSession) {
+		t.Errorf("the switcher lands on the session in front, got %q", on.key)
 	}
 }
 

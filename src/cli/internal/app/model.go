@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,10 +27,8 @@ const (
 	viewDashboard view = "dashboard"
 	viewSchema    view = "schema"
 	viewIndexes   view = "indexes"
-	viewCatalog   view = "databases"
 	viewQuery     view = "query"
 	viewHelp      view = "help"
-	viewSwitch    view = "connections"
 	viewAsk       view = "ask"
 	viewAI        view = "ai"
 	viewHistory   view = "history"
@@ -52,6 +51,10 @@ type loadedMsg struct {
 	tables   []driver.Table
 	indexes  []driver.Index
 	err      error
+
+	// on says which connection was read, since a read that was asked for on one
+	// lands while another may be in front.
+	on sessionID
 }
 
 type queriedMsg struct {
@@ -67,26 +70,38 @@ type queriedMsg struct {
 }
 
 type Model struct {
-	session   cli.Session
+	// link is the connection being worked through, and links is every one that is
+	// open. A tab belongs to one of them, the way it belongs to a statement.
+	link
+	links  []link
+	linked int
+
 	workspace cli.Workspace
-	close     func()
 	theme     *ui.Theme
-	view      view
-	width     int
-	height    int
-	quitting  bool
-	loading   bool
-	failure   string
-	failing   part
+
+	// settings is what settings.toml says, which is a fact of the file rather than
+	// of any one connection: several of them open at once would otherwise hold as
+	// many stale copies of it.
+	settings config.Settings
+	view     view
+	width    int
+	height   int
+	quitting bool
 	toaster
-	list    connections
-	catalog catalog
-	wizard  *SetupModel
-	palette *palette
-	modal   *modal
-	page    *details
-	plan    *plan
-	chats   *chatList
+	switcher *switcher
+	catalog  *catalog
+
+	// configured is what profiles.toml holds, kept on the program rather than on
+	// the dialog that shows it: closing the dialog must not lose the list, and a
+	// connection that would not open has to be able to say so on its row.
+	configured []config.Connection
+	trouble    map[string]string
+	wizard     *SetupModel
+	palette    *palette
+	modal      *modal
+	page       *details
+	plan       *plan
+	chats      *chatList
 
 	// preferences is the settings screen, built when it is opened rather than held,
 	// because it is a form over a file that anything else may have changed since
@@ -95,14 +110,9 @@ type Model struct {
 	reading     int
 	listing     int
 	lists       [2]browse
-	fields      map[string][]driver.Column
 	keys        keymap
 	help        help.Model
 	offset      int
-
-	findings []driver.Finding
-	tables   []driver.Table
-	indexes  []driver.Index
 
 	// worksheet is the tab being worked in, and sheets is every tab there is.
 	worksheet
@@ -120,23 +130,22 @@ type Model struct {
 	// it and a result nobody is waiting for can be told from one they are.
 	runs int
 
-	sidebar    explorer
+	// minted is how many connections have been opened since the program started,
+	// which is where the next session's id comes from. It only ever rises, so an
+	// id is never handed out twice.
+	minted int
+
 	recall     recall
-	running    activity
 	onSessions bool
 	generation int
 	beat       int
 	focus      pane
 	spinner    spinner.Model
 
-	assistant  conversation
-	build      Talk
-	talk       chat
 	ai         aiSettings
 	chooser    *chooser
 	pending    string
 	stopFetch  context.CancelFunc
-	stopAsk    context.CancelFunc
 	stopLoad   context.CancelFunc
 	stopExport context.CancelFunc
 	exporter   *exporter
@@ -149,7 +158,7 @@ type Talk func(allowed permission) (conversation, error)
 func (m Model) WithAssistant(instance string, build Talk) Model {
 	m.talk = newChat(m.theme, instance)
 	m.build = build
-	return m
+	return m.stowLink()
 }
 
 // pane is what the keys are talking to inside the editor screen.
@@ -161,6 +170,10 @@ const (
 	focusSidebar
 )
 
+// firstSession is the id the connection the program starts on is given. Ids
+// start at one so that a zero is a usable "no session at all".
+const firstSession sessionID = 1
+
 func NewModel(session cli.Session, workspace cli.Workspace) Model {
 	theme := session.Theme
 	loader := spinner.New()
@@ -170,30 +183,29 @@ func NewModel(session cli.Session, workspace cli.Workspace) Model {
 	hints.Styles = helpStyles(theme)
 	hints.ShortSeparator = "  "
 	hints.FullSeparator = "   "
-	first := newWorksheet(theme, sheetQuery, "")
+	first := newWorksheet(theme, sheetQuery, "", firstSession)
+	opened := newLink(firstSession, 1, session, session.Settings, session.Release)
+	opened.loading = true
 	return Model{
 		keys:      newKeymap(),
 		help:      hints,
-		session:   session,
+		settings:  session.Settings,
+		trouble:   map[string]string{},
+		minted:    int(firstSession),
+		link:      opened,
+		links:     []link{opened},
 		workspace: workspace,
 		theme:     theme,
 		view:      viewDashboard,
 		width:     96,
 		height:    32,
-		loading:   true,
 		mouse:     session.Settings.Appearance.MouseWanted(),
 		worksheet: first,
 		sheets:    []worksheet{first},
 		spinner:   loader,
-		list:      newConnections(theme),
-		catalog:   newCatalog(theme),
 		lists:     [2]browse{newBrowse(theme, 0, false), newBrowse(theme, 2, true)},
-		sidebar:   newExplorer(theme),
 		recall:    newRecall(theme),
-		talk:      newChat(theme, ""),
 		ai:        newAISettings(theme),
-		running:   newActivity(theme, session.Settings),
-		fields:    map[string][]driver.Column{},
 	}
 }
 
@@ -220,9 +232,16 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// release closes every connection this program opened. The one it started on is
+// closed by the caller, which is why that one carries no closer of its own.
 func (m Model) release() {
-	if m.close != nil {
-		m.close()
+	for _, open := range m.eachLink() {
+		if open.assistant != nil {
+			_ = open.assistant.Close()
+		}
+		if open.close != nil {
+			open.close()
+		}
 	}
 }
 
@@ -236,15 +255,16 @@ func (m Model) load() tea.Cmd {
 // repeat and is the only thing the refresh reads besides the sessions.
 func (m Model) readHealth() tea.Cmd {
 	conn := m.session.Conn
+	on := m.link.key()
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 		defer cancel()
 
 		findings, err := conn.Health(ctx)
 		if err != nil {
-			return loadedMsg{part: partHealth, err: err}
+			return loadedMsg{part: partHealth, err: err, on: on}
 		}
-		return loadedMsg{part: partHealth, findings: findings}
+		return loadedMsg{part: partHealth, findings: findings, on: on}
 	}
 }
 
@@ -252,20 +272,22 @@ func (m Model) readHealth() tea.Cmd {
 func (m Model) readCatalogue() tea.Cmd {
 	conn := m.session.Conn
 	connection := m.session.Connection
+	on := m.link.key()
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 		defer cancel()
 
 		tables, err := conn.Tables(ctx, one(connection))
 		if err != nil {
-			return loadedMsg{part: partCatalogue, err: err}
+			return loadedMsg{part: partCatalogue, err: err, on: on}
 		}
 		indexes, err := conn.Indexes(ctx, one(connection))
 		if err != nil {
-			return loadedMsg{part: partCatalogue, err: err}
+			return loadedMsg{part: partCatalogue, err: err, on: on}
 		}
 		return loadedMsg{
 			part:    partCatalogue,
+			on:      on,
 			tables:  scoped(tables, connection.Only, func(t driver.Table) string { return t.Schema }),
 			indexes: scoped(indexes, connection.Only, func(i driver.Index) string { return i.Schema }),
 		}
@@ -274,24 +296,26 @@ func (m Model) readCatalogue() tea.Cmd {
 
 const readTimeout = 30 * time.Second
 
-// loaded applies whichever half of a read came back.
+// loaded applies whichever half of a read came back, to the connection it was
+// read from rather than to whichever one is in front by the time it lands.
 func (m Model) loaded(msg loadedMsg) (tea.Model, tea.Cmd) {
-	m.loading = false
-	if msg.err != nil {
-		m.failure, m.failing = msg.err.Error(), msg.part
-		return m, nil
+	read := m.linked4Sheet(msg.on)
+	read.loading = false
+	switch {
+	case msg.err != nil:
+		read.failure, read.failing = msg.err.Error(), msg.part
+	case msg.part == partHealth:
+		read.findings = msg.findings
+		read.read = true
+	case msg.part == partCatalogue:
+		read.tables, read.indexes = msg.tables, msg.indexes
+		read.sidebar = read.sidebar.withTables(read.tables, read.fields)
+		read.read = true
 	}
-	if m.failing == msg.part {
-		m.failure, m.failing = "", ""
+	if msg.err == nil && read.failing == msg.part {
+		read.failure, read.failing = "", ""
 	}
-	switch msg.part {
-	case partHealth:
-		m.findings = msg.findings
-	case partCatalogue:
-		m.tables, m.indexes = msg.tables, msg.indexes
-		m.sidebar = m.sidebar.withTables(m.tables, m.fields)
-	}
-	return m, nil
+	return m.wrote4Link(msg.on, read), nil
 }
 
 // one is the schema a driver can filter on its own.
@@ -328,19 +352,21 @@ func (m Model) run(statement string) (Model, tea.Cmd) {
 		if err != nil {
 			return queriedMsg{statement: statement, err: err, token: token}
 		}
-		defer func() { _ = result.Close() }()
-
 		message := queriedMsg{statement: statement, columns: result.Columns(), token: token}
 		for result.Next() {
 			message.rows = append(message.rows, result.Values())
 		}
-		message.err = result.Err()
 		message.duration = result.Duration()
 		message.truncated = result.Truncated()
+		message.err = driver.Finish(result)
 		return message
 	}
 	return m, tea.Batch(query, m.spinner.Tick)
 }
+
+// haltMsg is the command list giving up on the statement this tab is waiting
+// for, which is the key a terminal may swallow said in words instead.
+type haltMsg struct{}
 
 // halt gives up on the statement that is running.
 func (m Model) halt() Model {
@@ -417,10 +443,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deletedFileMsg:
 		return m.deletedFile(msg)
 	case profilesMsg:
-		m.list = m.list.
-			working(m.session.Connection.Name, len(m.running.sessions)).
-			withProfiles(msg, ui.FrameWidth(m.width))
-		return m, nil
+		return m.listed4Switch(msg), nil
 	case removeMsg:
 		return m, m.remove(msg.name)
 	case rememberedMsg:
@@ -434,8 +457,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.repage(msg.table)
 		return m.resuggest()
 	case sessionsMsg:
-		m.running = m.running.withSessions(msg, ui.FrameWidth(m.width))
-		return m, nil
+		read := m.linked4Sheet(msg.on)
+		read.running = read.running.withSessions(msg, ui.FrameWidth(m.width))
+		return m.wrote4Link(msg.on, read), nil
 	case tickMsg:
 		return m.refreshed(msg)
 	case stopMsg:
@@ -443,7 +467,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stoppedMsg:
 		return m.stopped(msg)
 	case catalogMsg:
-		m.catalog = m.catalog.withCatalog(msg, m.session.Connection)
+		if m.catalog != nil && m.catalog.on == msg.on {
+			m.catalog.withCatalog(msg)
+		}
 		return m, nil
 	case switchedMsg:
 		return m.switched(msg)
@@ -461,8 +487,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.load(), m.spinner.Tick)
 	case runNowMsg:
 		return m.attempt()
+	case haltMsg:
+		return m.halt(), nil
 	case runMsg:
 		return m.run(msg.statement)
+	case switchMsg:
+		return m.openSwitcher()
+	case catalogNowMsg:
+		return m.openCatalog()
+	case disconnectMsg:
+		return m.disconnected(msg)
 	case newConnectionMsg:
 		return m.compose()
 	case preferencesMsg:
@@ -503,7 +537,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mouseMsg:
 		return m.tookMouse()
 	case newSheetMsg:
-		opened, cmd := focused(m.openSheet(newWorksheet(m.theme, sheetQuery, "")))
+		opened, cmd := focused(m.openSheet(newWorksheet(m.theme, sheetQuery, "", m.link.key())))
 		return opened.(Model).show4Tabs(cmd)
 	case closeSheetMsg:
 		closed, cmd := focused(m.closeSheet(m.sheet))
@@ -566,7 +600,19 @@ func (m Model) toWizard(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // spinning is whether anything on screen is waiting on something.
 func (m Model) spinning() bool {
-	return m.loading || m.inflight || m.ai.busy != "" || m.talk.busy || m.talk.loading
+	return m.loading || m.running4Tabs() > 0 || m.ai.busy != "" || m.talk.busy || m.talk.loading
+}
+
+// running4Tabs is how many tabs are waiting on a statement, which is not only
+// the one in front: leaving the editor screen leaves the statement running.
+func (m Model) running4Tabs() int {
+	waiting := 0
+	for _, sheet := range m.eachSheet() {
+		if sheet.inflight {
+			waiting++
+		}
+	}
+	return waiting
 }
 
 func (m Model) statement() string { return m.editor.Value() }
@@ -619,6 +665,12 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.modal != nil {
 		return m.modalKey(msg)
 	}
+	if m.switcher != nil {
+		return m.switcherKey(msg)
+	}
+	if m.catalog != nil {
+		return m.catalogKey(msg)
+	}
 	if m.chats != nil {
 		return m.chatsKey(msg)
 	}
@@ -633,12 +685,6 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.view == viewQuery {
 		return m.queryKey(msg)
-	}
-	if m.view == viewSwitch {
-		return m.switchKey(msg)
-	}
-	if m.view == viewCatalog {
-		return m.catalogKey(msg)
 	}
 	if m.view == viewAsk {
 		return m.askKey(msg)
@@ -682,11 +728,11 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Focus):
 		return m.toggleSessions()
 	case key.Matches(msg, m.keys.Catalog):
-		return m.browseCatalog()
+		return m.openCatalog()
 	case m.keys.opensPalette(msg, false):
 		return m.openPalette()
 	case key.Matches(msg, m.keys.Connections):
-		return m.browse()
+		return m.openSwitcher()
 	case key.Matches(msg, m.keys.Quit):
 		return m.confirmQuit()
 	case key.Matches(msg, m.keys.Back):
@@ -822,9 +868,7 @@ func (m Model) show(target view) (tea.Model, tea.Cmd) {
 		m.recall.loading = true
 		return m, m.readHistory()
 	}
-	if target == viewCatalog {
-		return m.browseCatalog()
-	}
+
 	if target == viewAI {
 		warmed, warming := m.warming()
 		return warmed.read4AI(), warming
@@ -859,6 +903,16 @@ func (m Model) scrolled(step int) Model {
 	return m
 }
 
+// overlaid reports whether something is drawn over the screen, which is what
+// makes a click, a wheel and the terminal's own cursor belong to the overlay
+// rather than to what is behind it. It is one list rather than one per caller,
+// because four hand-copied lists of the same fact had already drifted apart.
+func (m Model) overlaid() bool {
+	return m.wizard != nil || m.page != nil || m.plan != nil || m.modal != nil ||
+		m.switcher != nil || m.catalog != nil || m.chats != nil ||
+		m.exporter != nil || m.chooser != nil || m.palette != nil
+}
+
 // wheeled is the mouse doing what the keys already do.
 func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	if !m.mouse {
@@ -872,10 +926,10 @@ func (m Model) wheeled(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	default:
 		return m, nil
 	}
-	if m.view == viewAsk && m.chooser == nil && m.modal == nil && m.page == nil {
+	if m.view == viewAsk && !m.overlaid() {
 		return m.rolled4Ask(step), nil
 	}
-	if m.view == viewQuery && m.chooser == nil && m.modal == nil && m.page == nil {
+	if m.view == viewQuery && !m.overlaid() {
 		return m.rolled4Query(msg.Mouse().X, step), nil
 	}
 	return m.scrolled(step), nil
@@ -939,10 +993,9 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Leave):
 		return m.confirmQuit()
+	case key.Matches(msg, m.keys.Stop4Query):
+		return m.halt(), nil
 	case key.Matches(msg, m.keys.Back):
-		if m.inflight {
-			return m.halt(), nil
-		}
 		if m.zoomed {
 			m.zoomed = false
 			return m, nil
@@ -952,11 +1005,9 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.editor.Blur()
 		return m.openPalette()
 	case key.Matches(msg, m.keys.Connections):
-		m.editor.Blur()
-		return m.browse()
+		return m.openSwitcher()
 	case key.Matches(msg, m.keys.Catalog):
-		m.editor.Blur()
-		return m.browse()
+		return m.openCatalog()
 	case key.Matches(msg, m.keys.Run):
 		return m.attempt()
 	case key.Matches(msg, m.keys.Export):
@@ -971,7 +1022,7 @@ func (m Model) queryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Jump):
 		return focused(m.onSheet(jumped(msg)))
 	case key.Matches(msg, m.keys.NewTab):
-		return focused(m.openSheet(newWorksheet(m.theme, sheetQuery, "")))
+		return focused(m.openSheet(newWorksheet(m.theme, sheetQuery, "", m.link.key())))
 	case key.Matches(msg, m.keys.CloseTab):
 		return m.confirmClose()
 	case key.Matches(msg, m.keys.PrevTab):
@@ -1076,11 +1127,11 @@ func (m Model) toggleSidebar() (tea.Model, tea.Cmd) {
 // attempt is what pressing run does with each of the three verdicts.
 func (m Model) attempt() (tea.Model, tea.Cmd) {
 	statement := m.script().chosen()
-	verdict := m.session.Guard.Classify(statement, cli.Mode(m.session.Connection.Mode))
+	verdict := m.classify(statement)
 	switch {
 	case verdict.Blocked():
 		return m, m.notify(ui.Reason(verdict.Reason))
-	case verdict.NeedsConfirmation() && m.session.Settings.Safety.ConfirmQueries:
+	case verdict.NeedsConfirmation() && m.settings.Safety.ConfirmQueries:
 		m.modal = m.confirmRun(statement, verdict)
 		return m, nil
 	}
@@ -1105,10 +1156,11 @@ type runNowMsg struct{}
 
 // Verdict is what the guard makes of the statement that would run, which in a
 // buffer holding a script is the one the cursor is in rather than all of them.
-func (m Model) Verdict() sqlguard.Result {
-	return m.session.Guard.Classify(m.script().chosen(),
-		cli.Mode(m.session.Connection.Mode))
-}
+func (m Model) Verdict() sqlguard.Result { return m.classify(m.script().chosen()) }
+
+// classify is what the guard makes of one statement, against the mode the
+// connection this tab is worked through was opened in.
+func (m Model) classify(statement string) sqlguard.Result { return m.link.classify(statement) }
 
 // Settled returns a model that starts no work of its own in the background.
 func (m Model) Settled() Model {
@@ -1154,6 +1206,12 @@ func (m Model) content() string {
 	if m.modal != nil {
 		return ui.Overlay(screen, m.modal.view(m.width), m.width, m.height)
 	}
+	if m.switcher != nil {
+		return ui.Overlay(screen, m.view4Switch(m.width, m.height), m.width, m.height)
+	}
+	if m.catalog != nil {
+		return ui.Overlay(screen, m.view4Catalog(m.width, m.height), m.width, m.height)
+	}
 	if m.chats != nil {
 		return ui.Overlay(screen, m.chats.view(m.width, m.height), m.width, m.height)
 	}
@@ -1188,12 +1246,27 @@ func (m Model) blank() bool {
 }
 
 func (m Model) header() string {
-	return m.theme.IdentityLine(
+	return ui.SplitLine(m.theme.IdentityLine(
 		ui.EnvColor(m.session.Connection.Color),
 		ui.Slashed(m.session.Connection.Name, m.database()),
 		strings.ToLower(m.session.Info.Driver)+" "+m.session.Info.Version,
 		sqlguard.Mode(m.session.Connection.Mode).Label(),
-	)
+	), m.tally4Running(), ui.FrameWidth(m.width))
+}
+
+// tally4Running is what is still out, said on every screen rather than only on
+// the one with the tabs on it. A statement left running is invisible from the
+// dashboard otherwise, and invisible work is work nobody comes back for.
+func (m Model) tally4Running() string {
+	waiting := m.running4Tabs()
+	switch {
+	case waiting == 0:
+		return ""
+	case waiting == 1 && m.inflight:
+		return m.spinner.View() + m.theme.Muted.Render(" running "+driver.Duration(time.Since(m.began)))
+	default:
+		return m.spinner.View() + m.theme.Muted.Render(" "+strconv.Itoa(waiting)+" running")
+	}
 }
 
 // database is what the server calls the database in use. A file backed driver
@@ -1234,10 +1307,6 @@ func (m Model) body() string {
 		return m.historyBody()
 	case viewSettings:
 		return m.preferencesBody()
-	case viewSwitch:
-		return m.list.view(ui.FrameWidth(m.width))
-	case viewCatalog:
-		return m.catalog.view(ui.FrameWidth(m.width))
 	default:
 		return m.dashboardBody()
 	}

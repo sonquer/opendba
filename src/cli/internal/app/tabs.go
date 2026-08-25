@@ -44,6 +44,21 @@ type worksheet struct {
 	// is the statement as the file holds it.
 	file  string
 	saved string
+
+	// on is the connection this tab is worked through, which is not always the one
+	// the tab beside it is worked through.
+	on sessionID
+}
+
+// finished releases the context of a run that has come back, whichever tab it
+// belonged to. Nothing ever called the cancel of a run that arrived, so every
+// successful statement left one behind.
+func (s worksheet) finished() worksheet {
+	if s.stopQuery != nil {
+		s.stopQuery()
+	}
+	s.stopQuery, s.inflight = nil, false
+	return s
 }
 
 // dirty says whether the tab holds something its file does not.
@@ -51,17 +66,20 @@ func (s worksheet) dirty() bool {
 	return s.file != "" && s.editor.Value() != s.saved
 }
 
-func newWorksheet(theme *ui.Theme, kind sheetKind, title string) worksheet {
+func newWorksheet(theme *ui.Theme, kind sheetKind, title string, on sessionID) worksheet {
 	return worksheet{
 		kind:    kind,
 		title:   title,
 		editor:  newEditor(theme),
 		suggest: completion{theme: theme},
+		on:      on,
 	}
 }
 
-// stow writes the tab being worked in back into the list of tabs.
+// stow writes the tab being worked in, and the connection it is being worked
+// through, back into the lists they came from.
 func (m Model) stow() Model {
+	m = m.stowLink()
 	if m.sheet < 0 || m.sheet >= len(m.sheets) {
 		return m
 	}
@@ -69,6 +87,24 @@ func (m Model) stow() Model {
 	copy(sheets, m.sheets)
 	sheets[m.sheet] = m.worksheet
 	m.sheets = sheets
+	return m
+}
+
+// eachSheet is every tab, with the one being worked in as it is now rather than
+// as it was last stowed.
+func (m Model) eachSheet() []worksheet {
+	sheets := make([]worksheet, len(m.sheets))
+	copy(sheets, m.sheets)
+	if m.sheet >= 0 && m.sheet < len(sheets) {
+		sheets[m.sheet] = m.worksheet
+	}
+	return sheets
+}
+
+// sized is the model as it would be with another tab in front, which is what a
+// result arriving for a tab that is not in front has to be measured against.
+func (m Model) sized(sheet worksheet) Model {
+	m.worksheet = sheet
 	return m
 }
 
@@ -80,6 +116,7 @@ func (m Model) onSheet(index int) Model {
 	m = m.stow()
 	m.sheet = index
 	m.worksheet = m.sheets[index]
+	m = m.through(m.on)
 	m.editor.SetWidth(m.paneWidth())
 	m.editor.SetHeight(m.editorRows())
 	m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
@@ -93,6 +130,7 @@ func (m Model) openSheet(sheet worksheet) Model {
 	m.sheets = append(append([]worksheet{}, m.sheets...), sheet)
 	m.sheet = len(m.sheets) - 1
 	m.worksheet = sheet
+	m = m.through(sheet.on)
 	m.editor.SetWidth(m.paneWidth())
 	m.editor.SetHeight(m.editorRows())
 	m.focus = focusEditor
@@ -106,17 +144,15 @@ func (m Model) closeSheet(index int) Model {
 		return m
 	}
 	m = m.stow()
+	m.sheets[index] = m.sheets[index].finished()
 	if len(m.sheets) == 1 {
-		fresh := newWorksheet(m.theme, sheetQuery, "")
+		fresh := newWorksheet(m.theme, sheetQuery, "", m.link.key())
 		m.sheets = []worksheet{fresh}
 		m.sheet = 0
 		m.worksheet = fresh
 		m.editor.SetWidth(m.paneWidth())
 		m.editor.SetHeight(m.editorRows())
 		return m
-	}
-	if m.sheets[index].stopQuery != nil {
-		m.sheets[index].stopQuery()
 	}
 	kept := make([]worksheet, 0, len(m.sheets)-1)
 	kept = append(kept, m.sheets[:index]...)
@@ -127,6 +163,7 @@ func (m Model) closeSheet(index int) Model {
 		m.sheet = min(index, len(kept)-1)
 	}
 	m.worksheet = m.sheets[m.sheet]
+	m = m.through(m.on)
 	m.editor.SetWidth(m.paneWidth())
 	m.editor.SetHeight(m.editorRows())
 	m.results = m.results.resize(m.paneWidth(), m.resultsHeight())
@@ -179,15 +216,38 @@ const maxTabWidth = 18
 // editor together, because a tab holds a statement and its result rather than
 // half the screen.
 func (m Model) tabBar(width int) string {
-	drawn := make([]string, 0, len(m.sheets))
-	for i := range m.sheets {
-		sheet := m.sheets[i]
-		if i == m.sheet {
-			sheet = m.worksheet
+	sheets := m.eachSheet()
+	drawn := make([]string, 0, 2*len(sheets))
+	mixed := m.mixed4Tabs(sheets)
+	previous := sessionID(0)
+	for i, sheet := range sheets {
+		if mixed && sheet.on != previous {
+			drawn = append(drawn, m.run4Tabs(sheet.on))
 		}
+		previous = sheet.on
 		drawn = append(drawn, m.tab(sheet, i))
 	}
 	return clip4Tabs(lipgloss.JoinHorizontal(lipgloss.Top, drawn...), width)
+}
+
+// mixed4Tabs reports whether the tabs are on more than one connection, which is
+// when the strip has to say which is which. One connection costs no room at all.
+func (m Model) mixed4Tabs(sheets []worksheet) bool {
+	for _, sheet := range sheets {
+		if sheet.on != sheets[0].on {
+			return true
+		}
+	}
+	return false
+}
+
+// run4Tabs names the connection the run of tabs beside it is worked through,
+// once rather than on every tab, since a name on each is the same name three
+// times over.
+func (m Model) run4Tabs(on sessionID) string {
+	named := m.linked4Sheet(on)
+	return m.theme.TabRun(ui.EnvColor(named.session.Connection.Color),
+		ui.Truncate(m.label4Link(named), maxTabWidth))
 }
 
 // tab is one tab: the key that reaches it, its name, and a dot while its
@@ -249,10 +309,10 @@ func (m Model) workbenchHeight() int {
 // still belongs to the tab it was typed in.
 func (m Model) returned(msg queriedMsg) (tea.Model, tea.Cmd) {
 	if msg.token == m.token {
-		m.stopQuery, m.inflight = nil, false
+		m.worksheet = m.worksheet.finished()
 		m.results = newResults(m.theme, msg, m.paneWidth(), m.resultsHeight())
 		m.focus = focusEditor
-		return m, m.wroteDown(msg)
+		return m, m.wroteDown(msg, m.on)
 	}
 	for i := range m.sheets {
 		if i == m.sheet || m.sheets[i].token != msg.token {
@@ -260,18 +320,45 @@ func (m Model) returned(msg queriedMsg) (tea.Model, tea.Cmd) {
 		}
 		sheets := make([]worksheet, len(m.sheets))
 		copy(sheets, m.sheets)
-		sheets[i].stopQuery, sheets[i].inflight = nil, false
-		sheets[i].results = newResults(m.theme, msg, m.paneWidth(), m.resultsHeight())
+		sheet := sheets[i].finished()
+		measured := m.sized(sheet)
+		sheet.results = newResults(m.theme, msg, measured.paneWidth(), measured.resultsHeight())
+		sheets[i] = sheet
 		m.sheets = sheets
-		return m, m.wroteDown(msg)
+		if text := m.about(msg, sheet, i); text != "" {
+			return m, tea.Batch(m.wroteDown(msg, sheet.on), m.say(text, msg.err != nil))
+		}
+		return m, m.wroteDown(msg, sheet.on)
 	}
 	return m, nil
 }
 
-// focused puts the cursor in the editor of whichever tab is now in front.
+// about is what a result arriving for a tab that is not in front says, or
+// nothing when the strip already says it. A failure always says so, because
+// never hearing that a statement failed is the whole cost of leaving one
+// running; a result that worked is only worth saying away from the editor
+// screen, where the strip that marks the tab is not drawn.
+func (m Model) about(msg queriedMsg, sheet worksheet, index int) string {
+	switch {
+	case msg.err != nil:
+		return m.label(sheet, index) + ": " + msg.err.Error()
+	case m.view == viewQuery:
+		return ""
+	default:
+		return m.label(sheet, index) + " · " + ui.Plural(len(msg.rows), "row", "rows")
+	}
+}
+
+// focused puts the cursor in the editor of whichever tab is now in front, and
+// reads the server behind it the first time a tab on that connection is looked
+// at. Coming back to one that has been read reads nothing.
 func focused(m Model) (tea.Model, tea.Cmd) {
 	m.focus = focusEditor
-	return m, m.editor.Focus()
+	if m.read || m.loading {
+		return m, m.editor.Focus()
+	}
+	m.loading = true
+	return m, tea.Batch(m.editor.Focus(), m.load(), m.spinner.Tick)
 }
 
 // strip is the tab bar, drawn only on the screen that has tabs. Everywhere else
@@ -337,12 +424,9 @@ type gotoSheetMsg struct{ index int }
 // commands is one command per open tab, so a tab is reached by its name rather
 // than by pressing the key that walks the list until the right one is in front.
 func (m Model) commands() []command {
-	tabs := make([]command, 0, len(m.sheets))
-	for i := range m.sheets {
-		sheet := m.sheets[i]
-		if i == m.sheet {
-			sheet = m.worksheet
-		}
+	sheets := m.eachSheet()
+	tabs := make([]command, 0, len(sheets))
+	for i, sheet := range sheets {
 		tabs = append(tabs, command{
 			title: "tab " + strconv.Itoa(i+1) + ", " + m.label(sheet, i),
 			key:   jumpCap(i),

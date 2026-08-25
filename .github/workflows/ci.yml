@@ -29,9 +29,25 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.work
-          cache-dependency-path: |
-            src/cli/go.sum
-            src/tools/go.sum
+          cache: false
+
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
 
       - name: Cache the pinned tools
         uses: actions/cache@v6
@@ -67,9 +83,25 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.work
-          cache-dependency-path: |
-            src/cli/go.sum
-            src/tools/go.sum
+          cache: false
+
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
 
       - name: Run the tests and the coverage gate
         shell: bash
@@ -98,7 +130,25 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.work
-          cache-dependency-path: src/cli/go.sum
+          cache: false
+
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
 
       - name: Compile the product for this target
         env:

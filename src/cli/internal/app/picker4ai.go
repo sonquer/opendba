@@ -88,7 +88,7 @@ func newChooser(theme *ui.Theme) *chooser {
 func (m Model) choosing() (Model, tea.Cmd) {
 	built := newChooser(m.theme)
 	built.offers = m.offers()
-	built = built.at(m.session.Settings.AI.Active)
+	built = built.at(m.settings.AI.Active)
 	m.chooser = built
 	return m, tea.Batch(built.filter.Focus(), m.probeOllama())
 }
@@ -109,13 +109,13 @@ func (m Model) models4Offer() []offer {
 	}
 	store := m.session.AI.Models
 	room := m.room4AI()
-	active := m.session.Settings.AI.Active
-	answering := m.session.Settings.AI.Enabled
+	active := m.settings.AI.Active
+	answering := m.settings.AI.Enabled
 	offers := make([]offer, 0, len(entries))
 	for _, entry := range entries {
 		here := store != nil && store.Has(entry.ID)
 		instance, configured := m.local4Instance(entry.ID)
-		verdict := local.Fits(entry, m.session.Settings.AI.Context, room)
+		verdict := local.Fits(entry, m.settings.AI.Context, room)
 		offers = append(offers, offer{
 			key:      entry.ID,
 			label:    entry.Title,
@@ -150,7 +150,7 @@ func mark4Model(here, answering bool) string {
 // local4Instance finds the instance that runs a model here, whatever it was
 // named.
 func (m Model) local4Instance(model string) (config.AIInstance, bool) {
-	for _, instance := range m.session.Settings.AI.Instances {
+	for _, instance := range m.settings.AI.Instances {
 		if ai.Kind(instance.Kind) == ai.KindLocal && instance.Model == model {
 			return instance, true
 		}
@@ -172,7 +172,7 @@ func note4Model(entry local.Entry, verdict local.Verdict, here bool) string {
 // then the way to add one.
 func (m Model) host4Offer(host cli.Hosted) []offer {
 	section := strings.ToLower(host.Title)
-	settings := m.session.Settings.AI
+	settings := m.settings.AI
 	offers := []offer{}
 	for _, instance := range settings.Instances {
 		if ai.Kind(instance.Kind) != host.Kind {
@@ -781,7 +781,7 @@ func (m Model) add4Host(host cli.Hosted, reference string) (tea.Model, tea.Cmd) 
 
 // wrote saves an instance, makes it the one that answers, and closes the modal.
 func (m Model) wrote(instance config.AIInstance) (tea.Model, tea.Cmd) {
-	settings, err := cli.AddInstance(m.workspace.Setup().Store, m.session.Settings, instance)
+	settings, err := cli.AddInstance(m.workspace.Setup().Store, m.settings, instance)
 	if err != nil {
 		m.ai.trouble = err.Error()
 		return m, nil
@@ -790,7 +790,7 @@ func (m Model) wrote(instance config.AIInstance) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) activate(name string) (tea.Model, tea.Cmd) {
-	settings, err := cli.Activate(m.workspace.Setup().Store, m.session.Settings, name)
+	settings, err := cli.Activate(m.workspace.Setup().Store, m.settings, name)
 	if err != nil {
 		m.ai.trouble = err.Error()
 		return m, nil
@@ -802,18 +802,33 @@ func (m Model) activate(name string) (tea.Model, tea.Cmd) {
 // one that was open, so the next question goes to the new one.
 func (m Model) answering(settings config.Settings, name string) (tea.Model, tea.Cmd) {
 	setup := m.workspace.Setup()
-	if m.assistant != nil {
-		_ = m.assistant.Close()
-	}
-	m.session.Settings = settings
-	m.session.AI = cli.NewAssistant(context.Background(), setup.Store.Paths, settings, setup.Secrets)
-	m.build = assistantFor(m.session)
-	m.assistant = nil
+	m.settings = settings
+	m = m.answering4Links(cli.NewAssistant(context.Background(), setup.Store.Paths, settings, setup.Secrets), name)
 	m.chooser = nil
-	m.talk.instance = name
-	m.talk.trouble = ""
-	m.talk.loaded = false
 	read := m.read4AI()
 	return read, tea.Batch(read.talk.prompt.Focus(),
 		read.notify(name+" will answer from now on"))
+}
+
+// answering4Links gives every open connection the model that answers now. Which
+// model that is, is a fact of the settings file rather than of one connection,
+// so a connection left in the background must not go on asking the old one.
+func (m Model) answering4Links(assistant cli.Assistant, name string) Model {
+	m = m.stowLink()
+	links := make([]link, len(m.links))
+	copy(links, m.links)
+	for i := range links {
+		if links[i].assistant != nil {
+			_ = links[i].assistant.Close()
+		}
+		links[i].session.AI = assistant
+		links[i].build = assistantFor(links[i].session)
+		links[i].assistant = nil
+		links[i].talk.instance = name
+		links[i].talk.trouble = ""
+		links[i].talk.loaded = false
+	}
+	m.links = links
+	m.link = links[m.linked]
+	return m
 }

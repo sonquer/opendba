@@ -285,3 +285,59 @@ func TestTheStatementAPositionFallsIn(t *testing.T) {
 		t.Error("a request with no statements has none at any position")
 	}
 }
+
+// A statement PostgreSQL will only run on its own is refused by the parser
+// rather than sent and rejected by the server, which is what SQLSTATE 25001 was.
+func TestPostgresRefusesStatementsThatCannotRunInATransaction(t *testing.T) {
+	cases := []struct {
+		name    string
+		sql     string
+		refused bool
+	}{
+		{"drop a database", "DROP DATABASE bullet", true},
+		{"create a database", "CREATE DATABASE bullet", true},
+		{"create a tablespace", "CREATE TABLESPACE fast LOCATION '/mnt/fast'", true},
+		{"drop a tablespace", "DROP TABLESPACE fast", true},
+		{"write the server configuration", "ALTER SYSTEM SET work_mem = '1GB'", true},
+		{"build an index concurrently", "CREATE INDEX CONCURRENTLY i ON t (id)", true},
+		{"build a unique index concurrently", "CREATE UNIQUE INDEX CONCURRENTLY i ON t (id)", true},
+		{"drop an index concurrently", "DROP INDEX CONCURRENTLY i", true},
+		{"move a database", "ALTER DATABASE app SET TABLESPACE fast", true},
+		{"build an index", "CREATE INDEX i ON t (id)", false},
+		{"drop an index", "DROP INDEX i", false},
+		{"drop a table", "DROP TABLE users", false},
+		{"set a database option", "ALTER DATABASE app WITH CONNECTION LIMIT 10", false},
+		{"set a database default", "ALTER DATABASE app SET work_mem = '1GB'", false},
+		{"refresh a materialised view concurrently", "REFRESH MATERIALIZED VIEW CONCURRENTLY mv", false},
+		{"add a value to an enum", "ALTER TYPE mood ADD VALUE 'happy'", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			analysis := PostgreSQL().Analyze(c.sql)
+			if !analysis.Valid() {
+				t.Fatalf("the statement must parse: %s", analysis.FirstError())
+			}
+			if len(analysis.Statements) != 1 {
+				t.Fatalf("statements = %d", len(analysis.Statements))
+			}
+			if refused := analysis.Statements[0].Refusal != ""; refused != c.refused {
+				t.Errorf("refused = %v (%q), want %v", refused,
+					analysis.Statements[0].Refusal, c.refused)
+			}
+		})
+	}
+}
+
+// A refinement is asked about its own rule and about nothing else, or every
+// statement holding a keyword would answer for the one statement that means it.
+func TestARefinementIsOnlyAskedAboutItsOwnRule(t *testing.T) {
+	dialect := PostgreSQL().(grammar)
+	for name := range dialect.refinements {
+		if _, ok := dialect.lookup(name); !ok {
+			t.Errorf("%s refines a rule that nothing classifies", name)
+		}
+	}
+	if _, ok := dialect.refinements["refreshmatviewstmt"]; ok {
+		t.Error("REFRESH MATERIALIZED VIEW CONCURRENTLY runs inside a transaction")
+	}
+}

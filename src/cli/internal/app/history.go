@@ -30,19 +30,23 @@ type recall struct {
 func newRecall(theme *ui.Theme) recall { return recall{theme: theme} }
 
 // keeping reports whether there is anywhere to keep what has been run.
-func (m Model) keeping() bool { return m.session.History != nil }
+func (m Model) keeping() bool { return m.link.keeping() }
 
-// remember writes down what a statement did.
-func (m Model) wroteDown(msg queriedMsg) tea.Cmd {
-	if !m.keeping() || strings.TrimSpace(msg.statement) == "" {
+// wroteDown writes down what a statement did, under the connection it ran
+// against and classified as what ran. A result arriving for a tab that is not in
+// front was filed under the front tab's connection and the front tab's buffer,
+// both of which are somebody else's.
+func (m Model) wroteDown(msg queriedMsg, on sessionID) tea.Cmd {
+	ran := m.linked4Sheet(on)
+	if !ran.keeping() || strings.TrimSpace(msg.statement) == "" {
 		return nil
 	}
-	store := m.session.History
+	store := ran.session.History
 	entry := history.Entry{
-		ConnectionID:   m.session.Connection.Name,
-		ConnectionName: m.session.Connection.Name,
+		ConnectionID:   ran.session.Connection.Name,
+		ConnectionName: ran.session.Connection.Name,
 		Statement:      msg.statement,
-		Kind:           string(m.Verdict().Kind),
+		Kind:           string(ran.classify(msg.statement).Kind),
 		Rows:           len(msg.rows),
 		Duration:       msg.duration,
 	}
@@ -70,7 +74,7 @@ func (m Model) readHistory() tea.Cmd {
 	}
 	store := m.session.History
 	term := m.recall.term
-	limit := m.session.Settings.History.Limit
+	limit := m.settings.History.Limit
 	connection := m.session.Connection.Name
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
@@ -113,6 +117,8 @@ func (r recall) selected() (history.Entry, bool) {
 
 func (m Model) historyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
+	case key.Matches(msg, m.keys.Connections):
+		return m.openSwitcher()
 	case key.Matches(msg, m.keys.Back):
 		if m.recall.term != "" {
 			m.recall.term = ""
@@ -151,7 +157,7 @@ func (m Model) reopen() (tea.Model, tea.Cmd) {
 	if !ok || entry.Statement == history.Redacted() {
 		return m, m.notify("this statement was not kept, only that it ran")
 	}
-	sheet := newWorksheet(m.theme, sheetQuery, "")
+	sheet := newWorksheet(m.theme, sheetQuery, "", m.link.key())
 	sheet.editor.SetValue(entry.Statement)
 	opened := m.openSheet(sheet)
 	shown, cmd := opened.show(viewQuery)

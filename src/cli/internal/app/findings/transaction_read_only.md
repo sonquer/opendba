@@ -11,7 +11,8 @@ configured.
 ## When it says read / write
 
 Nothing is wrong. It means statements that change data will reach the server if
-you run them, and the classifier will ask before they do.
+you run them and will be kept once they have, and the classifier will ask
+before they do.
 
 It is worth noticing when you did not expect it. A profile set to READ ONLY
 that reports read / write here means the session setting did not take, and the

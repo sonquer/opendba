@@ -14,6 +14,11 @@ The editor has tabs. Each one holds its own statement, its own result and its
 own split. `ctrl+1` to `ctrl+9` reach a tab by its place, `ctrl+n` opens one and
 `ctrl+w` closes it after asking. Every tab is in this list by name as well.
 
+A statement keeps running when you leave the editor: `esc` goes back and the tab
+waits on its own, marked with a `•` in the strip, with the header saying how much
+is still out from wherever you are. `f7` gives up on the statement a tab is
+waiting for, and closing a tab gives up on its statement after asking.
+
 The schema of the current database sits beside the editor. `enter` on a table
 opens its rows in a tab of its own, with the statement that read them written
 into it. `i` writes a name into the statement, `space` opens a table's columns.
@@ -108,9 +113,27 @@ so they apply to the next one.
 
 ## Elsewhere
 
-`ctrl+d` lists the databases this server lets you open and the schemas of the
-one you are in. Choosing either is remembered in the profile, so the next run
-starts where you left off.
+`ctrl+p` opens the connections over whatever you were looking at, from anywhere.
+It has two halves. OPEN is where you are working: `enter` goes to a session and a
+bare digit goes straight to the one numbered beside it, the way `ctrl+1` reaches
+a tab. CONFIGURED is what `profiles.toml` holds: `enter` there opens **another**
+session, even on a connection you already have open, so two windows onto one
+server are two rows rather than a fight.
 
-`ctrl+p` lists your connections, adds one, or removes one along with its
-password.
+A second session on the same database is called `#2`, and the tab strip names
+them apart. Each row says how many tabs are on that session, and the one you are
+working in says `in use`. What you open lands in the tab in front when it is
+empty, and in a tab of its own when it is holding a statement or a result — so a
+tab with something in it is never the one that moves.
+
+`x` closes a session — without asking when no tab is on it and nothing is
+running, and after saying what goes with it when there is. `n`, `e` and `d`
+make, change and remove a profile, and never a session. `f` filters.
+
+`ctrl+d` opens the databases and schemas of the session in front. It is a form:
+`space` moves the dot or ticks a box, `enter` applies. Ticking schemas only
+re-reads; choosing another database reconnects. Choosing is remembered in the
+profile, so the next run starts where you left off.
+
+Each tab belongs to a session: the header, the access mode and the schema tree
+all follow the tab in front.

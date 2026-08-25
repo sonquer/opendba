@@ -169,8 +169,13 @@ func wrap(text string, width int) string {
 }
 
 func (m Model) confirmQuit() (tea.Model, tea.Cmd) {
-	m.modal = ask(m.theme, "close opendba?",
+	dialog := ask(m.theme, "close opendba?",
 		"the connection is closed with it", quitMsg{})
+	if waiting := m.running4Tabs(); waiting > 0 {
+		dialog.tag = m.theme.Muted.Render(
+			ui.Plural(waiting, "statement", "statements") + " still running")
+	}
+	m.modal = dialog
 	return m, nil
 }
 

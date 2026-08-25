@@ -336,13 +336,6 @@ func TestUnknownErrorsKeepTheWizardUsable(t *testing.T) {
 	}
 }
 
-func TestRunSetupIsAThinWrapper(t *testing.T) {
-	setup, _ := newSetup(t)
-	if _, err := RunSetup(setup); err == nil {
-		t.Log("the wizard started, which means this machine has a terminal")
-	}
-}
-
 func TestTabMovesThroughEveryField(t *testing.T) {
 	setup, _ := newSetup(t)
 	m := NewSetupModel(setup)

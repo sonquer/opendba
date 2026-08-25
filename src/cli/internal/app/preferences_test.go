@@ -22,7 +22,7 @@ func storing(t *testing.T) Model {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	m.session.Chats = store
-	m.session.Settings.Chats = config.ChatSettings{Enabled: true, Limit: 100}
+	m.settings.Chats = config.ChatSettings{Enabled: true, Limit: 100}
 	return m
 }
 
@@ -108,10 +108,10 @@ func TestSavingWritesTheFileAndAppliesWhatItCan(t *testing.T) {
 	if done.preferences.trouble != "" {
 		t.Fatalf("trouble = %q", done.preferences.trouble)
 	}
-	if done.session.Settings.Safety.RowLimit != 250 {
-		t.Errorf("row limit = %d", done.session.Settings.Safety.RowLimit)
+	if done.settings.Safety.RowLimit != 250 {
+		t.Errorf("row limit = %d", done.settings.Safety.RowLimit)
 	}
-	if done.session.Settings.Chats.Enabled {
+	if done.settings.Chats.Enabled {
 		t.Error("keeping conversations was turned off")
 	}
 	if done.mouse {
@@ -244,13 +244,13 @@ func TestClearingWithNowhereToClearSaysSo(t *testing.T) {
 // Esc leaves the screen without writing anything.
 func TestEscapeLeavesTheSettingsAlone(t *testing.T) {
 	m := settling(t)
-	before := m.session.Settings.Safety.RowLimit
+	before := m.settings.Safety.RowLimit
 	changed := set4Preferences(m, "rows", "7")
 	left, _ := press(t, changed, "esc")
 	if left.view != viewDashboard || left.preferences != nil {
 		t.Errorf("view = %v, esc must leave", left.view)
 	}
-	if left.session.Settings.Safety.RowLimit != before {
+	if left.settings.Safety.RowLimit != before {
 		t.Error("and change nothing")
 	}
 	held, err := m.workspace.Setup().Store.LoadSettings()
@@ -406,7 +406,7 @@ func TestARelativeSqlDirectoryIsRefusedOnTheScreen(t *testing.T) {
 	if after.(Model).preferences.trouble == "" {
 		t.Error("a relative directory must be refused rather than written")
 	}
-	if after.(Model).session.Settings.Workspace.Root != "" {
+	if after.(Model).settings.Workspace.Root != "" {
 		t.Error("a refused directory must not be kept")
 	}
 }
@@ -419,13 +419,35 @@ func TestSavingTheSqlDirectoryReadsTheFilesAgain(t *testing.T) {
 	if after.(Model).preferences.trouble != "" {
 		t.Fatalf("trouble = %q", after.(Model).preferences.trouble)
 	}
-	if after.(Model).session.Settings.Workspace.Root != kept {
-		t.Errorf("root = %q, want %q", after.(Model).session.Settings.Workspace.Root, kept)
+	if after.(Model).settings.Workspace.Root != kept {
+		t.Errorf("root = %q, want %q", after.(Model).settings.Workspace.Root, kept)
 	}
 	if after.(Model).root() != filepath.Join(kept, "production-eu") {
 		t.Errorf("the files come from %q", after.(Model).root())
 	}
 	if cmd == nil {
 		t.Error("saving must read the directory again")
+	}
+}
+
+// Settings are a fact of the file, not of one connection: writing them reaches
+// every connection that is open, and not only the one in front.
+func TestSettingsReachEveryOpenConnection(t *testing.T) {
+	m, _ := twoConnections(t)
+	if len(m.links) != 2 {
+		t.Fatalf("links = %d", len(m.links))
+	}
+	m.settings.Appearance.OwnSessions = false
+	shown := m.showing4Links(true)
+	for i, open := range shown.eachLink() {
+		if !open.running.own {
+			t.Errorf("connection %d still hides the sessions this program made", i)
+		}
+	}
+	hidden := shown.showing4Links(false)
+	for i, open := range hidden.eachLink() {
+		if open.running.own {
+			t.Errorf("connection %d still shows them", i)
+		}
 	}
 }

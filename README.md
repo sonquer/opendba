@@ -95,7 +95,8 @@ everything else.
 ## Features
 
 - **A dashboard** of server health, sessions, and what the database holds.
-- **An editor with tabs**, autocompletion, and the schema beside it.
+- **An editor with tabs**, autocompletion, and the schema beside it. Each tab is
+  on a connection of its own, and a statement keeps running when you leave it.
 - **SQL files** kept per connection, opened in a tab and saved with `ctrl+s`.
 - **Results** that scroll, zoom to the window, and open a row on its own page.
 - **`EXPLAIN`** and `EXPLAIN ANALYZE`, drawn as a tree.
@@ -103,7 +104,9 @@ everything else.
 - **History** of what you have run, searchable and forgettable.
 - **An assistant** that can read the schema and draft a statement — Anthropic,
   OpenAI, Gemini, Ollama, or a local model with no network at all.
-- **Connections** set up, switched and removed inside the interface.
+- **Connections** set up, switched and removed inside the interface, several of
+  them open at once — including several on one configuration, which is two
+  windows onto one server.
 - **`--json`** output for scripting.
 - **Mouse** support, if you want it.
 
@@ -116,6 +119,13 @@ Four layers, and a statement has to pass all of them:
 1. the database role — documented, user-owned, and the only real boundary,
 2. session pinning — `default_transaction_read_only`, statement and lock timeouts,
 3. a read-only transaction around every read.
+
+A READ ONLY profile can send nothing that changes data. A READ / WRITE profile
+asks before it sends one, and keeps what it ran: the transaction is committed
+unless the statement failed or you gave up on it. A statement PostgreSQL will
+not run inside a transaction block at all, such as `DROP DATABASE` or
+`CREATE INDEX CONCURRENTLY`, is refused by the classifier rather than sent and
+rejected by the server.
 
 Multi-statement input is refused in every access mode. A password is never
 written to `profiles.toml`, to `--json`, to the query history, or to any screen:
@@ -174,13 +184,16 @@ single shortcut, and `?` prints the rest of this table inside the program.
 | `ctrl+r` | run the statement |
 | `ctrl+s` | save the tab to a file |
 | `ctrl+n` `ctrl+w` | open a tab, close it |
+| `ctrl+1`…`ctrl+9` | go to a tab by its place |
 | `ctrl+b` | show or hide the schema beside the editor |
 | `ctrl+e` | write the result to a file |
-| `ctrl+p` `ctrl+d` | connections, databases and schemas |
+| `ctrl+p` | connections: where you are working, and what else you could open |
+| `ctrl+d` | the databases and schemas of the connection you are on |
 | `ctrl+g` | what you have run |
 | `f6` | what the server would do with the statement |
 | `z` | zoom a result to the whole window |
-| `esc` | give up on the statement that is running, or go back |
+| `f7` | give up on the statement this tab is waiting for |
+| `esc` | go back, leaving what is running to run |
 | `q` | quit, and again to confirm |
 
 Terminals that speak the Kitty keyboard protocol (Ghostty, kitty, WezTerm) also

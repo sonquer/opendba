@@ -24,7 +24,7 @@ func keepingHistory(t *testing.T, settings config.HistorySettings) Model {
 	m := loadedWith(t, healthy(), workspaceWith(t))
 	m.width, m.height = 110, 34
 	m.session.History = store
-	m.session.Settings.History = settings
+	m.settings.History = settings
 	return m
 }
 
@@ -83,11 +83,11 @@ func TestNothingIsWrittenDownWithNowhereToWriteIt(t *testing.T) {
 	if m.keeping() {
 		t.Fatal("there is no store")
 	}
-	if cmd := m.wroteDown(queriedMsg{statement: "SELECT 1"}); cmd != nil {
+	if cmd := m.wroteDown(queriedMsg{statement: "SELECT 1"}, m.on); cmd != nil {
 		t.Error("nothing to write it to means nothing to do")
 	}
 	kept := keepingHistory(t, config.HistorySettings{Enabled: true})
-	if cmd := kept.wroteDown(queriedMsg{statement: "  "}); cmd != nil {
+	if cmd := kept.wroteDown(queriedMsg{statement: "  "}, kept.on); cmd != nil {
 		t.Error("and an empty statement is not a statement")
 	}
 }
@@ -312,5 +312,29 @@ func TestBackspaceTakesTheSearchBack(t *testing.T) {
 	ignored, _ := press(t, back, "f5")
 	if ignored.recall.term != "" {
 		t.Error("a key that is not a letter is not searched for")
+	}
+}
+
+// What is written down is what ran, not what the editor holds now: a result
+// arriving for a tab that is not in front was filed under the front tab.
+func TestAResultIsFiledUnderTheStatementThatRan(t *testing.T) {
+	m := keepingHistory(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 50})
+	editing, _ := press(t, m, "e")
+	typed := typeInto(t, editing, "SELECT 1")
+	moved, _ := press(t, typed, "ctrl+n")
+	elsewhere := typeInto(t, moved, "DELETE FROM users")
+
+	landed, cmd := elsewhere.Update(queriedMsg{
+		statement: "SELECT 1", columns: []string{"n"},
+		rows: [][]any{{int64(1)}}, token: typed.token,
+	})
+	pump(t, landed.(Model), cmd)
+
+	entries := kept(t, m)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d", len(entries))
+	}
+	if entries[0].Kind != "SELECT" {
+		t.Errorf("kind = %q, the statement that ran was a SELECT", entries[0].Kind)
 	}
 }

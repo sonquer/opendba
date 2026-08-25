@@ -20,7 +20,7 @@ func configured(t *testing.T) Model {
 	t.Helper()
 	m := loaded(t, healthy())
 	root := t.TempDir()
-	settings := m.session.Settings
+	settings := m.settings
 	settings.AI = config.AISettings{
 		Enabled: true,
 		Active:  "claude",
@@ -30,7 +30,7 @@ func configured(t *testing.T) Model {
 			{Name: "here", Kind: "local", Model: "gemma-4-e4b-qat"},
 		},
 	}
-	m.session.Settings = settings
+	m.settings = settings
 	m.session.AI = cli.Assistant{
 		Settings: settings.AI,
 		Models:   local.NewStore(root + "/models"),
@@ -121,7 +121,7 @@ func TestAISettingsSwitchesInstance(t *testing.T) {
 	if chosen.ai.active != "here" {
 		t.Fatalf("active = %q, want the one under the cursor", chosen.ai.active)
 	}
-	if chosen.session.Settings.AI.Active != "here" {
+	if chosen.settings.AI.Active != "here" {
 		t.Fatal("the choice was not kept on the session")
 	}
 	if chosen.talk.instance != "here" {
@@ -523,7 +523,7 @@ func TestAISettingsFetchesNothingWithoutSomewhereToPutIt(t *testing.T) {
 
 func TestAISettingsRefusesAnInstanceThatWentAway(t *testing.T) {
 	m := configured(t)
-	m.session.Settings.AI.Instances = nil
+	m.settings.AI.Instances = nil
 	broken, _ := press(t, m, "enter")
 	if broken.ai.trouble == "" {
 		t.Fatal("activating an instance that is no longer configured said nothing")
@@ -599,10 +599,10 @@ func finished(t *testing.T, m Model, id string) Model {
 // one: what was wanted was something to ask, not a full disk.
 func TestAFinishedDownloadEndsInTheConversation(t *testing.T) {
 	m := configured(t)
-	m.session.Settings.AI.Instances = []config.AIInstance{
+	m.settings.AI.Instances = []config.AIInstance{
 		{Name: "claude", Kind: "anthropic", Model: "claude-sonnet-5"},
 	}
-	m.session.AI.Settings = m.session.Settings.AI
+	m.session.AI.Settings = m.settings.AI
 	m = finished(t, m, "gemma-4-e2b-qat")
 
 	done, _ := m.doneFetching(fetchEndedMsg{token: m.ai.token})
@@ -613,8 +613,8 @@ func TestAFinishedDownloadEndsInTheConversation(t *testing.T) {
 	if after.pending != "" {
 		t.Fatalf("pending = %q, want nothing left waiting", after.pending)
 	}
-	if after.session.Settings.AI.Active != cli.InstanceName(ai.KindLocal, "gemma-4-e2b-qat") {
-		t.Fatalf("active = %q, want the model that just arrived", after.session.Settings.AI.Active)
+	if after.settings.AI.Active != cli.InstanceName(ai.KindLocal, "gemma-4-e2b-qat") {
+		t.Fatalf("active = %q, want the model that just arrived", after.settings.AI.Active)
 	}
 	if after.build == nil {
 		t.Fatal("the conversation has nothing to talk to")

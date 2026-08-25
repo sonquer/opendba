@@ -112,22 +112,29 @@ type stream struct {
 type askEventMsg struct {
 	event agent.Event
 	token int
+	on    sessionID
 }
 
 type askApprovalMsg struct {
 	request approval
 	token   int
+	on      sessionID
 }
 
 type askEndedMsg struct {
 	err   error
 	token int
+	on    sessionID
 }
 
 type askAnswerMsg struct {
 	answer chan error
 	err    error
 	token  int
+
+	// on is the connection the turn belongs to, since an answer arrives while
+	// another may be in front.
+	on sessionID
 }
 
 // exchange is one question and what came back.
@@ -247,7 +254,7 @@ func (m Model) load4Talk() (Model, tea.Cmd) {
 // local4Talk is whether what answers runs on this machine, which is the only
 // case where being ready takes long enough to be worth showing.
 func (m Model) local4Talk() bool {
-	instance, ok := m.session.Settings.AI.Instance(m.talk.instance)
+	instance, ok := m.settings.AI.Instance(m.talk.instance)
 	return ok && ai.Kind(instance.Kind) == ai.KindLocal
 }
 
@@ -338,48 +345,66 @@ func (m Model) started(question string) (Model, tea.Cmd) {
 	m = m.pinned()
 
 	m.talk.running = stream{events: events, approvals: m.talk.asks, failed: failed}
-	return m, tea.Batch(waitForAsk(m.talk.running, m.talk.token), m.spinner.Tick)
+	return m, tea.Batch(waitForAsk(m.talk.running, m.talk.token, m.id), m.spinner.Tick)
 }
 
 // asked takes one piece of an answer and asks for the next.
 func (m Model) asked(msg askEventMsg) (tea.Model, tea.Cmd) {
-	if msg.token != m.talk.token {
-		return m, nil
-	}
-	m.talk.record(msg.event)
-	return m.pinned(), waitForAsk(m.talk.running, msg.token)
+	return m.answering4Ask(msg.on, func(m Model) (Model, tea.Cmd) {
+		if msg.token != m.talk.token {
+			return m, nil
+		}
+		m.talk.record(msg.event)
+		return m.pinned(), waitForAsk(m.talk.running, msg.token, msg.on)
+	})
 }
 
-// approving puts the question of whether a turn may be sent on the screen.
+// approving puts the question of whether a turn may be sent on the screen. A
+// turn nobody is waiting for any more is refused rather than left hanging: the
+// agent is blocked on that channel until something answers it.
 func (m Model) approving(msg askApprovalMsg) (tea.Model, tea.Cmd) {
-	if msg.token != m.talk.token {
+	at, held := m.linkOf(msg.on)
+	if !held || msg.token != m.eachLink()[at].talk.token {
 		msg.request.answer <- errRefused
 		return m, nil
 	}
-	request := msg.request
-	m.talk.pending = &request
-	m.talk.prompt.Blur()
-	return m, nil
+	return m.answering4Ask(msg.on, func(m Model) (Model, tea.Cmd) {
+		request := msg.request
+		m.talk.pending = &request
+		m.talk.prompt.Blur()
+		return m, nil
+	})
 }
 
 // answered lets a turn out, or refuses it, and goes back to reading the answer.
+// The question leaves the screen either way, because it has been answered; a
+// turn nobody is waiting for any more simply has nothing to go back to.
 func (m Model) answered(msg askAnswerMsg) (tea.Model, tea.Cmd) {
 	msg.answer <- msg.err
-	m.talk.pending = nil
-	if msg.token != m.talk.token {
+	at, held := m.linkOf(msg.on)
+	if !held {
 		return m, nil
 	}
-	return m, tea.Batch(waitForAsk(m.talk.running, msg.token), m.talk.prompt.Focus())
+	stale := msg.token != m.eachLink()[at].talk.token
+	return m.answering4Ask(msg.on, func(m Model) (Model, tea.Cmd) {
+		m.talk.pending = nil
+		if stale {
+			return m, nil
+		}
+		return m, tea.Batch(waitForAsk(m.talk.running, msg.token, msg.on), m.talk.prompt.Focus())
+	})
 }
 
 // finished closes the turn off, whether it ended, failed or was stopped.
 func (m Model) finished(msg askEndedMsg) (tea.Model, tea.Cmd) {
-	if msg.token != m.talk.token {
-		return m, nil
-	}
-	m.talk.ended(msg.err)
-	m.stopAsk = nil
-	return m.pinned(), tea.Batch(m.talk.prompt.Focus(), m.keep())
+	return m.answering4Ask(msg.on, func(m Model) (Model, tea.Cmd) {
+		if msg.token != m.talk.token {
+			return m, nil
+		}
+		m.talk.ended(msg.err)
+		m.stopAsk = nil
+		return m.pinned(), tea.Batch(m.talk.prompt.Focus(), m.keep())
+	})
 }
 
 // keep writes the conversation down at the end of a turn.
@@ -484,6 +509,8 @@ func (m Model) askKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Leave):
 		return m.confirmQuit()
+	case key.Matches(msg, m.keys.Connections):
+		return m.openSwitcher()
 	case key.Matches(msg, m.keys.Back):
 		if m.talk.loading {
 			return m.stoppedLoading(), nil
@@ -523,9 +550,10 @@ func (m Model) decide(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	waiting := m.talk.pending
 	switch {
 	case key.Matches(msg, m.keys.Choose):
-		return m.answered(askAnswerMsg{answer: waiting.answer, token: m.talk.token})
+		return m.answered(askAnswerMsg{answer: waiting.answer, token: m.talk.token, on: m.id})
 	case key.Matches(msg, m.keys.Back):
-		return m.answered(askAnswerMsg{answer: waiting.answer, err: errRefused, token: m.talk.token})
+		return m.answered(askAnswerMsg{answer: waiting.answer, err: errRefused,
+			token: m.talk.token, on: m.id})
 	}
 	return m, nil
 }
@@ -577,16 +605,16 @@ func (m Model) halted() Model {
 }
 
 // waitForAsk reads one thing from a running turn.
-func waitForAsk(running stream, token int) tea.Cmd {
+func waitForAsk(running stream, token int, on sessionID) tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case request := <-running.approvals:
-			return askApprovalMsg{request: request, token: token}
+			return askApprovalMsg{request: request, token: token, on: on}
 		case event, open := <-running.events:
 			if !open {
-				return askEndedMsg{err: <-running.failed, token: token}
+				return askEndedMsg{err: <-running.failed, token: token, on: on}
 			}
-			return askEventMsg{event: event, token: token}
+			return askEventMsg{event: event, token: token, on: on}
 		}
 	}
 }
@@ -853,7 +881,7 @@ func (m Model) shut() bool { return m.talk.loading || m.talk.busy }
 // model4Meta is the model the instance answers with, which is the part somebody
 // actually recognises when two instances share a provider.
 func (m Model) model4Meta() string {
-	instance, ok := m.session.Settings.AI.Instance(m.talk.instance)
+	instance, ok := m.settings.AI.Instance(m.talk.instance)
 	if !ok {
 		return ""
 	}

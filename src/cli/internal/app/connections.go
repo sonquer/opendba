@@ -2,16 +2,12 @@ package app
 
 import (
 	"context"
-	"strconv"
 	"strings"
-
-	"charm.land/bubbles/v2/key"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sonquer/opendba/src/cli/internal/cli"
 	"github.com/sonquer/opendba/src/cli/internal/config"
-	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
 type profilesMsg struct {
@@ -24,77 +20,15 @@ type switchedMsg struct {
 	session cli.Session
 	cleanup func()
 	err     error
+
+	// profile is the connection that was being opened, so a failure can be said
+	// on the row it belongs to rather than over the list.
+	profile string
 }
 
 type removedMsg struct {
 	name string
 	err  error
-}
-
-// connections is the list of profiles, with what is known about each one beside
-// it.
-type connections struct {
-	picker
-	failure string
-
-	// busy is what each connection is doing, by name. Only the one in use is
-	// ever in it.
-	busy map[string]string
-}
-
-func newConnections(theme *ui.Theme) connections {
-	return connections{
-		picker: newPicker(theme, "no connections are configured"),
-		busy:   map[string]string{},
-	}
-}
-
-// working records what the connection in use is running, so the list can say so
-// beside its name.
-func (c connections) working(name string, running int) connections {
-	busy := map[string]string{}
-	if running > 0 {
-		busy[name] = strconv.Itoa(running) + " running"
-	}
-	c.busy = busy
-	return c
-}
-
-func (c connections) withProfiles(msg profilesMsg, width int) connections {
-	if msg.err != nil {
-		c.failure = msg.err.Error()
-		return c
-	}
-	rows := make([]row, 0, len(msg.profiles))
-	for _, connection := range msg.profiles {
-		rows = append(rows, row{
-			key:   connection.Name,
-			label: connection.Name,
-			note: ui.Dotted(
-				connection.Driver,
-				strings.ToLower(connection.Mode.Label()),
-				cli.Target(connection),
-				cli.Application(connection),
-			),
-			cap:     c.busy[connection.Name],
-			current: connection.Name == msg.current,
-		})
-	}
-	c.picker = c.withRows(rows)
-	return c
-}
-
-func (c connections) view(width int) string {
-	if c.failure != "" {
-		return c.theme.Error.Render("✗ "+c.failure) + "\n\n" + c.picker.view(width)
-	}
-	return c.picker.view(width)
-}
-
-func (m Model) browse() (tea.Model, tea.Cmd) {
-	m.view = viewSwitch
-	m.list.failure = ""
-	return m, m.profiles()
 }
 
 func (m Model) profiles() tea.Cmd {
@@ -111,53 +45,21 @@ func (m Model) profiles() tea.Cmd {
 	}
 }
 
-func (m Model) switchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return m.confirmQuit()
-	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Connections):
-		m.view = viewDashboard
-	case key.Matches(msg, m.keys.Up):
-		m.list.picker = m.list.move(-1)
-	case key.Matches(msg, m.keys.Down):
-		m.list.picker = m.list.move(1)
-	case key.Matches(msg, m.keys.Choose):
-		return m.chosen()
-	case key.Matches(msg, m.keys.New):
-		return m.compose()
-	case key.Matches(msg, m.keys.Edit):
-		return m.configure()
-	case key.Matches(msg, m.keys.Remove):
-		return m.askToRemove()
-	}
-	return m, nil
-}
-
+// askToRemove takes a profile away, and only a profile: a database or a schema
+// under it is not a thing this screen removes.
 func (m Model) askToRemove() (tea.Model, tea.Cmd) {
-	chosen, ok := m.list.selected()
-	if !ok {
+	chosen, ok := m.chosen4Switch()
+	if !ok || !strings.HasPrefix(chosen.key, rowProfile) {
 		return m, nil
+	}
+	if m.standing4Profile(chosen.label) > 0 {
+		return m, m.notify(chosen.label + " has an open session; disconnect it first")
 	}
 	dialog, cmd := askTyped(m.theme, "remove "+chosen.label+"?",
 		"its password goes with it; type the name to confirm",
 		chosen.label, removeMsg{name: chosen.label})
 	m.modal = dialog
 	return m, cmd
-}
-
-// chosen answers enter. On another connection it opens that one.
-func (m Model) chosen() (tea.Model, tea.Cmd) {
-	connection, ok := m.list.selected()
-	if !ok {
-		return m, nil
-	}
-	if connection.label == m.session.Connection.Name {
-		return m.browseCatalog()
-	}
-	m.view = viewDashboard
-	m.loading = true
-	m.failure = ""
-	return m, tea.Batch(m.open(connection.label), m.spinner.Tick)
 }
 
 func (m Model) compose() (tea.Model, tea.Cmd) {
@@ -171,18 +73,22 @@ func (m Model) compose() (tea.Model, tea.Cmd) {
 // host, a port or an access mode can be changed without removing the connection
 // and starting again.
 func (m Model) configure() (tea.Model, tea.Cmd) {
-	chosen, ok := m.list.selected()
+	chosen, ok := m.chosen4Switch()
+	if !ok {
+		return m, nil
+	}
+	named, ok := m.profile4Row(chosen)
 	if !ok {
 		return m, nil
 	}
 	profiles, err := m.workspace.Profiles()
 	if err != nil {
-		m.list.failure = err.Error()
+		m.switcher.failure = err.Error()
 		return m, nil
 	}
-	connection, found := profiles.ByName(chosen.label)
+	connection, found := profiles.ByName(named.Name)
 	if !found {
-		return m, m.notify("there is no profile named " + chosen.label + " any more")
+		return m, m.notify("there is no profile named " + named.Name + " any more")
 	}
 	wizard := EditSetupModel(m.workspace.Setup(), connection)
 	wizard.width, wizard.height = m.width, m.height
@@ -211,30 +117,48 @@ func (m Model) open(name string) tea.Cmd {
 	workspace := m.workspace
 	return func() tea.Msg {
 		session, cleanup, err := workspace.Open(context.Background(), name)
-		return switchedMsg{session: session, cleanup: cleanup, err: err}
+		return switchedMsg{session: session, cleanup: cleanup, err: err, profile: name}
 	}
 }
 
 func (m Model) switched(msg switchedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err != nil {
-		m.list.failure = msg.err.Error()
-		m.view = viewSwitch
-		return m, nil
+		return m.troubled4Switch(msg)
 	}
-	m.list.failure = ""
-	m.release()
-	m.session, m.close = msg.session, msg.cleanup
-	m.theme = msg.session.Theme
-	m.results = results{}
+	m.trouble = copied4Switch(m.trouble)
+	delete(m.trouble, msg.profile)
+	m = m.opened4Switch(msg)
+	m = m.aimed4Switch(m.id)
+	m.theme = m.session.Theme
 	m.focus = focusEditor
 	m.offset = 0
 	m.loading = true
 	m.failure = ""
 	return m, tea.Batch(m.load(), m.spinner.Tick,
-		m.remember(msg.session.Connection.Database, msg.session.Connection.DefaultSchema,
-			msg.session.Connection.Filter()),
+		m.remember(profile4Link(msg.session.Connection), msg.session.Connection.Database,
+			msg.session.Connection.DefaultSchema, msg.session.Connection.Filter()),
 		m.notify(m.place(msg.session)))
+}
+
+// added4Switch puts a connection that was opened into the list of open ones.
+// Every open is its own session, even when another is already standing on the
+// same profile and the same database: two windows onto one server is a thing
+// people want, and the id that tells them apart is minted here.
+func (m Model) added4Switch(msg switchedMsg) (Model, int) {
+	m = m.stowLink()
+	m.minted++
+	opened := newLink(sessionID(m.minted), m.next4Seq(msg.session.Connection),
+		msg.session, m.settings, msg.cleanup)
+	m.links = append(append([]link{}, m.links...), opened)
+	return m, len(m.links) - 1
+}
+
+// opened4Switch puts the connection that was opened in front as well.
+func (m Model) opened4Switch(msg switchedMsg) Model {
+	m, at := m.added4Switch(msg)
+	m.linked, m.link = at, m.eachLink()[at]
+	return m
 }
 
 func (m Model) place(session cli.Session) string {
@@ -253,9 +177,31 @@ func (m Model) remove(name string) tea.Cmd {
 
 func (m Model) removed(msg removedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.list.failure = msg.err.Error()
-		return m, m.profiles()
+		return m, tea.Batch(m.profiles(), m.notify(msg.err.Error()))
 	}
-	m.list.failure = ""
 	return m, tea.Batch(m.profiles(), m.notify(msg.name+" is gone"))
+}
+
+// troubled4Switch says why a connection would not open, on the row it belongs to
+// rather than as a banner over the ones that did, and puts the list back in
+// front so the row can be read.
+func (m Model) troubled4Switch(msg switchedMsg) (tea.Model, tea.Cmd) {
+	opened, cmd := m.openSwitcher()
+	shown, ok := opened.(Model)
+	if !ok {
+		return opened, cmd
+	}
+	shown.trouble = copied4Switch(shown.trouble)
+	shown.trouble[msg.profile] = msg.err.Error()
+	return shown, cmd
+}
+
+// copied4Switch copies what would not open, since a map handed between two
+// models is a map two models can write.
+func copied4Switch(from map[string]string) map[string]string {
+	to := make(map[string]string, len(from))
+	for profile, text := range from {
+		to[profile] = text
+	}
+	return to
 }

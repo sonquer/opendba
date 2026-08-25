@@ -32,6 +32,11 @@ func ProfilePath(coverageDir string, module workspace.Module) string {
 
 const generatedSegment = "/generated/"
 
+// testTimeout is short on purpose. A test that opens a terminal it will never
+// be typed into hangs forever, and the default of ten minutes per binary means
+// CI spends ten minutes finding that out.
+const testTimeout = "120s"
+
 func GeneratedFilter(space workspace.Workspace, summary cover.Summary) func(string) bool {
 	generated := map[string]bool{}
 	for _, file := range summary.Files {
@@ -184,7 +189,7 @@ func Race(module workspace.Module, runner exec.Runner) core.Check {
 		describe: "tests pass under the race detector",
 		module:   module,
 		runner:   runner,
-		args:     []string{"test", "./...", "-race", "-count=1"},
+		args:     []string{"test", "./...", "-race", "-count=1", "-timeout", testTimeout},
 		failOn:   func(r exec.Result) bool { return !r.OK() },
 		summary: func(r exec.Result) string {
 			if r.OK() {
@@ -312,8 +317,13 @@ func (c coverageCheck) Run(ctx context.Context) (core.Report, error) {
 	if err := ensureDir(filepath.Dir(profile)); err != nil {
 		return core.Report{}, err
 	}
+	instrumented, err := c.instrumented(ctx)
+	if err != nil {
+		return core.Report{}, err
+	}
 	result, err := c.runner.Run(ctx, c.module.Dir, "go",
-		"test", "./...", "-covermode=atomic", "-coverpkg=./...", "-coverprofile="+profile)
+		"test", "./...", "-covermode=atomic", "-coverpkg="+instrumented, "-timeout", testTimeout,
+		"-coverprofile="+profile)
 	if err != nil {
 		return core.Report{}, err
 	}
@@ -341,6 +351,32 @@ func (c coverageCheck) Run(ctx context.Context) (core.Report, error) {
 		report.Detail = append(report.Detail, failure)
 	}
 	return report, nil
+}
+
+// instrumented is what -coverpkg is given. Naming every package of the module
+// makes each test binary import every one of them, and the exempt packages are
+// the expensive ones: the generated parsers alone are 87% of the blocks, and
+// every block of them is thrown away again before the gate is applied.
+func (c coverageCheck) instrumented(ctx context.Context) (string, error) {
+	result, err := c.runner.Run(ctx, c.module.Dir, "go", "list", "./...")
+	if err != nil {
+		return "", err
+	}
+	if !result.OK() {
+		return "", fmt.Errorf("list the packages of %s: %s", c.module.Name, result.Output())
+	}
+	kept := []string{}
+	for _, line := range strings.Split(result.Output(), "\n") {
+		path := strings.TrimSpace(line)
+		if path == "" || c.exempt(path) {
+			continue
+		}
+		kept = append(kept, path)
+	}
+	if len(kept) == 0 {
+		return "./...", nil
+	}
+	return strings.Join(kept, ","), nil
 }
 
 func (c coverageCheck) shortPath(importPath string) string {

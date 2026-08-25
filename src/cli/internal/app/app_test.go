@@ -42,6 +42,14 @@ type fakeConn struct {
 	// plan is what the server says it would do, when a test wants to say.
 	plan driver.Plan
 
+	// closeErr is work that could not be kept, which is how a commit that failed
+	// is written down.
+	closeErr error
+
+	// ran is the context the last statement was given, which is how a test asks
+	// whether it was released once the result came back.
+	ran context.Context
+
 	// A batch runs its commands at once, so the counter is written from more
 	// than one goroutine and has to be held.
 	mu    sync.Mutex
@@ -61,6 +69,13 @@ func (f *fakeConn) fail(step string) error {
 		return errors.New(step + " failed")
 	}
 	return nil
+}
+
+// ranWith is the context the last statement was given.
+func (f *fakeConn) ranWith() context.Context {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ran
 }
 
 // counted is what the server has been asked for so far, so a test can measure
@@ -120,6 +135,9 @@ func (f *fakeConn) Indexes(context.Context, string) ([]driver.Index, error) {
 }
 
 func (f *fakeConn) Query(ctx context.Context, _ string) (driver.ResultSet, error) {
+	f.mu.Lock()
+	f.ran = ctx
+	f.mu.Unlock()
 	if err := f.fail("query"); err != nil {
 		return nil, err
 	}
@@ -130,7 +148,7 @@ func (f *fakeConn) Query(ctx context.Context, _ string) (driver.ResultSet, error
 			return nil, ctx.Err()
 		}
 	}
-	return &fakeResult{columns: f.columns, rows: f.rows}, nil
+	return &fakeResult{columns: f.columns, rows: f.rows, closeErr: f.closeErr}, nil
 }
 
 func (f *fakeConn) Stream(ctx context.Context, statement string) (driver.ResultSet, error) {
@@ -171,9 +189,10 @@ func (f *fakeConn) Health(context.Context) ([]driver.Finding, error) {
 func (f *fakeConn) Close() error { return nil }
 
 type fakeResult struct {
-	columns []string
-	rows    [][]any
-	index   int
+	columns  []string
+	rows     [][]any
+	index    int
+	closeErr error
 }
 
 func (r *fakeResult) Columns() []string { return r.columns }
@@ -194,7 +213,7 @@ func (r *fakeResult) Truncated() bool { return false }
 
 func (r *fakeResult) Duration() time.Duration { return 12 * time.Millisecond }
 
-func (r *fakeResult) Close() error { return nil }
+func (r *fakeResult) Close() error { return r.closeErr }
 
 // writable is a session on a profile that may change things, which is what the
 // keys that stop other sessions are gated on.
@@ -207,13 +226,14 @@ func writable(conn driver.Conn) cli.Session {
 func session(conn driver.Conn) cli.Session {
 	return cli.Session{
 		Capabilities: driver.Capabilities{Sessions: true, Health: true},
-		Connection:   config.Connection{Name: "production-eu", Driver: "sqlite", Mode: config.ReadOnly, Color: "red"},
-		Settings:     config.DefaultSettings(),
-		Conn:         conn,
-		Info:         driver.ServerInfo{Driver: "sqlite", Version: "3.45"},
-		Guard:        sqlguard.New(sqldialect.SQLite()),
-		Dialect:      sqldialect.SQLite(),
-		Theme:        ui.Default(),
+		Connection: config.Connection{ID: "1", Name: "production-eu", Driver: "sqlite",
+			Mode: config.ReadOnly, Color: "red"},
+		Settings: config.DefaultSettings(),
+		Conn:     conn,
+		Info:     driver.ServerInfo{Driver: "sqlite", Version: "3.45"},
+		Guard:    sqlguard.New(sqldialect.SQLite()),
+		Dialect:  sqldialect.SQLite(),
+		Theme:    ui.Default(),
 	}
 }
 
@@ -834,7 +854,7 @@ func TestAWriteAsksBeforeItRuns(t *testing.T) {
 func TestAWriteRunsWithoutAskingWhenToldTo(t *testing.T) {
 	conn := healthy()
 	m := settle(t, NewModel(writable(conn), workspaceWith(t)), nil)
-	m.session.Settings.Safety.ConfirmQueries = false
+	m.settings.Safety.ConfirmQueries = false
 	m = settle(t, m, m.load())
 	m.width, m.height = 110, 32
 	editing, _ := press(t, m, "e")
@@ -860,6 +880,26 @@ func TestQueryFailuresAreShown(t *testing.T) {
 	}
 	finished := settle(t, ran, cmd)
 	if !strings.Contains(plain(finished.content()), "query failed") {
+		t.Errorf("content = %s", plain(finished.content()))
+	}
+}
+
+// A statement whose work could not be kept is not a statement that worked, and
+// drawing its rows as a result would say the opposite.
+func TestWorkThatCouldNotBeKeptIsNotShownAsASuccess(t *testing.T) {
+	conn := healthy()
+	conn.closeErr = errors.New("server closed the connection")
+	m := settle(t, NewModel(writable(conn), workspaceWith(t)), nil)
+	m = settle(t, m, m.load())
+	m.width, m.height = 110, 32
+	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "SELECT 1")
+	ran, cmd := press(t, editing, "f5")
+	if cmd == nil {
+		t.Fatal("the statement must run")
+	}
+	finished := settle(t, ran, cmd)
+	if !strings.Contains(plain(finished.content()), "server closed the connection") {
 		t.Errorf("content = %s", plain(finished.content()))
 	}
 }
@@ -1059,12 +1099,6 @@ func TestColumnsFillThePane(t *testing.T) {
 	}
 }
 
-func TestLaunchAndRunSetupAreThinWrappers(t *testing.T) {
-	if err := Launch(session(healthy()), workspaceWith(t)); err == nil {
-		t.Log("the interface started, which means this machine has a terminal")
-	}
-}
-
 func TestTableWidthFitsTheTerminal(t *testing.T) {
 	columns := columnsFor([]string{"a", "b"},
 		naturalWidths([]string{"a", "b"}, [][]string{{"1", "2"}}), 80)
@@ -1255,12 +1289,84 @@ func TestARunningStatementIsVisibleAndCanBeStopped(t *testing.T) {
 		}
 	}
 
-	stopped, cmd := press(t, running, "esc")
-	if cmd != nil {
-		t.Error("esc gives up on the statement rather than leaving the screen")
+	stopped, _ := press(t, running, "f7")
+	if !strings.Contains(plain(stopped.content()), "running") {
+		t.Error("giving up is asked of the server, and the tab waits for the answer")
 	}
-	if stopped.view != viewQuery {
-		t.Errorf("view = %v, esc must not leave the editor while a query is out", stopped.view)
+}
+
+// Esc leaves the screen and leaves the statement running. It used to give up on
+// it, so going to the dashboard to wait was the one thing that lost the wait.
+func TestEscapeLeavesTheStatementRunning(t *testing.T) {
+	conn := healthy()
+	conn.holdQuery = make(chan struct{})
+	defer close(conn.holdQuery)
+
+	m := loaded(t, conn)
+	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "SELECT 1")
+	running, _ := press(t, editing, "ctrl+r")
+
+	left, _ := press(t, running, "esc")
+	if left.view != viewDashboard {
+		t.Errorf("view = %v, esc goes back", left.view)
+	}
+	if !left.inflight || left.stopQuery == nil {
+		t.Error("and what was running is still running")
+	}
+	if !left.spinning() {
+		t.Error("so the spinner keeps turning off the editor screen too")
+	}
+	if !strings.Contains(plain(left.content()), "running") {
+		t.Errorf("and the header says so:\n%s", plain(left.content()))
+	}
+}
+
+// Giving up on a statement is a key of its own, so it is never something that
+// happens on the way somewhere else.
+func TestCancellingAStatementIsItsOwnKey(t *testing.T) {
+	conn := healthy()
+	conn.holdQuery = make(chan struct{})
+	defer close(conn.holdQuery)
+
+	m := loaded(t, conn)
+	editing, _ := press(t, m, "e")
+	editing = typeInto(t, editing, "SELECT 1")
+	running, _ := press(t, editing, "ctrl+r")
+
+	ctx, stop := context.WithCancel(context.Background())
+	running.stopQuery = stop
+	given, _ := press(t, running, "f7")
+	select {
+	case <-ctx.Done():
+	default:
+		t.Error("f7 gives up on the statement")
+	}
+	if given.view != viewQuery {
+		t.Errorf("view = %v, and stays where it is", given.view)
+	}
+}
+
+// How much is still out is said on every screen, because the tab strip that
+// marks it is only drawn on one of them.
+func TestTheHeaderSaysHowMuchIsRunning(t *testing.T) {
+	m := loaded(t, healthy())
+	m.width, m.height = 110, 32
+	if m.tally4Running() != "" {
+		t.Errorf("tally = %q, nothing is running", m.tally4Running())
+	}
+
+	one := m
+	one.inflight = true
+	if !strings.Contains(plain(one.tally4Running()), "running") {
+		t.Errorf("tally = %q", plain(one.tally4Running()))
+	}
+
+	several := one
+	several.sheets = append(append([]worksheet{}, m.sheets...), worksheet{inflight: true})
+	several.sheets[0].inflight = true
+	if got := plain(several.tally4Running()); !strings.Contains(got, "2 running") {
+		t.Errorf("tally = %q, want the count", got)
 	}
 }
 

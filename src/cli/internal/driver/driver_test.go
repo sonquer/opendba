@@ -2,11 +2,17 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sonquer/opendba/src/cli/pkg/sqlguard"
+)
+
+var (
+	errStatement = errors.New("the statement failed")
+	errClose     = errors.New("the work could not be closed")
 )
 
 type stubDriver struct{ name string }
@@ -110,5 +116,51 @@ func TestRegisteringTwiceReplacesTheEntry(t *testing.T) {
 
 	if entries := registry.Entries(); len(entries) != 1 {
 		t.Fatalf("entries = %+v", entries)
+	}
+}
+
+type stubResult struct {
+	err    error
+	closed error
+}
+
+func (r stubResult) Columns() []string { return nil }
+
+func (r stubResult) Next() bool { return false }
+
+func (r stubResult) Values() []any { return nil }
+
+func (r stubResult) Err() error { return r.err }
+
+func (r stubResult) Truncated() bool { return false }
+
+func (r stubResult) Duration() time.Duration { return 0 }
+
+func (r stubResult) Close() error { return r.closed }
+
+func TestFinishReportsTheFirstThingThatWentWrong(t *testing.T) {
+	cases := []struct {
+		name   string
+		result stubResult
+		want   string
+	}{
+		{"nothing went wrong", stubResult{}, ""},
+		{"the statement failed", stubResult{err: errStatement, closed: errClose}, "statement"},
+		{"the work was not kept", stubResult{closed: errClose}, "close"},
+		{"a failed statement outranks its close", stubResult{err: errStatement}, "statement"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := Finish(c.result)
+			if c.want == "" {
+				if err != nil {
+					t.Fatalf("Finish = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("Finish = %v, want one mentioning %q", err, c.want)
+			}
+		})
 	}
 }

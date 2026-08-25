@@ -27,7 +27,7 @@ type preferences struct {
 const laterOnly = "it reaches the server when a connection is opened, so this applies to the next one"
 
 func (m Model) openPreferences() (tea.Model, tea.Cmd) {
-	settings := m.session.Settings
+	settings := m.settings
 	fields := []field{
 		choiceField("bar", "bars", ui.BarStyleNames(), settings.Appearance.Bar,
 			"the shape a measurement is drawn with, since a font decides how well a glyph draws").
@@ -136,6 +136,9 @@ func (m Model) preferencesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, m.keys.Leave) {
 		return m.confirmQuit()
 	}
+	if key.Matches(msg, m.keys.Connections) {
+		return m.openSwitcher()
+	}
 	if key.Matches(msg, m.keys.Back) {
 		m.preferences = nil
 		return m.show(viewDashboard)
@@ -174,17 +177,32 @@ func (m Model) savePreferences() (tea.Model, tea.Cmd) {
 	}
 	held.trouble = ""
 	m.preferences = &held
-	m.session.Settings = next
+	m.settings = next
+	m = m.showing4Links(next.Appearance.OwnSessions)
 	m.mouse = next.Appearance.MouseWanted()
 	m.theme.Bars(next.Appearance.Bar)
-	m.running = m.running.showingOwn(next.Appearance.OwnSessions)
 	return m, tea.Batch(m.notify("settings.toml is written"), m.readFiles())
+}
+
+// showing4Links tells every open connection whether the sessions this program
+// made are drawn. The list of sessions is per connection; whether to draw our
+// own is a preference, and every list answers to it.
+func (m Model) showing4Links(own bool) Model {
+	m = m.stowLink()
+	links := make([]link, len(m.links))
+	copy(links, m.links)
+	for i := range links {
+		links[i].running = links[i].running.showingOwn(own)
+	}
+	m.links = links
+	m.link = links[m.linked]
+	return m
 }
 
 // settled4Preferences is the settings the form is describing.
 func (m Model) settled4Preferences() config.Settings {
 	held := m.preferences.form
-	next := m.session.Settings
+	next := m.settings
 	next.Appearance.Bar = held.value("bar")
 	next.Appearance.Mouse = config.MouseOff
 	if held.enabled("mouse") {

@@ -179,7 +179,7 @@ func TestChooserSwitchesInstance(t *testing.T) {
 
 func TestChooserWritesAnInstanceForAModelNobodyConfigured(t *testing.T) {
 	m := opened4Chooser(t)
-	m.session.Settings.AI.Instances = []config.AIInstance{
+	m.settings.AI.Instances = []config.AIInstance{
 		{Name: "claude", Kind: "anthropic", Model: "claude-sonnet-5"},
 	}
 	entry := install4Model(t, m, "gemma-4-e2b-qat")
@@ -208,7 +208,7 @@ func TestChooserWritesAnInstanceForAModelNobodyConfigured(t *testing.T) {
 
 func TestChooserFetchesTheLibraryBeforeTheWeights(t *testing.T) {
 	m := opened4Chooser(t)
-	m.session.Settings.AI.Instances = nil
+	m.settings.AI.Instances = nil
 	m.chooser.offers = m.offers()
 	m.chooser = m.chooser.at("gemma-4-e4b-qat")
 	started, cmd := press(t, m, "enter")
@@ -578,7 +578,7 @@ func TestChooserSaysWhatAModelWouldCost(t *testing.T) {
 func TestAModelThatIsHereIsMarked(t *testing.T) {
 	m := opened4Chooser(t)
 	entry := install4Model(t, m, "gemma-4-e2b-qat")
-	m.session.Settings.AI.Active = "here"
+	m.settings.AI.Active = "here"
 	m.chooser.offers = m.offers()
 	marks := map[string]string{}
 	for _, item := range m.chooser.offers {
@@ -857,7 +857,7 @@ func TestTheListDrawsItsMarks(t *testing.T) {
 	m := opened4Chooser(t)
 	m.ai.memory = 6 << 30
 	install4Model(t, m, "gemma-4-e2b-qat")
-	m.session.Settings.AI.Active = "here"
+	m.settings.AI.Active = "here"
 	m.chooser.offers = m.offers()
 	m.chooser.cursor = 0
 	view := drawn(t, m)
@@ -989,7 +989,7 @@ func TestReleasingIsOfferedWhereThereIsSomethingToRelease(t *testing.T) {
 	talk := &scripted{}
 	m := opened4Chooser(t)
 	install4Model(t, m, "gemma-4-e4b-qat")
-	m.session.Settings.AI.Active = "here"
+	m.settings.AI.Active = "here"
 	m.talk.instance, m.talk.loaded, m.assistant = "here", true, talk
 	m.chooser.offers = m.offers()
 	m.chooser = m.chooser.at("gemma-4-e4b-qat")

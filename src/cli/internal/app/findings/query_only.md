@@ -9,7 +9,7 @@ and the only one the database enforces.
 ## When it says writing is allowed
 
 Nothing is wrong, if that is what the profile asked for. The classifier will
-still ask before a write reaches the file.
+still ask before a write reaches the file, and a write it lets through is kept.
 
 It is worth noticing when you did not expect it: a profile set to READ ONLY
 that reports writing allowed here means the pragma did not take, and the only

@@ -853,3 +853,94 @@ func TestStreamIgnoresTheRowLimit(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 }
+
+// A write on a writable profile is the whole point of READ / WRITE, and until
+// the transaction was committed rather than rolled back it changed nothing.
+func TestAWriteOnAWritableProfileSticks(t *testing.T) {
+	config := seeded(t)
+	config.Mode = sqlguard.ModeReadWrite
+	conn := open(t, config)
+
+	result, err := conn.Query(context.Background(), "DELETE FROM users WHERE id = 1")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	for result.Next() {
+	}
+	if err := driver.Finish(result); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	if got := count(t, conn, "SELECT count(*) FROM users"); got != 1 {
+		t.Errorf("users = %d, the delete must have been kept", got)
+	}
+}
+
+func TestAWriteThatFailedLeavesNothingBehind(t *testing.T) {
+	config := seeded(t)
+	config.Mode = sqlguard.ModeReadWrite
+	conn := open(t, config)
+
+	result, err := conn.Query(context.Background(),
+		"INSERT INTO users (id, email) VALUES (3, 'c@example.com'), (4, 'a@example.com')")
+	if err == nil {
+		for result.Next() {
+		}
+		if err = driver.Finish(result); err == nil {
+			t.Fatal("a unique constraint must fail")
+		}
+	}
+	if got := count(t, conn, "SELECT count(*) FROM users"); got != 2 {
+		t.Errorf("users = %d, a failed write keeps nothing", got)
+	}
+}
+
+func TestAWriteThatWasGivenUpOnLeavesNothingBehind(t *testing.T) {
+	config := seeded(t)
+	config.Mode = sqlguard.ModeReadWrite
+	conn := open(t, config)
+
+	ctx, stop := context.WithCancel(context.Background())
+	result, err := conn.Query(ctx, "DELETE FROM users")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	for result.Next() {
+	}
+	stop()
+	_ = result.Close()
+	if got := count(t, conn, "SELECT count(*) FROM users"); got != 2 {
+		t.Errorf("users = %d, a cancelled write keeps nothing", got)
+	}
+}
+
+// The read only profile is a layer of its own and this change must not have
+// touched it: its transaction is still thrown away.
+func TestAReadOnlyProfileStillThrowsItsTransactionAway(t *testing.T) {
+	conn := open(t, seeded(t))
+	result, err := conn.Query(context.Background(), "SELECT id FROM users")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	for result.Next() {
+	}
+	if err := driver.Finish(result); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+}
+
+func count(t *testing.T, conn driver.Conn, statement string) int64 {
+	t.Helper()
+	result, err := conn.Query(context.Background(), statement)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	defer func() { _ = result.Close() }()
+	if !result.Next() {
+		t.Fatalf("count returned nothing: %v", result.Err())
+	}
+	got, ok := result.Values()[0].(int64)
+	if !ok {
+		t.Fatalf("count = %v", result.Values()[0])
+	}
+	return got
+}

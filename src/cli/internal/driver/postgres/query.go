@@ -24,6 +24,7 @@ type resultSet struct {
 	limit     int
 	seen      int
 	truncated bool
+	writable  bool
 	err       error
 	duration  time.Duration
 }
@@ -83,12 +84,26 @@ func native(value any) any {
 	}
 }
 
+// Close finishes the transaction the statement ran in: a writable profile keeps
+// its work, a read only profile throws it away.
 func (r *resultSet) Close() error {
 	r.rows.Close()
+	if r.commits() {
+		if err := r.tx.Commit(r.ctx); err != nil {
+			return fmt.Errorf("commit the result: %w", err)
+		}
+		return nil
+	}
 	if err := r.tx.Rollback(r.ctx); err != nil {
 		return fmt.Errorf("close the result: %w", err)
 	}
 	return nil
+}
+
+// commits reports whether the work this result did is worth keeping: a writable
+// profile keeps it, unless the statement failed or the run was given up on.
+func (r *resultSet) commits() bool {
+	return r.writable && r.err == nil && r.ctx.Err() == nil
 }
 
 // Query runs a statement inside a transaction of its own.
@@ -112,7 +127,7 @@ func (c *connection) open(ctx context.Context, statement string, limit int, pati
 	started := time.Now()
 	tx, err := c.db.BeginTx(ctx, c.access())
 	if err != nil {
-		return nil, fmt.Errorf("start a read-only transaction: %w", err)
+		return nil, fmt.Errorf("start a transaction: %w", err)
 	}
 	if patient {
 		if _, err := tx.Exec(ctx, NoStatementTimeout); err != nil {
@@ -135,6 +150,7 @@ func (c *connection) open(ctx context.Context, statement string, limit int, pati
 		ctx:      ctx,
 		columns:  columns,
 		limit:    limit,
+		writable: !c.config.ReadOnly(),
 		duration: time.Since(started),
 	}, nil
 }

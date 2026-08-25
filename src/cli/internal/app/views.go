@@ -285,8 +285,7 @@ func (m Model) caret() *tea.Cursor {
 	if m.view != viewQuery || m.focus != focusEditor || m.zoomed {
 		return nil
 	}
-	if m.page != nil || m.modal != nil || m.chooser != nil ||
-		m.palette != nil || m.exporter != nil || m.wizard != nil {
+	if m.overlaid() {
 		return nil
 	}
 	at := m.editor.Cursor()

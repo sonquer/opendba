@@ -52,7 +52,8 @@ func TestParseRejectsBrokenLines(t *testing.T) {
 
 func TestLoadResolvesPathsAgainstTheRoot(t *testing.T) {
 	root := t.TempDir()
-	content := "XDG_CONFIG_HOME=.local/config\nXDG_STATE_HOME=/absolute/state\nOTHER=relative/stays\n"
+	absolute := filepath.Join(t.TempDir(), "state")
+	content := "XDG_CONFIG_HOME=.local/config\nXDG_STATE_HOME=" + absolute + "\nOTHER=relative/stays\n"
 	if err := os.WriteFile(filepath.Join(root, FileName), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestLoadResolvesPathsAgainstTheRoot(t *testing.T) {
 	if values["XDG_CONFIG_HOME"] != filepath.Join(root, ".local/config") {
 		t.Errorf("relative paths must be resolved: %q", values["XDG_CONFIG_HOME"])
 	}
-	if values["XDG_STATE_HOME"] != "/absolute/state" {
+	if values["XDG_STATE_HOME"] != absolute {
 		t.Errorf("absolute paths must be left alone: %q", values["XDG_STATE_HOME"])
 	}
 	if values["OTHER"] != "relative/stays" {

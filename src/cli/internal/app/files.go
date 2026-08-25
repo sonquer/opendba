@@ -46,7 +46,7 @@ type deletedFileMsg struct {
 func (m Model) root() string {
 	return sqlfiles.Root(
 		m.workspace.Setup().Store.Paths,
-		m.session.Settings.Workspace.Root,
+		m.settings.Workspace.Root,
 		m.session.Connection,
 	)
 }
@@ -91,7 +91,7 @@ func (m Model) openedFile(msg openedFileMsg) (Model, tea.Cmd) {
 		moved.focus = focusEditor
 		return moved, moved.editor.Focus()
 	}
-	sheet := newWorksheet(m.theme, sheetFile, msg.name)
+	sheet := newWorksheet(m.theme, sheetFile, msg.name, m.link.key())
 	sheet.editor.SetValue(msg.body)
 	sheet.file = msg.name
 	sheet.saved = msg.body

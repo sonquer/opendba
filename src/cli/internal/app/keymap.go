@@ -90,8 +90,16 @@ type keymap struct {
 	Explain key.Binding
 
 	// Forget throws one kept thing away.
-	Forget   key.Binding
-	enhanced bool
+	Forget key.Binding
+
+	// Disconnect closes one open connection and the tabs that belong to it.
+	Disconnect key.Binding
+
+	// Stop4Query gives up on the statement a tab is waiting for. Esc leaves the
+	// screen and leaves the statement running, so giving up on one is a key of its
+	// own rather than a side effect of going back.
+	Stop4Query key.Binding
+	enhanced   bool
 }
 
 func newKeymap() keymap {
@@ -151,6 +159,8 @@ func newKeymap() keymap {
 		History:     binding("history", "ctrl+g"),
 		Explain:     binding("explain", "f6"),
 		Forget:      binding("forget", "ctrl+x"),
+		Stop4Query:  stopBinding(),
+		Disconnect:  binding("disconnect", "x"),
 	}
 }
 
@@ -182,8 +192,17 @@ func (k keymap) Conversations() key.Binding { return relabel(k.History, "convers
 
 func (k keymap) NewConversation() key.Binding { return relabel(k.NewTab, "new conversation") }
 
-// Halt is esc once more, in the words of a statement that is still running.
-func (k keymap) Halt() key.Binding { return relabel(k.Back, "cancel the query") }
+// Halt is the key that gives up on a statement, in the words of one that is
+// still running.
+func (k keymap) Halt() key.Binding { return relabel(k.Stop4Query, "cancel the query") }
+
+// stopBinding accepts both ways a terminal can say "give up on this": a function
+// key every terminal sends, and a chord the ones that can send it send. A plain
+// letter is not available, because the editor is what a letter reaches.
+func stopBinding() key.Binding {
+	return key.NewBinding(key.WithKeys("f7", "ctrl+."),
+		key.WithHelp(ui.Keystroke("f7"), "cancel"))
+}
 
 func relabel(from key.Binding, help string) key.Binding {
 	return key.NewBinding(key.WithKeys(from.Keys()...),
@@ -298,10 +317,6 @@ func (k keymap) footer(current view, completing, zoomed, running, filtering, inf
 		return screenKeys{
 			k.Run, k.NewTab, k.CloseTab, k.Commands, k.Focus, k.Sidebar, k.Home, k.Leave,
 		}
-	case viewSwitch:
-		return screenKeys{k.Up, k.Down, k.Choose, k.Edit, k.New, k.Remove, k.Home}
-	case viewCatalog:
-		return screenKeys{k.Up, k.Down, k.Pick, k.Save(), k.Discard()}
 	case viewSchema, viewIndexes:
 		if filtering {
 			return screenKeys{k.Above, k.Below, k.Save(), k.Discard()}

@@ -27,6 +27,7 @@ import (
 const (
 	settle      = 400 * time.Millisecond
 	fixtureName = "screens.db"
+	secondName  = "screens-eu.db"
 )
 
 type options struct {
@@ -234,8 +235,10 @@ func open(ctx context.Context, opts options) (cli.Session, cli.Workspace, func()
 	if err != nil {
 		return cli.Session{}, nil, nil, err
 	}
+	kept := cli.NewKeep()
 	application := cli.App{
 		Store:    store,
+		Kept:     kept,
 		Registry: cli.Registry(),
 		Secrets:  cli.Secrets(store.Paths, app.PassphrasePrompt),
 		Dialects: sqldialect.Default(),
@@ -245,7 +248,7 @@ func open(ctx context.Context, opts options) (cli.Session, cli.Workspace, func()
 	}
 	if opts.connection != "" {
 		session, cleanup, err := application.Open(ctx, opts.connection)
-		return session, application, cleanup, err
+		return session, application, closing4Screens(kept, cleanup), err
 	}
 
 	file := opts.file
@@ -255,38 +258,75 @@ func open(ctx context.Context, opts options) (cli.Session, cli.Workspace, func()
 			return cli.Session{}, nil, nil, err
 		}
 	}
-	fixed, err := fixedStore(store, file)
+	other, err := secondFixture()
+	if err != nil {
+		return cli.Session{}, nil, nil, err
+	}
+	fixed, err := fixedStore(store, file, other)
 	if err != nil {
 		return cli.Session{}, nil, nil, err
 	}
 	application.Store = fixed
 	session, cleanup, err := application.Open(ctx, "screens")
-	return session, application, cleanup, err
+	return session, application, closing4Screens(kept, cleanup), err
+}
+
+// closing4Screens gives back the session and the stores the program opened
+// beside it, which outlive any one connection.
+func closing4Screens(kept *cli.Keep, cleanup func()) func() {
+	return func() {
+		if cleanup != nil {
+			cleanup()
+		}
+		_ = kept.Close()
+	}
 }
 
 // fixedStore keeps the fixture profile out of the real configuration, so
 // rendering screens never writes to what the person is using.
-func fixedStore(store config.Store, file string) (config.Store, error) {
+func fixedStore(store config.Store, file, second string) (config.Store, error) {
 	paths := config.Paths{Config: filepath.Join(os.TempDir(), "opendba-screens"), State: store.Paths.State}
 	if err := paths.Ensure(); err != nil {
 		return config.Store{}, err
 	}
 	fixed := config.NewStore(paths)
 	profiles := config.Profiles{}
-	if err := profiles.Upsert(config.Connection{
-		ID:     "screens",
-		Name:   "screens",
-		Driver: "sqlite",
-		File:   file,
-		Mode:   config.ReadOnly,
-		Color:  "green",
-	}); err != nil {
-		return config.Store{}, err
+	for _, connection := range []config.Connection{
+		{ID: "screens", Name: "screens", Driver: "sqlite", File: file,
+			Mode: config.ReadOnly, Color: "green"},
+		{ID: "screens-eu", Name: "production-eu", Driver: "sqlite", File: second,
+			Mode: config.ReadOnly, Color: "red"},
+	} {
+		if err := profiles.Upsert(connection); err != nil {
+			return config.Store{}, err
+		}
 	}
 	return fixed, fixed.SaveProfiles(profiles)
 }
 
 // fixture is a small database with enough in it to fill every screen.
+// secondFixture is a second database, so a strip of tabs on two connections and
+// a tree with two servers under it can be looked at.
+func secondFixture() (string, error) {
+	path := filepath.Join(os.TempDir(), secondName)
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = db.Close() }()
+	_, err = db.Exec(`
+		CREATE TABLE invoices (id integer primary key, number text not null, total integer);
+		INSERT INTO invoices (number, total) VALUES ('2026/01', 4200), ('2026/02', 1180);
+	`)
+	if err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 func fixture() (string, error) {
 	path := filepath.Join(os.TempDir(), fixtureName)
 	if _, err := os.Stat(path); err == nil {

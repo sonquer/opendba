@@ -561,13 +561,121 @@ func TestAReadOnlyProfileOpensAReadOnlyTransaction(t *testing.T) {
 }
 
 func TestAWritableProfileOpensAPlainTransaction(t *testing.T) {
-	config := readOnlyConfig()
-	config.Mode = sqlguard.ModeReadWrite
-	conn, pool := mocked(t, config)
+	conn, pool := mocked(t, writableConfig())
 	pool.ExpectBeginTx(pgx.TxOptions{})
 	pool.ExpectQuery("SELECT 1").WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(int64(1)))
-	if _, err := conn.Query(context.Background(), "SELECT 1"); err != nil {
+	pool.ExpectCommit()
+
+	result, err := conn.Query(context.Background(), "SELECT 1")
+	if err != nil {
 		t.Fatalf("Query: %v", err)
+	}
+	drain(result)
+	if err := result.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
+func writableConfig() driver.Config {
+	config := readOnlyConfig()
+	config.Mode = sqlguard.ModeReadWrite
+	return config
+}
+
+func drain(result driver.ResultSet) {
+	for result.Next() {
+	}
+}
+
+// READ / WRITE was a mode that reached the server and threw the work away: every
+// result rolled back, so a write appeared to succeed and changed nothing.
+func TestAWritableProfileKeepsWhatItRan(t *testing.T) {
+	conn, pool := mocked(t, writableConfig())
+	pool.ExpectBeginTx(pgx.TxOptions{})
+	pool.ExpectQuery("DELETE FROM users").WillReturnRows(pgxmock.NewRows(nil))
+	pool.ExpectCommit()
+
+	result, err := conn.Query(context.Background(), "DELETE FROM users")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	drain(result)
+	if err := driver.Finish(result); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+}
+
+func TestAStatementThatFailedIsNeverKept(t *testing.T) {
+	conn, pool := mocked(t, writableConfig())
+	pool.ExpectBeginTx(pgx.TxOptions{})
+	pool.ExpectQuery("DELETE FROM users").WillReturnRows(
+		pgxmock.NewRows([]string{"id"}).RowError(0, errors.New("connection lost")))
+	pool.ExpectRollback()
+
+	result, err := conn.Query(context.Background(), "DELETE FROM users")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	drain(result)
+	if err := driver.Finish(result); err == nil {
+		t.Fatal("the failure must reach the caller")
+	}
+}
+
+func TestAStatementThatWasGivenUpOnIsNeverKept(t *testing.T) {
+	conn, pool := mocked(t, writableConfig())
+	pool.ExpectBeginTx(pgx.TxOptions{})
+	pool.ExpectQuery("DELETE FROM users").WillReturnRows(pgxmock.NewRows(nil))
+	pool.ExpectRollback()
+
+	ctx, stop := context.WithCancel(context.Background())
+	result, err := conn.Query(ctx, "DELETE FROM users")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	drain(result)
+	stop()
+	_ = result.Close()
+}
+
+// The row cap is a cap on what is worth drawing. The server ran the statement to
+// its end either way, so a capped result is never a half-written one.
+func TestACappedResultIsStillKept(t *testing.T) {
+	config := writableConfig()
+	config.RowLimit = 1
+	conn, pool := mocked(t, config)
+	pool.ExpectBeginTx(pgx.TxOptions{})
+	pool.ExpectQuery("DELETE FROM users RETURNING id").WillReturnRows(
+		pgxmock.NewRows([]string{"id"}).AddRow(int64(1)).AddRow(int64(2)))
+	pool.ExpectCommit()
+
+	result, err := conn.Query(context.Background(), "DELETE FROM users RETURNING id")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	drain(result)
+	if !result.Truncated() {
+		t.Fatal("the result must know it was capped")
+	}
+	if err := result.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
+func TestWorkThatCouldNotBeKeptIsReported(t *testing.T) {
+	conn, pool := mocked(t, writableConfig())
+	pool.ExpectBeginTx(pgx.TxOptions{})
+	pool.ExpectQuery("DELETE FROM users").WillReturnRows(pgxmock.NewRows(nil))
+	pool.ExpectCommit().WillReturnError(errors.New("server closed the connection"))
+
+	result, err := conn.Query(context.Background(), "DELETE FROM users")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	drain(result)
+	err = driver.Finish(result)
+	if err == nil || !strings.Contains(err.Error(), "commit the result") {
+		t.Fatalf("Finish = %v, a statement whose work was lost is not a success", err)
 	}
 }
 

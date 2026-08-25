@@ -18,11 +18,7 @@ func (m Model) tabAt(x, y int) (int, bool) {
 		return 0, false
 	}
 	at := ui.Gutter
-	for i := range m.sheets {
-		sheet := m.sheets[i]
-		if i == m.sheet {
-			sheet = m.worksheet
-		}
+	for i, sheet := range m.eachSheet() {
 		width := lipgloss.Width(m.tab(sheet, i))
 		if x >= at && x < at+width {
 			return i, true
@@ -37,7 +33,7 @@ func (m Model) clicked(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	if !m.mouse || msg.Button != tea.MouseLeft {
 		return m, nil
 	}
-	if m.page != nil || m.modal != nil || m.chooser != nil || m.palette != nil {
+	if m.overlaid() {
 		return m, nil
 	}
 	mouse := msg.Mouse()

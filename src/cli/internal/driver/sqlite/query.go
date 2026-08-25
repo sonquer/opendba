@@ -84,11 +84,13 @@ func (c *connection) indexesOf(ctx context.Context, schema, table string, defini
 type resultSet struct {
 	rows      *sql.Rows
 	tx        *sql.Tx
+	ctx       context.Context
 	columns   []string
 	values    []any
 	limit     int
 	seen      int
 	truncated bool
+	writable  bool
 	err       error
 	duration  time.Duration
 }
@@ -126,15 +128,27 @@ func (r *resultSet) Next() bool {
 	return true
 }
 
+// Close finishes the transaction the statement ran in: a writable profile keeps
+// its work, a read only profile throws it away.
 func (r *resultSet) Close() error {
 	closeErr := r.rows.Close()
-	if err := r.tx.Rollback(); err != nil && closeErr == nil {
+	finish, wrap := r.tx.Rollback, "close the result: %w"
+	if r.commits() {
+		finish, wrap = r.tx.Commit, "commit the result: %w"
+	}
+	if err := finish(); err != nil && closeErr == nil {
 		closeErr = err
 	}
 	if closeErr != nil {
-		return fmt.Errorf("close the result: %w", closeErr)
+		return fmt.Errorf(wrap, closeErr)
 	}
 	return nil
+}
+
+// commits reports whether the work this result did is worth keeping: a writable
+// profile keeps it, unless the statement failed or the run was given up on.
+func (r *resultSet) commits() bool {
+	return r.writable && r.err == nil && r.ctx.Err() == nil
 }
 
 func (c *connection) Query(ctx context.Context, statement string) (driver.ResultSet, error) {
@@ -154,7 +168,7 @@ func (c *connection) open(ctx context.Context, statement string, limit int) (dri
 	started := time.Now()
 	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: c.config.ReadOnly()})
 	if err != nil {
-		return nil, fmt.Errorf("start a read-only transaction: %w", err)
+		return nil, fmt.Errorf("start a transaction: %w", err)
 	}
 	rows, err := tx.QueryContext(ctx, statement)
 	if err != nil {
@@ -170,8 +184,10 @@ func (c *connection) open(ctx context.Context, statement string, limit int) (dri
 	return &resultSet{
 		rows:     rows,
 		tx:       tx,
+		ctx:      ctx,
 		columns:  columns,
 		limit:    limit,
+		writable: !c.config.ReadOnly(),
 		duration: time.Since(started),
 	}, nil
 }

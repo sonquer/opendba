@@ -413,7 +413,7 @@ func (m Model) openTable() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	schema, bare := split(name)
-	sheet := newWorksheet(m.theme, sheetTable, bare)
+	sheet := newWorksheet(m.theme, sheetTable, bare, m.link.key())
 	sheet.editor.SetValue(m.session.Conn.Preview(schema, bare))
 	opened := m.openSheet(sheet)
 	opened.focus = focusEditor

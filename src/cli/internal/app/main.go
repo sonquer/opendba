@@ -16,8 +16,11 @@ func Main(version string, args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return cli.ExitFailure
 	}
+	kept := cli.NewKeep()
+	defer func() { _ = kept.Close() }()
 	application := cli.App{
 		Store:    store,
+		Kept:     kept,
 		Registry: cli.Registry(),
 		Secrets:  cli.Secrets(store.Paths, PassphrasePrompt),
 		Dialects: sqldialect.Default(),

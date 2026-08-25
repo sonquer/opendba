@@ -511,13 +511,14 @@ func TestAskIgnoresAStaleTurn(t *testing.T) {
 	m := talking(t, &scripted{})
 	m.talk.token = 4
 
-	updated, _ := m.Update(askEventMsg{event: agent.Event{Kind: agent.EventText, Text: "from before"}, token: 1})
+	updated, _ := m.Update(askEventMsg{
+		event: agent.Event{Kind: agent.EventText, Text: "from before"}, token: 1, on: m.id})
 	if strings.Contains(said(t, updated.(Model)), "from before") {
 		t.Fatal("a piece of an answer from a turn that was abandoned reached the screen")
 	}
 
 	answer := make(chan error, 1)
-	updated, _ = m.Update(askApprovalMsg{request: approval{answer: answer}, token: 1})
+	updated, _ = m.Update(askApprovalMsg{request: approval{answer: answer}, token: 1, on: m.id})
 	if err := <-answer; !errors.Is(err, errRefused) {
 		t.Fatalf("a stale turn was answered with %v, want it refused", err)
 	}
@@ -525,7 +526,7 @@ func TestAskIgnoresAStaleTurn(t *testing.T) {
 		t.Fatal("a stale turn put a question on the screen")
 	}
 
-	updated, _ = m.Update(askEndedMsg{token: 1})
+	updated, _ = m.Update(askEndedMsg{token: 1, on: m.id})
 	if updated.(Model).talk.busy != m.talk.busy {
 		t.Fatal("a stale ending changed the screen")
 	}
@@ -762,7 +763,7 @@ func TestConsentIsAnsweredOnce(t *testing.T) {
 	if waiting == nil {
 		t.Fatal("nothing is waiting")
 	}
-	ignored, _ := m.Update(askAnswerMsg{answer: waiting.answer, token: m.talk.token - 1})
+	ignored, _ := m.Update(askAnswerMsg{answer: waiting.answer, token: m.talk.token - 1, on: m.id})
 	if ignored.(Model).talk.pending != nil {
 		t.Fatal("an answer from an abandoned turn cleared the question")
 	}

@@ -377,3 +377,16 @@ func TestRecordFailsWhenTheTableIsGone(t *testing.T) {
 		t.Fatal("trimming a missing table must fail")
 	}
 }
+
+// Settings are a fact of the file rather than of one connection, so a store
+// shared by several of them answers to what the settings say now.
+func TestAStoreFollowsTheSettings(t *testing.T) {
+	kept := store(t, config.HistorySettings{Enabled: true, StoreSQL: true, Limit: 10})
+	same := kept.Following(config.HistorySettings{Enabled: true, StoreSQL: false, Limit: 99})
+	if same != kept {
+		t.Error("following the settings must not open a second handle")
+	}
+	if kept.settings.Limit != 99 || kept.settings.StoreSQL {
+		t.Errorf("settings = %+v", kept.settings)
+	}
+}

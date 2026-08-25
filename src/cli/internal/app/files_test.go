@@ -141,7 +141,7 @@ func TestAWorkspaceThatCannotBeReadSaysSoWithoutLosingTheTables(t *testing.T) {
 
 func TestAWorkspaceWithNowhereToKeepItSaysSo(t *testing.T) {
 	m := workbench(t)
-	m.session.Settings.Workspace.Root = ""
+	m.settings.Workspace.Root = ""
 	setup := m.workspace.Setup()
 	setup.Store.Paths.Data = ""
 	m.workspace.(*fakeWorkspace).setup = setup

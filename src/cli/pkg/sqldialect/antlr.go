@@ -19,6 +19,11 @@ type prefixRule struct {
 	rule   semantics
 }
 
+// refinement is the semantics a rule only carries for some of the statements it
+// matches, read off the parse tree when the rule name alone cannot tell them
+// apart.
+type refinement func(ctx antlr.ParserRuleContext) semantics
+
 type grammar struct {
 	name          string
 	statementRule string
@@ -27,6 +32,7 @@ type grammar struct {
 	explainSafe   bool
 	rules         map[string]semantics
 	prefixes      []prefixRule
+	refinements   map[string]refinement
 	parse         func(input antlr.CharStream, listener antlr.ErrorListener) (antlr.Tree, []string)
 }
 
@@ -97,6 +103,9 @@ func (w *statementWalker) EnterEveryRule(ctx antlr.ParserRuleContext) {
 	}
 	if rule, ok := w.grammar.lookup(name); ok {
 		w.apply(rule)
+	}
+	if refine, ok := w.grammar.refinements[name]; ok {
+		w.apply(refine(ctx))
 	}
 }
 

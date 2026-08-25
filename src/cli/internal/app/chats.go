@@ -56,7 +56,7 @@ func (m Model) readChats() tea.Cmd {
 	if m.chats != nil {
 		term = m.chats.term
 	}
-	limit := m.session.Settings.Chats.Limit
+	limit := m.settings.Chats.Limit
 	connection := m.session.Connection.Name
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)

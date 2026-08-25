@@ -13,6 +13,7 @@ func PostgreSQL() Dialect {
 		analyzeRule:   "analyze_keyword",
 		rules:         postgresRules,
 		prefixes:      postgresPrefixes,
+		refinements:   postgresRefinements,
 		parse:         parsePostgres,
 	}
 }
@@ -79,6 +80,66 @@ var postgresRules = map[string]semantics{
 	"listenstmt":         {kind: KindSession, refusal: "notification channels outlive a single request"},
 	"unlistenstmt":       {kind: KindSession, refusal: "notification channels outlive a single request"},
 	"notifystmt":         {kind: KindSession, refusal: "notifications reach other sessions"},
+
+	"createdbstmt":         {kind: KindCreate, mutating: true, refusal: outsideTransaction("CREATE DATABASE")},
+	"dropdbstmt":           {kind: KindDrop, mutating: true, refusal: outsideTransaction("DROP DATABASE")},
+	"createtablespacestmt": {kind: KindCreate, mutating: true, refusal: outsideTransaction("CREATE TABLESPACE")},
+	"droptablespacestmt":   {kind: KindDrop, mutating: true, refusal: outsideTransaction("DROP TABLESPACE")},
+	"altersystemstmt":      {kind: KindAlter, mutating: true, refusal: outsideTransaction("ALTER SYSTEM")},
+
+	"createsubscriptionstmt": {kind: KindCreate, mutating: true, refusal: replication},
+	"altersubscriptionstmt":  {kind: KindAlter, mutating: true, refusal: replication},
+	"dropsubscriptionstmt":   {kind: KindDrop, mutating: true, refusal: replication},
+}
+
+// outsideTransaction is the refusal for a statement PostgreSQL only runs on its
+// own, which opendba has nowhere to put.
+func outsideTransaction(name string) string {
+	return name + " cannot run inside a transaction, and opendba runs every statement in one"
+}
+
+// replication is the refusal for the subscription statements, only some of whose
+// forms are the ones a transaction will not hold.
+const replication = "subscriptions manage replication between servers"
+
+var postgresRefinements = map[string]refinement{
+	"indexstmt":         concurrentIndex,
+	"dropstmt":          concurrentIndex,
+	"alterdatabasestmt": movedDatabase,
+}
+
+// concurrentIndex refuses an index built or dropped without a lock, which CREATE
+// INDEX spells as a rule of its own and DROP INDEX as a bare token.
+func concurrentIndex(ctx antlr.ParserRuleContext) semantics {
+	for _, child := range ctx.GetChildren() {
+		if _, ok := child.(*postgresql.Concurrently_Context); ok {
+			return semantics{refusal: outsideTransaction("CONCURRENTLY")}
+		}
+		if keyword(child, postgresql.PostgreSQLParserCONCURRENTLY) {
+			return semantics{refusal: outsideTransaction("CONCURRENTLY")}
+		}
+	}
+	return semantics{}
+}
+
+// movedDatabase refuses the one form of ALTER DATABASE that moves files, which
+// the grammar folds in with the forms that only set options.
+func movedDatabase(ctx antlr.ParserRuleContext) semantics {
+	children := ctx.GetChildren()
+	for i := 0; i+1 < len(children); i++ {
+		if keyword(children[i], postgresql.PostgreSQLParserSET) &&
+			keyword(children[i+1], postgresql.PostgreSQLParserTABLESPACE) {
+			return semantics{refusal: outsideTransaction("ALTER DATABASE SET TABLESPACE")}
+		}
+	}
+	return semantics{}
+}
+
+// keyword reports whether a child of a parse tree node is one particular
+// keyword token.
+func keyword(tree antlr.Tree, kind int) bool {
+	node, ok := tree.(antlr.TerminalNode)
+	return ok && node.GetSymbol().GetTokenType() == kind
 }
 
 var postgresPrefixes = []prefixRule{

@@ -116,7 +116,7 @@ func (m Model) read4AI() Model {
 	room := m.room4AI()
 	rows := make([]model4AI, 0, len(entries))
 	for _, entry := range entries {
-		row := model4AI{entry: entry, verdict: local.Fits(entry, m.session.Settings.AI.Context, room)}
+		row := model4AI{entry: entry, verdict: local.Fits(entry, m.settings.AI.Context, room)}
 		if assistant.Models != nil {
 			row.installed = assistant.Models.Has(entry.ID)
 		}
@@ -331,6 +331,8 @@ func sizeOf(bytes int64) string {
 // aiKey is what the screen does with a key.
 func (m Model) aiKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
+	case key.Matches(msg, m.keys.Connections):
+		return m.openSwitcher()
 	case key.Matches(msg, m.keys.Back):
 		if m.ai.busy != "" {
 			return m.stopFetching(), nil
@@ -401,7 +403,8 @@ func (m Model) remove4AI() (tea.Model, tea.Cmd) {
 		m.ai.trouble = err.Error()
 		return m, nil
 	}
-	return m.read4AI(), m.notify(row.entry.Title + " is gone")
+	said := m.notify(row.entry.Title + " is gone")
+	return m.read4AI(), said
 }
 
 // fetchLibrary gets what every local model needs before any of them can run.
@@ -562,7 +565,8 @@ func (m Model) doneFetching(msg fetchEndedMsg) (tea.Model, tea.Cmd) {
 	if m.pending != "" {
 		return m.continued()
 	}
-	return m.read4AI(), m.notify(what + " is here")
+	said := m.notify(what + " is here")
+	return m.read4AI(), said
 }
 
 // continued carries on with what somebody asked for.
