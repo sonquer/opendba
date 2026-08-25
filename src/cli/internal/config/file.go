@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/BurntSushi/toml"
 )
@@ -23,13 +22,6 @@ func readSecureFile(path string) ([]byte, error) {
 		return nil, fmt.Errorf("read %s: %w", filepath.Base(path), err)
 	}
 	return data, nil
-}
-
-func verifyMode(path string, mode os.FileMode) error {
-	if runtime.GOOS == "windows" || mode&0o077 == 0 {
-		return nil
-	}
-	return fmt.Errorf("%s is readable by other users (mode %04o); run chmod 600 on it", path, mode)
 }
 
 func writeSecureFile(path string, data []byte) error {

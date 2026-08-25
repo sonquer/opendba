@@ -99,17 +99,3 @@ func (p Paths) Ensure() error {
 	}
 	return nil
 }
-
-func enforceDirMode(dir string) error {
-	info, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("inspect %s: %w", dir, err)
-	}
-	if info.Mode().Perm()&0o077 == 0 {
-		return nil
-	}
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return fmt.Errorf("tighten permissions on %s: %w", dir, err)
-	}
-	return nil
-}
