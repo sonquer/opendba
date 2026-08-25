@@ -1,0 +1,14 @@
+name = "editor"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "e"
+
+[[step]]
+wait = "query 1"
+
+[[step]]
+shot = "editor"

@@ -1,0 +1,11 @@
+name = "palette"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "ctrl+k"
+
+[[step]]
+shot = "palette"

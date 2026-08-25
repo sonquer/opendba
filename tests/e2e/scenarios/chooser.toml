@@ -1,0 +1,14 @@
+name = "chooser"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "a"
+
+[[step]]
+key = "enter"
+
+[[step]]
+shot = "chooser"

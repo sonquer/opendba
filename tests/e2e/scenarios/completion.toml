@@ -1,0 +1,14 @@
+name = "completion"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "e"
+
+[[step]]
+type = "SELECT * FROM ord"
+
+[[step]]
+shot = "completion"

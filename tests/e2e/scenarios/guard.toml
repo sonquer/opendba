@@ -1,0 +1,23 @@
+name = "guard"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "e"
+
+[[step]]
+wait = "query 1"
+
+[[step]]
+type = "DELETE FROM orders"
+
+[[step]]
+wait = "blocked"
+
+[[step]]
+expect = ["READ ONLY"]
+
+[[step]]
+shot = "guard"

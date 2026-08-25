@@ -1,0 +1,11 @@
+name = "indexes"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "i"
+
+[[step]]
+shot = "indexes"

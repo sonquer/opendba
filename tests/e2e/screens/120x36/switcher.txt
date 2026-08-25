@@ -1,0 +1,35 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+   OK   nothing needs attention                                                             6 checks, all of them fine
+
+  MEMORY
+
+    free pages     [||||||||||||||||||||]           0   ok
+
+  LOAD                ╭──────────────────────────────────────────────────────────────────────────╮
+                      │ connections                                                       1 open │
+    access            │ ──────────────────────────────────────────────────────────────────────── │
+                      │ OPEN                                                                     │
+  SCANS               │                                                                          │
+                      │ ▌ screens          READ ONLY                  sqlite  1 tab  in use   1  │
+    foreign keys      │                                                                          │
+                      │ CONFIGURED                                                               │
+  STORAGE             │                                                                          │
+                      │   screens          READ ONLY               sqlite  db/core.db  1 session │
+  ▌ integrity         │   production-eu    READ ONLY                        sqlite  db/second.db │
+    journal           │                                                                          │
+    size              │  enter  switch ·  x  disconnect ·  n  new ·  f  find ·  esc  close       │
+                      ╰──────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  e query  a ask  s tables  i indexes  ⌃P connections  ⌃D databases  / commands  ? help  q quit

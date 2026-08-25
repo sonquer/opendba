@@ -1,0 +1,17 @@
+name = "ai"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "ctrl+k"
+
+[[step]]
+type = "assistant"
+
+[[step]]
+key = "enter"
+
+[[step]]
+shot = "ai"

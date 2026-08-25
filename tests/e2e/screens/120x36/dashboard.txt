@@ -1,0 +1,35 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+   OK   nothing needs attention                                                             6 checks, all of them fine
+
+  MEMORY
+
+    free pages     [||||||||||||||||||||]           0   ok
+
+  LOAD
+
+    access                                  read only   ok
+
+  SCANS
+
+    foreign keys                                    0   ok
+
+  STORAGE
+
+  ▌ integrity                                      ok   ok
+    journal                                    delete   note
+    size                                     <size>     note
+
+
+
+
+
+
+
+
+
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  e query  a ask  s tables  i indexes  ⌃P connections  ⌃D databases  / commands  ? help  q quit

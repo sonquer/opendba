@@ -15,7 +15,7 @@ dependency graph of the shipped binary. `go.work` ties them together.
 ```
 src/cli/
   cmd/opendba/                  binary entry point
-  cmd/screens/                 renders the interface against a seeded database
+  cmd/screens/                  prints every bar style, to choose one by looking
   schema/                      the versioned --json contract
   pkg/sqlguard/                the safety policy
   pkg/sqldialect/              parse trees turned into facts about a statement
@@ -41,7 +41,21 @@ src/tools/
   cmd/cover/ cmd/comments/     the same gates on their own
   cmd/grammar/                 regenerates the vendored parsers
   pkg/cover/ pkg/gate/         coverage reporting and the comment gate
+  pkg/tuitest/                 the interface walked through a real terminal
 ```
+
+## The screens
+
+`dev e2e` starts the built program under a pseudo-terminal, sends the bytes a
+terminal sends for the keys a scenario names, and reads back what the emulator
+drew. The scenarios are TOML in [`tests/e2e`](tests/e2e) and the frames they
+compare against are in `tests/e2e/screens`, one per screen per size.
+
+It runs the program that ships rather than a model built in the same process, so
+starting up, reading the configuration, decoding a key, entering the alternate
+screen and leaving with a code are all part of what is being tested. A scenario
+that fails leaves the frame as text, the frame in colour, a picture of it, and a
+recording of the whole run in asciinema format, which CI keeps as an artifact.
 
 ## The path of a statement
 

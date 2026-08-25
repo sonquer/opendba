@@ -51,8 +51,11 @@ type options struct {
 	module      string
 	summary     string
 	out         string
-	against     string
-	connection  string
+	only        string
+	size        string
+	update      bool
+	jobs        int
+	binary      string
 	policy      policy.Policy
 }
 
@@ -68,7 +71,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if command == "run" {
 		return a.runProduct(rest)
 	}
-	if command == "screens" {
+	if command == "e2e" {
 		opts, err := a.parse(command, rest)
 		if err != nil {
 			if err == flag.ErrHelp {
@@ -77,7 +80,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 			fmt.Fprintln(a.Stderr, err)
 			return ExitUsage
 		}
-		return a.screens(ctx, opts)
+		return a.e2e(ctx, opts)
 	}
 	if !known(command) {
 		fmt.Fprintf(a.Stderr, "unknown command %q\n\n", command)
@@ -311,8 +314,11 @@ func (a App) parse(command string, args []string) (options, error) {
 	set.StringVar(&opts.module, "module", "", "limit the run to a single module")
 	set.StringVar(&opts.summary, "summary", "", "append a markdown coverage summary to this file")
 	set.StringVar(&opts.out, "out", "", "directory to write the screens into")
-	set.StringVar(&opts.against, "against", "", "print how the screens differ from the ones already there")
-	set.StringVar(&opts.connection, "connection", "", "profile to render the screens against")
+	set.StringVar(&opts.only, "only", "", "run a single scenario")
+	set.StringVar(&opts.size, "size", "", "run at a single terminal size")
+	set.BoolVar(&opts.update, "update", false, "keep the screens that were drawn as the ones to compare against")
+	set.IntVar(&opts.jobs, "jobs", 0, "how many scenarios run at once")
+	set.StringVar(&opts.binary, "binary", "", "run against a program that is already built")
 	if err := set.Parse(args); err != nil {
 		return options{}, err
 	}
@@ -348,7 +354,7 @@ commands:
   workflows  run actionlint over the GitHub Actions workflows
   race       run the tests under the race detector, which needs cgo
   run        start opendba with the values from .env, passing the rest through
-  screens    render every screen of the interface, to look at what changed
+  e2e        walk every screen of the interface through a real terminal
   version    read or rewrite the VERSION file
   help       show this message
 
@@ -359,9 +365,14 @@ flags:
   --coverage-dir <dir> coverage output directory, default <root>/coverage
   --module <name>      limit the run to a single module
   --summary <file>     append a markdown coverage summary, for CI job summaries
-  --out <dir>          where screens are written, default <root>/.screens
-  --against <dir>      print how the screens differ from the ones already there
-  --connection <name>  render the screens against a profile instead of a fixture
+
+e2e flags:
+  --out <dir>          where a failed screen is written, default <root>/.e2e
+  --only <scenario>    run a single scenario
+  --size <WxH>         run at a single terminal size
+  --update             keep the screens that were drawn as the ones to compare against
+  --jobs <n>           how many scenarios run at once
+  --binary <path>      run against a program that is already built
 
 version flags:
   --tag                print v<version> instead of the bare version
@@ -398,7 +409,7 @@ var commands = map[string]string{
 	"workflows": "workflows",
 	"version":   "",
 	"run":       "",
-	"screens":   "",
+	"e2e":       "",
 }
 
 func known(command string) bool {

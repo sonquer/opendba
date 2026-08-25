@@ -41,6 +41,7 @@ cover.out
 .env
 /.local/
 /.screens/
+/.e2e/
 
 # The inference library this program carries is committed on purpose. It is
 # what makes local models work without fetching anything at run time, and the

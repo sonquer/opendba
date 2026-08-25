@@ -1,0 +1,41 @@
+# Every screen of the interface, walked through a real terminal against a
+# database built from the statements in seed/.
+#
+# A mask replaces what a screen cannot draw the same way twice. Replacements are
+# padded to the width of what they replace, so the columns a value lines up with
+# are still compared.
+
+sizes   = ["120x36", "80x24"]
+goldens = "tests/e2e/screens"
+bar     = "pipes"
+timeout = "30s"
+quiet   = "150ms"
+
+forbid = ["hunter2"]
+
+[[mask]]
+pattern = 'sqlite \d+\.\d+\.\d+'
+with    = "sqlite <version>"
+
+# Where the fixture lives is a temporary directory, and SQLite reports it back
+# as an absolute path of its own accord. The trailing spaces are part of the
+# match so that the replacement reaches the same column the path did.
+[[mask]]
+pattern = '/[A-Za-z0-9._-]+/[^\s│]* *'
+with    = "<path>"
+
+[[mask]]
+pattern = '\b\d+(\.\d+)? ?(B|KiB|MiB|GiB|TiB)\b'
+with    = "<size>"
+
+# How long a statement took is different every time it runs.
+[[mask]]
+pattern = '\b\d+(\.\d+)?(ns|µs|ms|s)\b'
+with    = "<time>"
+
+# Whether a daemon happens to be running on this machine, and whether the answer
+# has come back yet. The spaces before it are part of the match so that the
+# replacement reaches the same column the answer did.
+[[mask]]
+pattern = ' +(not running here|running here|a daemon you run yourself)'
+with    = "<ollama>"

@@ -1,0 +1,24 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+
+   ⌃1   orders
+  ────────────────────────────────────────────────────────────────────────────
+  TABLES             │ ┃   1 DELETE FROM orders
+                     │ ┃
+   main              │ ┃
+  ├── orders         │ ┃
+  └── users          │ ┃
+                     │ ──────────────────────────────────────────────────────
+                     │ ✗ blocked DELETE · DELETE modifies data or database s…
+  FILES              │ ──────────────────────────────────────────────────────
+                     │ nothing has run yet
+   nothing yet       │
+                     │
+                     │
+                     │
+                     │
+
+
+  ────────────────────────────────────────────────────────────────────────────
+  ⌃R run  ⌃N new tab  ⌃W close tab  ⌃K commands  tab focus

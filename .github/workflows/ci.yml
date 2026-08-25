@@ -107,6 +107,50 @@ jobs:
         shell: bash
         run: go run ./src/tools/cmd/dev cover --ci --html=false
 
+  screens:
+    name: screens
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
+
+      - name: Walk every screen through a terminal
+        run: go run ./src/tools/cmd/dev e2e --ci --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload what the screens looked like
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screens
+          path: .e2e
+          if-no-files-found: ignore
+
   cross:
     name: cross (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest

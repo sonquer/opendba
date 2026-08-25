@@ -170,7 +170,7 @@ terminal rather than on your taste:
 To see the bars in your own font before choosing:
 
 ```bash
-go run ./src/cli/cmd/screens --bars
+go run ./src/cli/cmd/screens
 ```
 
 ## Keys

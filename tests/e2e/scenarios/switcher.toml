@@ -1,0 +1,11 @@
+name = "switcher"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "ctrl+p"
+
+[[step]]
+shot = "switcher"

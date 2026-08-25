@@ -66,6 +66,14 @@ double, it runs in-process via `modernc.org/sqlite` with no cgo, and an
 in-memory instance costs nothing to create. Driver contract tests run against
 it.
 
+The same promise binds `dev e2e`, which walks every screen of the interface
+through a pseudo-terminal. A pseudo-terminal is a kernel facility rather than an
+installed program, the database it walks is SQLite built from
+[`tests/e2e/seed`](tests/e2e/seed), and each scenario gets a configuration and
+state tree of its own, so a run reaches nothing the person running it owns. It
+is a gate of its own rather than part of `dev check`, because building the
+product and walking every screen twice over takes minutes rather than seconds.
+
 The PostgreSQL and SQL Server drivers are structured so their logic is testable
 without a server: SQL construction, row mapping, DSN handling, session pinning,
 showplan parsing and health thresholds are pure functions, and everything
@@ -103,6 +111,7 @@ go run ./src/tools/cmd/dev vuln       # govulncheck over both modules
 go run ./src/tools/cmd/dev lint       # golangci-lint, pinned in src/tools/go.mod
 go run ./src/tools/cmd/dev workflows  # actionlint over .github/workflows
 go run ./src/tools/cmd/dev race       # the tests under the race detector, needs cgo
+go run ./src/tools/cmd/dev e2e        # walk every screen through a real terminal
 go run ./src/tools/cmd/dev version    # read or rewrite VERSION
 go run ./src/tools/cmd/dev run        # start opendba with the values from .env
 go run ./src/tools/cmd/grammar        # regenerate the vendored parsers

@@ -1,0 +1,23 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────
+
+  AI                                                                     local
+  ▔▔
+
+  INSTANCES
+  ▌ local  local  gemma-4-e4b-qat                                       active
+
+  MODELS                                             library b10587 · included
+    Gemma 4 E4B  <size>   Apache-2.0
+    Gemma 4 E2B  <size>   Apache-2.0
+    Gemma 4 <size>  <size>   Apache-2.0
+    GPT-OSS <size>  <size>    Apache-2.0
+    GPT-OSS <size>  <size>    Apache-2.0
+
+
+
+
+  ────────────────────────────────────────────────────────────────────────────
+  ↑ up  ↓ down  tab focus  enter open  d remove  esc dashboard

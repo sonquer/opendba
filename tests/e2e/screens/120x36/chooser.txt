@@ -1,0 +1,35 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  ASK                      ╭────────────────────────────────────────────────────────────────╮
+  ▔▔▔                      │ what answers                                              esc  │
+                           │                                                                │
+                           │ ›                                                              │
+                           │                                                                │
+                           │ ON THIS MACHINE                      library b10587 · included │
+                           │   Gemma 4 E4B                             <size>  · Apache-2.0 │
+                           │   Gemma 4 E2B                             <size>  · Apache-2.0 │
+                           │   Gemma 4 <size>                             <size>  · Apache-2.0 │
+                           │   GPT-OSS <size>                            <size>   · Apache-2.0 │
+                           │   GPT-OSS <size>                           <size>   · Apache-2.0 │
+                           │                                                                │
+                           │ ANTHROPIC                                          needs a key │
+                           │   add a key                                                    │
+                           │                                                                │
+                           │ OPENAI                                             needs a key │
+                           │   add a key                                                    │
+                           │                                                                │
+                           │ GEMINI                                             needs a key │
+                           │   add a key                                                    │
+                           │                                                                │
+  ┃                        │ OLLAMA<ollama>                                                 │
+  ┃  ask about this databas│   use this daemon                                              │
+  ┃                        │                                                                │
+  ┃                        │  enter  use ·  esc  close                                      │
+  ┃                        ╰────────────────────────────────────────────────────────────────╯ter  choose what answers
+  ┃
+
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  enter send  esc stop or back  ⌃G conversations  ⌃N new conversation  ⌃T thinking

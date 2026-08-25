@@ -1,0 +1,17 @@
+name = "tree"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "e"
+
+[[step]]
+key = "tab"
+
+[[step]]
+key = "space"
+
+[[step]]
+shot = "tree"

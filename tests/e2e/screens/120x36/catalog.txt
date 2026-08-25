@@ -1,0 +1,35 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+   OK   nothing needs attention                                                             6 checks, all of them fine
+
+  MEMORY
+
+    free pages     [||||||||||||||||||||]           0   ok
+
+  LOAD
+
+    access                                  read only   ok
+                           ╭────────────────────────────────────────────────────────────────╮
+  SCANS                    │ databases and schemas                                  screens │
+                           │ ────────────────────────────────────────────────────────────── │
+    foreign keys           │ ▌ ● main  <path>                                               │
+                           │     ▢ main                                            2 tables │
+  STORAGE                  │                                                                │
+                           │  space  pick ·  enter  save ·  esc  cancel                     │
+  ▌ integrity              ╰────────────────────────────────────────────────────────────────╯
+    journal                                    delete   note
+    size                                     <size>     note
+
+
+
+
+
+
+
+
+
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  e query  a ask  s tables  i indexes  ⌃P connections  ⌃D databases  / commands  ? help  q quit

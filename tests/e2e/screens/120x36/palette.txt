@@ -1,0 +1,35 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+   OK   nothing needs attention                                                             6 checks, all of them fine
+
+  MEMORY
+                          ╭──────────────────────────────────────────────────────────────────╮
+    free pages     [||||||│ ›                                                                │
+                          │ ──────────────────────────────────────────────────────────────── │
+  LOAD                    │ ▌ dashboard                                                 esc  │
+                          │   ask                                                         a  │
+    access                │   query editor                                                e  │
+                          │   tables                                                      s  │
+  SCANS                   │   indexes                                                     i  │
+                          │   history                                                    ⌃G  │
+    foreign keys          │   database and schemas                                       ⌃D  │
+                          │   connections                                                ⌃P  │
+  STORAGE                 │   new connection                                              n  │
+                          │   reload everything                                           r  │
+  ▌ integrity             │   settings                                                       │
+    journal               │   assistant and models                                           │
+    size                  │   release the model                                              │
+                          │   mouse on or off                                                │
+                          │   keys and safety                                             ?  │
+                          │   quit                                                        q  │
+                          ╰──────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  e query  a ask  s tables  i indexes  ⌃P connections  ⌃D databases  / commands  ? help  q quit

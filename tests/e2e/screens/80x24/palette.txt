@@ -1,0 +1,23 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────
+      ╭──────────────────────────────────────────────────────────────────╮
+   OK │ ›                                                                │fine
+      │ ──────────────────────────────────────────────────────────────── │
+  MEMO│ ▌ dashboard                                                 esc  │
+      │   ask                                                         a  │
+    fr│   query editor                                                e  │
+      │   tables                                                      s  │
+  LOAD│   indexes                                                     i  │
+      │   history                                                    ⌃G  │
+    ac│   database and schemas                                       ⌃D  │
+      │   connections                                                ⌃P  │
+  SCAN│   new connection                                              n  │
+      │   reload everything                                           r  │
+    fo│   … 6 more                                                       │
+      ╰──────────────────────────────────────────────────────────────────╯
+  STORAGE
+
+  ────────────────────────────────────────────────────────────────────────────
+  e query  a ask  s tables  i indexes  ⌃P connections                 ↓ 4 more
