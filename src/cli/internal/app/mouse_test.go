@@ -91,18 +91,24 @@ func TestDraggingOverTheResultCopiesIt(t *testing.T) {
 	}
 }
 
-// A drag that never left the row it started on is one value, which is what
-// somebody reaching for the mouse to grab an id wanted.
-func TestADragThatWentNowhereCopiesTheValue(t *testing.T) {
+// A click that never left the row it started on opens that record. A row wider
+// than the screen is a row you want to read before you want to copy it, and
+// copying one value keeps its key.
+func TestAClickOnOneRowOpensTheRecord(t *testing.T) {
 	m := manyRows(t, 5)
 	top := m.resultsTop() + resultHeaderRows
 	picked, _ := m.Update(click(80, top+1))
-	let4Go, cmd := picked.(Model).Update(tea.MouseReleaseMsg{X: 80, Y: top + 1, Button: tea.MouseLeft})
-	if cmd == nil {
-		t.Fatal("letting go must copy something")
+	let4Go, _ := picked.(Model).Update(tea.MouseReleaseMsg{X: 80, Y: top + 1, Button: tea.MouseLeft})
+	opened := let4Go.(Model)
+	if opened.page == nil {
+		t.Fatal("letting go on one row must open it")
 	}
-	if said := let4Go.(Model).text(); !strings.Contains(said, "the value is on the clipboard") {
-		t.Errorf("one row under the pointer is one value, got %q", said)
+	if said := opened.text(); strings.Contains(said, "clipboard") {
+		t.Errorf("and copy nothing, got %q", said)
+	}
+	closed, _ := press(t, opened, "esc")
+	if closed.page != nil {
+		t.Error("and esc closes it again")
 	}
 }
 

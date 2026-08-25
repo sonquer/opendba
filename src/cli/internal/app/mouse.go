@@ -297,7 +297,10 @@ func (m Model) dragged(msg tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// released ends a selection by putting it on the clipboard.
+// dropped ends what the pointer was doing. A click on one row opens that record,
+// because a row too wide for the screen is a row you want to read before you
+// want to copy it; dragging across several is still a selection, and that goes
+// on the clipboard. Copying one cell keeps its key.
 func (m Model) dropped(tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {
 	if m.dragging {
 		m.dragging = false
@@ -312,7 +315,7 @@ func (m Model) dropped(tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if len(rows) == 1 {
-		return m.copiedCell()
+		return m.recordPage()
 	}
 	text, err := text4Clipboard(m.results.columns, rows, export.FormatCSV)
 	if err != nil {

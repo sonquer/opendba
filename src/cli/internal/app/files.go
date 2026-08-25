@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sonquer/opendba/src/cli/internal/sqlfiles"
@@ -35,6 +37,13 @@ type wroteFileMsg struct {
 }
 
 // deleteFileMsg is the answer to the dialog that asks before removing one.
+// overwriteFileMsg writes over a file that is already there, once it has been
+// asked about.
+type overwriteFileMsg struct {
+	sheet int
+	name  string
+}
+
 type deleteFileMsg struct{ name string }
 
 type deletedFileMsg struct {
@@ -151,12 +160,15 @@ func (m Model) writeFile(at int, name, body string) tea.Cmd {
 
 // wroteFile marks the tab as saved, whichever tab is in front by now.
 func (m Model) wroteFile(msg wroteFileMsg) (Model, tea.Cmd) {
+	if errors.Is(msg.err, sqlfiles.ErrThere) {
+		return m.confirmOverwrite(msg)
+	}
 	if msg.err != nil {
 		return m, m.alarm(msg.err.Error())
 	}
 	stowed := m.stow()
 	if msg.sheet < 0 || msg.sheet >= len(stowed.sheets) {
-		return stowed, tea.Batch(stowed.notify(msg.name+" is written"), stowed.readFiles())
+		return stowed, tea.Batch(stowed.notify(msg.name+" is saved"), stowed.readFiles())
 	}
 	sheets := make([]worksheet, len(stowed.sheets))
 	copy(sheets, stowed.sheets)
@@ -168,7 +180,33 @@ func (m Model) wroteFile(msg wroteFileMsg) (Model, tea.Cmd) {
 	if msg.sheet == stowed.sheet {
 		stowed.worksheet = sheets[msg.sheet]
 	}
-	return stowed, tea.Batch(stowed.notify(msg.name+" is written"), stowed.readFiles())
+	return stowed, tea.Batch(stowed.notify(msg.name+" is saved"), stowed.readFiles())
+}
+
+// confirmOverwrite asks before writing over a file that is already there. The
+// name was typed on purpose, so refusing outright answers a question nobody
+// asked; what is worth asking is whether what is in the file may go.
+func (m Model) confirmOverwrite(msg wroteFileMsg) (Model, tea.Cmd) {
+	dialog := ask(m.theme, "overwrite "+msg.name+"?",
+		"what is in it now is replaced by what is in this tab",
+		overwriteFileMsg{sheet: msg.sheet, name: msg.name})
+	dialog.danger = true
+	m.modal = dialog
+	return m, nil
+}
+
+// overwritten writes over the file, now that it has been asked about.
+func (m Model) overwritten(msg overwriteFileMsg) (Model, tea.Cmd) {
+	return m, m.writeFile(msg.sheet, msg.name, m.body4Sheet(msg.sheet))
+}
+
+// body4Sheet is what one tab holds, wherever it is in the list.
+func (m Model) body4Sheet(at int) string {
+	sheets := m.eachSheet()
+	if at < 0 || at >= len(sheets) {
+		return ""
+	}
+	return sheets[at].editor.Value()
 }
 
 // confirmDeleteFile asks before taking a statement away, because nothing else

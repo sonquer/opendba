@@ -163,6 +163,11 @@ func Write(root, name, statement string) (string, error) {
 	return path, nil
 }
 
+// ErrThere says a file of that name is on disk already. It is a question for
+// whoever asked to write it rather than an answer, so it is a sentinel the
+// caller can recognise instead of a sentence it would have to read.
+var ErrThere = errors.New("is already there")
+
 // Create puts a statement in a file that is not there yet, and refuses to
 // replace one that is.
 func Create(root, name, statement string) (string, error) {
@@ -171,7 +176,7 @@ func Create(root, name, statement string) (string, error) {
 		return "", err
 	}
 	if _, err := os.Stat(path); err == nil {
-		return "", fmt.Errorf("%s is already there", name)
+		return "", fmt.Errorf("%s %w", name, ErrThere)
 	}
 	return Write(root, name, statement)
 }

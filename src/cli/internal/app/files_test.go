@@ -272,24 +272,49 @@ func TestSavingATabWithNoFileAsksForAName(t *testing.T) {
 	}
 }
 
-func TestSavingOverAFileThatIsAlreadyThereIsRefused(t *testing.T) {
+// Saving under a name that is already taken asks whether to write over it. The
+// name was typed on purpose, so refusing outright answered a question nobody
+// had asked and left the statement nowhere.
+func TestSavingOverAFileThatIsAlreadyThereAsksFirst(t *testing.T) {
 	m, root := seeded(t)
 	typed := typeInto(t, m, "SELECT 3")
 	asked := pressed(t, typed, "ctrl+s")
 	named := typeInto(t, asked, "daily")
-	written := pressed(t, named, "enter")
+	questioned := pressed(t, named, "enter")
+
+	if questioned.modal == nil {
+		t.Fatal("a name that is taken must be asked about")
+	}
+	view := plain(questioned.modal.view(80))
+	if !strings.Contains(view, "overwrite daily.sql?") {
+		t.Errorf("dialog = %s", view)
+	}
+	if !questioned.modal.danger {
+		t.Error("and asked in the colour of something that costs")
+	}
 	held, err := os.ReadFile(filepath.Join(root, "daily.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(held) != "SELECT 1" {
-		t.Errorf("the file was replaced anyway, holds %q", held)
+		t.Errorf("nothing is written until it is answered, holds %q", held)
 	}
-	if written.file != "" {
-		t.Error("a refused save must not claim the file")
+
+	left := pressed(t, questioned, "esc")
+	if left.modal != nil || left.file != "" {
+		t.Error("esc leaves the file and the tab alone")
 	}
-	if len(written.notes) == 0 {
-		t.Error("a refused save must say so")
+
+	written := pressed(t, questioned, "enter")
+	after, err := os.ReadFile(filepath.Join(root, "daily.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != "SELECT 3" {
+		t.Errorf("enter writes over it, holds %q", after)
+	}
+	if written.file != "daily.sql" || written.kind != sheetFile {
+		t.Errorf("and the tab is now that file: %q %v", written.file, written.kind)
 	}
 }
 

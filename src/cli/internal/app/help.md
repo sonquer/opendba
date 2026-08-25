@@ -26,7 +26,8 @@ into it. `i` writes a name into the statement, `space` opens a table's columns.
 Under the schema is FILES: the `.sql` files kept beside this connection.
 `enter` or a click opens one in a tab of its own, or moves to the tab it is
 already in. `ctrl+s` writes the tab back to its file, asking for a name the
-first time; a tab holding something its file does not is marked with a `*`.
+first time and asking again before it writes over a name that is taken; a tab
+holding something its file does not is marked with a `*`.
 `ctrl+x` removes a file after asking. They live in `sql/<connection>/` under the
 data directory unless "sql files" in the settings names somewhere else.
 
@@ -47,9 +48,10 @@ writes everything the statement returns rather than the rows on screen, which
 means running the statement again; the dialog says so and asks. A statement that
 changes data is never run twice.
 
-`y` copies the value under the cursor and `Y` the row. Dragging over a result
-selects rows and letting go copies them. Copying uses OSC 52, which tmux ignores
-unless `set -g set-clipboard on`.
+`y` copies the value under the cursor and `Y` the row. Clicking one row opens
+that record on a page of its own, since a row wider than the screen is a row you
+want to read first; dragging across several selects them, and letting go copies
+them. Copying uses OSC 52, which tmux ignores unless `set -g set-clipboard on`.
 
 While the program is reading the mouse your terminal cannot select text with it.
 "mouse on or off" in this list hands it back.

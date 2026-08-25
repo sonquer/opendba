@@ -438,6 +438,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.saveNamed(msg)
 	case wroteFileMsg:
 		return m.wroteFile(msg)
+	case overwriteFileMsg:
+		return m.overwritten(msg)
 	case deleteFileMsg:
 		return m, m.removeFile(msg)
 	case deletedFileMsg:
