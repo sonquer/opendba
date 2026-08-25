@@ -1239,6 +1239,7 @@ func (m Model) at(width int) ui.List {
 	list := m.lists[m.which()]
 	return ui.List{
 		Cursor: m.listing, Width: width, Sort: list.column, Reversed: list.reversed,
+		Offset: m.offset, Height: ui.BodyHeight(m.height),
 	}
 }
 

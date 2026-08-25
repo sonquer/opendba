@@ -8,13 +8,14 @@ import (
 
 func PostgreSQL() Dialect {
 	return grammar{
-		name:          "postgres",
-		statementRule: "stmt",
-		analyzeRule:   "analyze_keyword",
-		rules:         postgresRules,
-		prefixes:      postgresPrefixes,
-		refinements:   postgresRefinements,
-		parse:         parsePostgres,
+		name:        "postgres",
+		statements:  []string{"stmt"},
+		suffix:      "stmt",
+		analyzeRule: "analyze_keyword",
+		rules:       postgresRules,
+		prefixes:    postgresPrefixes,
+		refinements: postgresRefinements,
+		parse:       parsePostgres,
 	}
 }
 
@@ -55,7 +56,7 @@ var postgresRules = map[string]semantics{
 	"dropownedstmt":           {kind: KindDrop, mutating: true},
 
 	"into_clause":        {materializes: true},
-	"createtableasstmt":  {kind: KindCreate, mutating: true, materializes: true},
+	"createasstmt":       {kind: KindCreate, mutating: true, materializes: true},
 	"for_locking_clause": {locking: true},
 
 	"copystmt":           {kind: KindCopy, refusal: "COPY moves data between the server and files"},
@@ -92,7 +93,7 @@ var postgresRules = map[string]semantics{
 	"dropsubscriptionstmt":   {kind: KindDrop, mutating: true, refusal: replication},
 }
 
-// outsideTransaction is the refusal for a statement PostgreSQL only runs on its
+// outsideTransaction is the refusal for a statement a server only runs on its
 // own, which opendba has nowhere to put.
 func outsideTransaction(name string) string {
 	return name + " cannot run inside a transaction, and opendba runs every statement in one"

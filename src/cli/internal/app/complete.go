@@ -17,7 +17,7 @@ const (
 )
 
 var keywords = []string{
-	"SELECT", "FROM", "WHERE", "GROUP BY", "HAVING", "ORDER BY", "LIMIT", "OFFSET",
+	"SELECT", "TOP", "FROM", "WHERE", "GROUP BY", "HAVING", "ORDER BY", "LIMIT", "OFFSET",
 	"JOIN", "LEFT JOIN", "INNER JOIN", "ON", "AS", "AND", "OR", "NOT", "NULL", "IS",
 	"IN", "LIKE", "BETWEEN", "DISTINCT", "COUNT", "SUM", "AVG", "MIN", "MAX",
 	"WITH", "UNION", "EXPLAIN", "CASE", "WHEN", "THEN", "ELSE", "END", "DESC", "ASC",

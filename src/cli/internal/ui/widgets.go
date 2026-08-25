@@ -46,13 +46,29 @@ const pathSeparator = " › "
 // have.
 func Slashed(parts ...string) string { return join(pathSeparator, parts) }
 
+// modeWidth is what every access mode badge is drawn in, so that a list of them
+// reads down as one column rather than as blocks of two sizes.
+const modeWidth = 12
+
 // Mode is the one word on the header that changes what this program will do, so
 // it is a label rather than a remark.
 func (t *Theme) Mode(mode string) string {
+	word := centred(mode, modeWidth)
 	if strings.EqualFold(mode, ReadOnlyLabel) {
-		return t.BadgeStyle.Render(mode)
+		return t.BadgeStyle.Render(word)
 	}
-	return t.BadgeStyle.Background(t.P.Warn).Render(mode)
+	return t.BadgeStyle.Background(t.P.Warn).Render(word)
+}
+
+// centred sets a word in the middle of a fixed width, leaving a word too long
+// for it alone.
+func centred(word string, width int) string {
+	room := width - lipgloss.Width(word)
+	if room <= 0 {
+		return word
+	}
+	left := room / 2
+	return strings.Repeat(" ", left) + word + strings.Repeat(" ", room-left)
 }
 
 // TabRun names the connection a run of tabs is worked through, in the colour
@@ -214,6 +230,11 @@ func (t *Theme) KV(label string, labelWidth int, value string) string {
 
 func Dotted(parts ...string) string { return join(" · ", parts) }
 
+// Spaced joins the parts of a remark with room between them rather than a
+// separator, for a line that already carries a badge and does not want punctuation
+// competing with it.
+func Spaced(parts ...string) string { return join("  ", parts) }
+
 // Hint is one key and what pressing it does.
 type Hint struct{ Key, Does string }
 
@@ -338,11 +359,23 @@ type Head struct {
 // Rows draws a list of them under their headings, every column measured across
 // the whole list so the numbers line up and a long name cannot push one row out
 // of step.
-func (t *Theme) Rows(list []Listing, head Head, width int) string {
+// undrawn is the line a row nobody will see leaves behind. It is a space rather
+// than nothing at all, because trailing blank lines are trimmed off a rendered
+// screen and a list whose last rows were trimmed could not be scrolled to.
+const undrawn = " "
+
+// Rows draws a list under its heading. Every row takes a line whether or not it
+// is on screen, so the list is as long as it says it is, but a row nobody will
+// see is left blank rather than dressed.
+func (t *Theme) Rows(list []Listing, head Head, width int, seen List) string {
 	shape := listingColumns(list, head, width)
 	lines := make([]string, 0, len(list)+2)
 	lines = append(lines, t.heading(head, shape, width), t.Rule(width))
-	for _, row := range list {
+	for i, row := range list {
+		if !seen.Seen(i) {
+			lines = append(lines, undrawn)
+			continue
+		}
 		lines = append(lines, t.row(row, shape, width))
 	}
 	return strings.Join(lines, "\n")

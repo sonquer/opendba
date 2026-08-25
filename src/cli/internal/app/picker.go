@@ -20,6 +20,10 @@ type row struct {
 	depth   int
 	current bool
 	on      bool
+
+	// badge is the one word about a row that is drawn rather than said: it is
+	// already styled, so it is neither muted nor clipped with the remark.
+	badge string
 }
 
 // picker is the list every screen shares: a cursor that wraps, sections that
@@ -90,22 +94,43 @@ func (p picker) view(width int) string {
 			}
 			lines = append(lines, p.theme.Section(section, p.hints[section], width), "")
 		}
-		lines = append(lines, p.line(item, width, i == p.cursor))
+		lines = append(lines, p.line(item, width, i == p.cursor, p.column()))
 	}
 	return strings.Join(lines, "\n")
 }
 
-func (p picker) line(item row, width int, active bool) string {
+// column is how wide the labels are drawn, so that what follows them stands in
+// one place down the list rather than wherever each label happened to end. A
+// list with nothing to stand after its labels has no column to keep.
+func (p picker) column() int {
+	widest := 0
+	for _, item := range p.rows {
+		if item.badge == "" {
+			continue
+		}
+		widest = max(widest, lipgloss.Width(item.label)+2*item.depth)
+	}
+	return widest
+}
+
+func (p picker) line(item row, width int, active bool, column int) string {
 	marker := "  "
-	label := p.theme.Value.Render(item.label)
+	style := p.theme.Value
 	switch {
 	case active:
 		marker = p.theme.Accent.Render("▌ ")
-		label = p.theme.Accent.Render(item.label)
+		style = p.theme.Accent
 	case item.current, item.on:
-		label = p.theme.Accent.Render(item.label)
+		style = p.theme.Accent
+	}
+	label := style.Render(item.label)
+	if column > 0 {
+		label = style.Render(item.label + strings.Repeat(" ", max(column-lipgloss.Width(item.label)-2*item.depth, 0)))
 	}
 	left := marker + strings.Repeat("  ", item.depth) + p.box(item, active) + label
+	if item.badge != "" {
+		left += "  " + item.badge
+	}
 	right := p.aside(item, max(width-lipgloss.Width(left)-2, 8))
 	if right == "" {
 		return left

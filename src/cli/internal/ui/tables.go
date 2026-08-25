@@ -74,6 +74,28 @@ type List struct {
 	// Busiest is the scans of the busiest index on each table, measured before any
 	// filter was applied.
 	Busiest map[string]int64
+
+	// Offset and Height are the part of the screen the rows are drawn into. A
+	// list that names them keeps every row's line, so its length and its
+	// scrolling are unchanged, but only draws the rows that will be seen: a
+	// catalogue of several thousand rows would otherwise be dressed end to end
+	// for every keystroke.
+	Offset int
+	Height int
+}
+
+// lead is how many rows above the window are drawn anyway, so that what a screen
+// puts above its rows does not have to be counted here.
+const lead = 8
+
+// Seen reports whether a row at this index is worth drawing in full. A list that
+// was not told how much of it will be seen draws all of it, which is what a
+// report written to a file wants.
+func (l List) Seen(index int) bool {
+	if l.Height <= 0 {
+		return true
+	}
+	return index >= l.Offset-lead && index < l.Offset+l.Height
 }
 
 // Sorted marks the column a list is in the order of, so a heading says what
@@ -113,7 +135,7 @@ func (t *Theme) TableList(tables []driver.Table, list List) string {
 			list.Sorted(1, "rows"), list.Sorted(2, "size"), list.Sorted(3, "indexes"),
 		},
 		Gauge: list.Sorted(4, "read from memory"),
-	}, width)
+	}, width, list)
 }
 
 // cached says what the bar on a table row is measuring, in the words of what
@@ -159,7 +181,7 @@ func (t *Theme) IndexList(indexes []driver.Index, list List) string {
 		},
 		Gauge: list.Sorted(4, "share of its table"),
 		Note:  "why",
-	}, width)
+	}, width, list)
 }
 
 // Busiest is the scans of the busiest index on each table, which is what every

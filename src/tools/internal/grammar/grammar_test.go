@@ -59,19 +59,21 @@ func TestRewritePackage(t *testing.T) {
 	}
 }
 
-func TestSpecsCoverBothDialects(t *testing.T) {
+func TestSpecsCoverEveryDialect(t *testing.T) {
 	specs := Specs(filepath.Join("root", "src", "cli"))
-	if len(specs) != 2 {
+	if len(specs) != 3 {
 		t.Fatalf("specs = %+v", specs)
 	}
-	if specs[0].Dialect != "postgresql" || specs[1].Dialect != "sqlite" {
+	if specs[0].Dialect != "postgresql" || specs[1].Dialect != "sqlite" || specs[2].Dialect != "tsql" {
 		t.Errorf("unexpected dialects: %+v", specs)
 	}
 	if !strings.HasSuffix(specs[0].Dir, filepath.Join("internal", "parser", "generated", "postgresql")) {
 		t.Errorf("postgresql directory = %q", specs[0].Dir)
 	}
-	if len(specs[1].Bases) != 0 {
-		t.Errorf("sqlite grammar needs no base classes, got %v", specs[1].Bases)
+	for _, spec := range specs[1:] {
+		if len(spec.Bases) != 0 {
+			t.Errorf("the %s grammar needs no base classes, got %v", spec.Dialect, spec.Bases)
+		}
 	}
 }
 
@@ -352,12 +354,14 @@ func TestAppGeneratesEveryDialect(t *testing.T) {
 	if code := app.Run(context.Background(), nil); code != ExitOK {
 		t.Fatalf("exit = %d", code)
 	}
-	if len(runner.calls) != 2 {
-		t.Fatalf("antlr ran %d times, want 2", len(runner.calls))
+	if len(runner.calls) != 3 {
+		t.Fatalf("antlr ran %d times, want 3", len(runner.calls))
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "postgresql:") || !strings.Contains(out, "sqlite:") {
-		t.Errorf("output = %q", out)
+	for _, dialect := range []string{"postgresql:", "sqlite:", "tsql:"} {
+		if !strings.Contains(out, dialect) {
+			t.Errorf("output = %q, want it to mention %s", out, dialect)
+		}
 	}
 }
 

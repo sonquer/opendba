@@ -1,7 +1,7 @@
 <h1 align="center">OPENDBA</h1>
 
 <p align="center">
-  <b>A terminal workbench for PostgreSQL and SQLite.</b><br>
+  <b>A terminal workbench for PostgreSQL, SQL Server and SQLite.</b><br>
   <i>Know where you are. Know what you are running.</i>
 </p>
 
@@ -205,8 +205,13 @@ keyboard prints them.
 
 - **Relations** are on the driver interface and both drivers implement them, but
   nothing calls them yet.
-- **MySQL, MariaDB and SQL Server** are planned behind the same driver
-  interface. Only PostgreSQL and SQLite exist.
+- **MySQL and MariaDB** are planned behind the same driver interface.
+  PostgreSQL, SQL Server and SQLite exist.
+- **SQL Server has one fewer safety layer than PostgreSQL.** There is no session
+  setting that makes a connection read only and no statement timeout the server
+  enforces, so a read only profile there rests on the client-side classifier and
+  on the permissions of the login, and a statement deadline is the client's
+  alone. Connect as a login that cannot write.
 
 Not planned: a web interface, migrations, backup and restore, or anything that
 writes to your database without you typing it first.
@@ -225,6 +230,7 @@ go run ./src/tools/cmd/dev check --ci
 
 [Bubble Tea, Bubbles, Lip Gloss and Glamour](https://charm.land) for the
 interface, [pgx](https://github.com/jackc/pgx) for PostgreSQL,
+[go-mssqldb](https://github.com/microsoft/go-mssqldb) for SQL Server,
 [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) for SQLite with no
 cgo, [ANTLR](https://www.antlr.org) for the grammars, and
 [go-keyring](https://github.com/zalando/go-keyring) and

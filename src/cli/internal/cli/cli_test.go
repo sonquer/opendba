@@ -107,13 +107,13 @@ func localConnection(t *testing.T) config.Connection {
 func TestRegistryOffersOnlyWhatIsImplemented(t *testing.T) {
 	registry := Registry()
 	entries := registry.Entries()
-	if len(entries) != 2 {
+	if len(entries) != 3 {
 		t.Fatalf("entries = %+v", entries)
 	}
-	if entries[0].Name != "postgres" || entries[1].Name != "sqlite" {
+	if entries[0].Name != "postgres" || entries[1].Name != "sqlite" || entries[2].Name != "mssql" {
 		t.Fatalf("entries = %+v", entries)
 	}
-	for _, name := range []string{"mysql", "mariadb", "sqlserver"} {
+	for _, name := range []string{"mysql", "mariadb", "oracle"} {
 		if _, err := registry.Get(name); err == nil {
 			t.Errorf("%s is not implemented and must not be offered", name)
 		}
@@ -1020,5 +1020,17 @@ func TestAWriteNeedsYes(t *testing.T) {
 	}
 	if !strings.Contains(h.stderr.String(), "--yes") {
 		t.Errorf("the refusal must say how to answer: %s", h.stderr.String())
+	}
+}
+
+// TestEveryDriverHasADialectUnderTheSameName is the link a session depends on:
+// it looks a driver up and its SQL dialect up with one string, so a driver
+// whose dialect is registered under another name cannot be opened at all.
+func TestEveryDriverHasADialectUnderTheSameName(t *testing.T) {
+	dialects := sqldialect.Default()
+	for _, entry := range Registry().Entries() {
+		if _, err := dialects.Get(entry.Name); err != nil {
+			t.Errorf("driver %q has no dialect: %v", entry.Name, err)
+		}
 	}
 }

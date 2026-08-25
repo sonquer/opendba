@@ -5,7 +5,7 @@ large values stored beside them.
 
 ## What it cannot tell you
 
-How much room is left. No built-in PostgreSQL function reports free disk space
+How much room is left. No built-in function on either server reports free disk space
 or the size of the filesystem, and the ones that come closest are for
 superusers and answer about files rather than about the disk they sit on.
 

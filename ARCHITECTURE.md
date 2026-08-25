@@ -26,6 +26,7 @@ src/cli/
   internal/driver/             the driver interface and its registry
   internal/driver/postgres/    pgx
   internal/driver/sqlite/      modernc.org/sqlite, also the test database
+  internal/driver/mssql/       microsoft/go-mssqldb
   internal/ai/                 the assistant: agent, tools, providers
   internal/chats/              conversations
   internal/history/            query history
@@ -87,7 +88,9 @@ driver that cannot measure something reports a negative number, never zero —
 zero means measured and empty.
 
 Adding one means adding a package, registering it in `cli.Registry`, and adding
-its dialect to `pkg/sqldialect`. It does not mean touching the interface.
+its dialect to `pkg/sqldialect`. It does not mean touching the interface. What
+shape a profile has — a file or a host, and which port — is read off
+`Capabilities` too, so the setup wizard does not know any driver's name either.
 
 ## The assistant
 

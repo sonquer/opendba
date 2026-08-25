@@ -66,11 +66,12 @@ double, it runs in-process via `modernc.org/sqlite` with no cgo, and an
 in-memory instance costs nothing to create. Driver contract tests run against
 it.
 
-The PostgreSQL driver is structured so its logic is testable without a server:
-SQL construction, row mapping, DSN handling, session pinning and health
-thresholds are pure functions, and everything touching the wire goes through a
-narrow interface that tests fake with `pgxmock`. Tests that genuinely need a
-live PostgreSQL read `OPENDBA_TEST_DSN` and **skip** when it is unset.
+The PostgreSQL and SQL Server drivers are structured so their logic is testable
+without a server: SQL construction, row mapping, DSN handling, session pinning,
+showplan parsing and health thresholds are pure functions, and everything
+touching the wire goes through a fake driver — `pgxmock` for pgx, `go-sqlmock`
+for `database/sql`. Tests that genuinely need a live server read
+`OPENDBA_TEST_DSN` or `OPENDBA_TEST_MSSQL_DSN` and **skip** when it is unset.
 
 ### The one exception
 
@@ -151,7 +152,9 @@ output for a canary password.
 
 No `if driver == "postgres"` outside `internal/driver/postgres`. Screens ask the
 driver for its `Capabilities` and degrade gracefully; they never branch on a
-driver name. Adding a driver means adding a package, registering it in
+driver name. That includes the setup wizard: whether a profile wants a file or a
+host, and which port it offers, are `Capabilities.FileBased` and
+`Capabilities.DefaultPort`. Adding a driver means adding a package, registering it in
 `cli.Registry`, and adding its dialect to `sqldialect`, not touching the UI.
 
 A driver that cannot measure something reports a negative number, never zero.

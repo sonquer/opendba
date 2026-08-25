@@ -31,6 +31,7 @@ func (Driver) Capabilities() driver.Capabilities {
 		Health:          true,
 		ReadOnlySession: true,
 		Cancel:          true,
+		FileBased:       true,
 	}
 }
 

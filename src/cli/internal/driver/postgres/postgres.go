@@ -47,6 +47,7 @@ func (Driver) Capabilities() driver.Capabilities {
 		ReadOnlySession: true,
 		Cancel:          true,
 		Sessions:        true,
+		DefaultPort:     DefaultPort,
 	}
 }
 

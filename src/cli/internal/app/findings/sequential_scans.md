@@ -15,6 +15,7 @@ type, or asks for a pattern that cannot use it.
 
 ## What to do
 
-Find the tables doing it: `pg_stat_user_tables` ranks them by `seq_scan` and
+Find the tables doing it: the catalogue screen ranks them by how they are
+reached, and on PostgreSQL `pg_stat_user_tables` ranks them by `seq_scan` and
 `seq_tup_read`. Run the query with `EXPLAIN` and look for `Seq Scan` on a table
 with more than a few thousand rows.

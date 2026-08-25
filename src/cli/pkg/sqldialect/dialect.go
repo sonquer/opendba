@@ -34,6 +34,7 @@ const (
 	KindPrepared    Kind = "PREPARED"
 	KindSession     Kind = "SESSION"
 	KindPragma      Kind = "PRAGMA"
+	KindBatch       Kind = "BATCH"
 )
 
 // Statement is what one parsed statement means for safety: the kind it is, what
@@ -143,7 +144,7 @@ func NewFactory(dialects ...Dialect) *Factory {
 }
 
 // Default returns a factory holding every dialect opendba ships with.
-func Default() *Factory { return NewFactory(PostgreSQL(), SQLite()) }
+func Default() *Factory { return NewFactory(PostgreSQL(), SQLite(), MSSQL()) }
 
 // Register adds a dialect, replacing any dialect registered under the same name.
 func (f *Factory) Register(dialect Dialect) { f.dialects[strings.ToLower(dialect.Name())] = dialect }

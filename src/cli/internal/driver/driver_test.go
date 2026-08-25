@@ -164,3 +164,23 @@ func TestFinishReportsTheFirstThingThatWentWrong(t *testing.T) {
 		})
 	}
 }
+
+func TestDeadRowsThatWereNotCounted(t *testing.T) {
+	cases := map[string]Table{
+		"no statistics at all":     {LiveRows: 90, DeadRows: 10},
+		"dead rows not measurable": {Stats: true, LiveRows: 90, DeadRows: -1},
+		"live rows not measurable": {Stats: true, LiveRows: -1, DeadRows: 10},
+		"an empty table":           {Stats: true},
+	}
+	for name, table := range cases {
+		t.Run(name, func(t *testing.T) {
+			if share, counted := table.Dead(); counted {
+				t.Errorf("Dead() = %v, true; a share that was not counted must say so", share)
+			}
+		})
+	}
+	counted := Table{Stats: true, LiveRows: 90, DeadRows: 10}
+	if share, ok := counted.Dead(); !ok || share != 0.1 {
+		t.Errorf("Dead() = %v, %v, want 0.1, true", share, ok)
+	}
+}

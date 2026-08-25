@@ -10,7 +10,7 @@ the server running out of anything: it is two pieces of code taking the same
 locks in a different order.
 
 The classic shape is two transactions updating the same two rows, one in each
-order. Neither can finish, so PostgreSQL picks one and cancels it.
+order. Neither can finish, so the server picks one and cancels it.
 
 ## What to do
 

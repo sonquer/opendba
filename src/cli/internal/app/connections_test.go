@@ -112,7 +112,7 @@ func TestTheConnectionsScreenListsTheProfiles(t *testing.T) {
 	workspace := workspaceWith(t)
 	m := browsing(t, workspace)
 	view := plain(m.content())
-	for _, want := range []string{"production-eu", "staging", "db.example.com:5432", "read only", "open"} {
+	for _, want := range []string{"production-eu", "staging", "db.example.com:5432", "READ ONLY", "open"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the list must show %q:\n%s", want, view)
 		}
@@ -438,7 +438,7 @@ func TestTheConnectionListSaysWhatIsKnown(t *testing.T) {
 	browsing, cmd := m.openSwitcher()
 	shown := settle(t, browsing.(Model), cmd)
 	view := plain(shown.content())
-	for _, want := range []string{"production-eu", "sqlite", "read only", "2 running"} {
+	for _, want := range []string{"production-eu", "sqlite", "READ ONLY", "2 running"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the list must say %q:\n%s", want, view)
 		}
@@ -698,4 +698,27 @@ func on4Switch(t *testing.T, m Model, wanted string) Model {
 	}
 	t.Fatalf("there is no row %q", wanted)
 	return m
+}
+
+// TestAConnectionRowWearsItsAccessModeAsABadge pins the one thing on the row
+// that says what this program will let you do, in the same badge the header
+// carries it in.
+func TestAConnectionRowWearsItsAccessModeAsABadge(t *testing.T) {
+	workspace := workspaceWith(t)
+	m := browsing(t, workspace)
+	view := plain(m.content())
+	for _, want := range []string{"READ ONLY", "READ / WRITE"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the list must badge %q:\n%s", want, view)
+		}
+	}
+	rows := strings.Split(view, "\n")
+	for _, line := range rows {
+		if !strings.Contains(line, "READ") {
+			continue
+		}
+		if strings.Contains(line, " · ") {
+			t.Errorf("a connection row separates with room, not punctuation: %q", line)
+		}
+	}
 }

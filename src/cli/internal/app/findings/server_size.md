@@ -5,7 +5,7 @@ one you are connected to.
 
 ## What it cannot tell you
 
-How much room is left on the machine. No built-in PostgreSQL function reports
+How much room is left on the machine. No built-in function reports
 free disk space or the size of the filesystem. The functions that come closest,
 `pg_ls_dir` and `pg_stat_file`, are for superusers and answer about files
 rather than about the disk they sit on.

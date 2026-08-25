@@ -8,13 +8,14 @@ import (
 
 func SQLite() Dialect {
 	return grammar{
-		name:          "sqlite",
-		statementRule: "sql_stmt",
-		explainToken:  "EXPLAIN",
-		explainSafe:   true,
-		rules:         sqliteRules,
-		prefixes:      sqlitePrefixes,
-		parse:         parseSQLite,
+		name:         "sqlite",
+		statements:   []string{"sql_stmt"},
+		suffix:       "stmt",
+		explainToken: "EXPLAIN",
+		explainSafe:  true,
+		rules:        sqliteRules,
+		prefixes:     sqlitePrefixes,
+		parse:        parseSQLite,
 	}
 }
 
@@ -30,14 +31,11 @@ func parseSQLite(input antlr.CharStream, listener antlr.ErrorListener) (antlr.Tr
 }
 
 var sqliteRules = map[string]semantics{
-	"select_stmt":  {kind: KindSelect},
-	"explain_stmt": {kind: KindExplain},
+	"select_stmt": {kind: KindSelect},
 
-	"insert_stmt":         {kind: KindInsert, mutating: true},
-	"update_stmt":         {kind: KindUpdate, mutating: true},
-	"delete_stmt":         {kind: KindDelete, mutating: true},
-	"update_stmt_limited": {kind: KindUpdate, mutating: true},
-	"delete_stmt_limited": {kind: KindDelete, mutating: true},
+	"insert_stmt": {kind: KindInsert, mutating: true},
+	"update_stmt": {kind: KindUpdate, mutating: true},
+	"delete_stmt": {kind: KindDelete, mutating: true},
 
 	"begin_stmt":     {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},
 	"commit_stmt":    {kind: KindTransaction, refusal: "opendba owns transaction boundaries"},

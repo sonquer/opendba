@@ -12,6 +12,7 @@ import (
 
 	"github.com/sonquer/opendba/src/cli/internal/config"
 	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver/mssql"
 	"github.com/sonquer/opendba/src/cli/internal/driver/postgres"
 	"github.com/sonquer/opendba/src/cli/pkg/secretref"
 )
@@ -147,6 +148,8 @@ type DSN struct {
 
 func SplitDSN(dsn string) (string, []byte, error) { return postgres.Split(dsn) }
 
+// ParseDSN reads a pasted connection string. Which server it names is taken
+// from its scheme, because that is the only thing in the string that says.
 func ParseDSN(dsn string) (DSN, error) {
 	parsed, err := url.Parse(strings.TrimSpace(dsn))
 	if err != nil {
@@ -155,10 +158,16 @@ func ParseDSN(dsn string) (DSN, error) {
 	if parsed.Host == "" {
 		return DSN{}, fmt.Errorf("the connection string needs a host")
 	}
+	query := parsed.Query()
 	result := DSN{
 		Host:     parsed.Hostname(),
 		Database: strings.TrimPrefix(parsed.Path, "/"),
-		SSLMode:  parsed.Query().Get("sslmode"),
+		SSLMode:  query.Get("sslmode"),
+	}
+	sqlServer := strings.EqualFold(parsed.Scheme, mssql.Scheme)
+	if sqlServer {
+		result.Database = query.Get("database")
+		result.SSLMode = encryptionMode(query.Get("encrypt"))
 	}
 	if parsed.User != nil {
 		result.User = parsed.User.Username()
@@ -171,10 +180,32 @@ func ParseDSN(dsn string) (DSN, error) {
 		result.Port = number
 	}
 	if result.Port == 0 {
-		result.Port = postgres.DefaultPort
+		result.Port = defaultPort(sqlServer)
 	}
 	if result.SSLMode == "" {
 		result.SSLMode = "prefer"
 	}
 	return result, nil
+}
+
+func defaultPort(sqlServer bool) int {
+	if sqlServer {
+		return mssql.DefaultPort
+	}
+	return postgres.DefaultPort
+}
+
+// encryptionMode turns the way SQL Server words a TLS setting into the way the
+// profile stores one.
+func encryptionMode(encrypt string) string {
+	switch strings.ToLower(encrypt) {
+	case "disable":
+		return "disable"
+	case "true", "mandatory", "yes", "1", "t", "strict":
+		return "require"
+	case "false", "optional", "no", "0", "f":
+		return "prefer"
+	default:
+		return ""
+	}
 }

@@ -18,6 +18,14 @@ type Capabilities struct {
 	ReadOnlySession bool
 	Cancel          bool
 	Sessions        bool
+
+	// FileBased is a driver that opens a file rather than reaching a server, which
+	// is what decides whether a profile is asked for a path or for a host.
+	FileBased bool
+
+	// DefaultPort is the port a server of this kind listens on unless it was
+	// moved. A file based driver has none.
+	DefaultPort int
 }
 
 type Timeouts struct {
@@ -269,10 +277,11 @@ func (i Index) Health() Severity {
 }
 
 // Dead is the share of rows that are dead: updated or deleted, still on disk,
-// and read past by everything until a vacuum removes them.
+// and read past by everything until a vacuum removes them. A server with no
+// such rows to count reports a negative number, and has no share to report.
 func (t Table) Dead() (float64, bool) {
 	total := t.LiveRows + t.DeadRows
-	if !t.Stats || total == 0 {
+	if !t.Stats || t.DeadRows < 0 || t.LiveRows < 0 || total <= 0 {
 		return 0, false
 	}
 	return float64(t.DeadRows) / float64(total), true

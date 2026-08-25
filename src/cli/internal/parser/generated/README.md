@@ -7,6 +7,7 @@ them. **Nothing here is written by hand and nothing here should be edited.**
 |---|---|---|
 | `postgresql/` | `PostgreSQLLexer.g4`, `PostgreSQLParser.g4` | [antlr/grammars-v4](https://github.com/antlr/grammars-v4/tree/master/sql/postgresql) |
 | `sqlite/` | `SQLiteLexer.g4`, `SQLiteParser.g4` | [antlr/grammars-v4](https://github.com/antlr/grammars-v4/tree/master/sql/sqlite) |
+| `tsql/` | `TSqlLexer.g4`, `TSqlParser.g4` | [antlr/grammars-v4](https://github.com/antlr/grammars-v4/tree/master/sql/tsql) |
 
 The `.g4` files are vendored byte for byte from upstream, including their
 copyright headers, so that updating them is a readable diff. The Go target needs

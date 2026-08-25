@@ -110,6 +110,7 @@ func (m Model) rows4Switch() []row {
 			cap:     cap4Session(i),
 			current: open.id == m.id,
 			section: sectionOpen,
+			badge:   m.theme.Mode(open.session.Connection.Mode.Label()),
 		})
 	}
 	for _, connection := range m.configured {
@@ -118,6 +119,7 @@ func (m Model) rows4Switch() []row {
 			label:   connection.Name,
 			note:    m.told4Profile(connection),
 			section: sectionConfigured,
+			badge:   m.theme.Mode(connection.Mode.Label()),
 		})
 	}
 	return m.matching4Switch(rows)
@@ -128,8 +130,7 @@ func (m Model) rows4Switch() []row {
 // the label, which already says the server and the database.
 func (m Model) told4Link(open link) string {
 	tabs, _ := m.holding4Link(open.id)
-	return ui.Dotted(open.session.Connection.Driver,
-		strings.ToLower(open.session.Connection.Mode.Label()),
+	return ui.Spaced(open.session.Connection.Driver,
 		ui.Plural(tabs, "tab", "tabs"), m.busy4Links()[open.id])
 }
 
@@ -149,8 +150,7 @@ func (m Model) told4Profile(connection config.Connection) string {
 	if standing > 0 {
 		held = ui.Plural(standing, "session", "sessions")
 	}
-	return ui.Dotted(connection.Driver, strings.ToLower(connection.Mode.Label()),
-		cli.Target(connection), held)
+	return ui.Spaced(connection.Driver, cli.Target(connection), held)
 }
 
 // matching4Switch drops the rows the filter does not name. A section with

@@ -25,15 +25,35 @@ type prefixRule struct {
 type refinement func(ctx antlr.ParserRuleContext) semantics
 
 type grammar struct {
-	name          string
-	statementRule string
-	analyzeRule   string
-	explainToken  string
-	explainSafe   bool
-	rules         map[string]semantics
-	prefixes      []prefixRule
-	refinements   map[string]refinement
-	parse         func(input antlr.CharStream, listener antlr.ErrorListener) (antlr.Tree, []string)
+	name string
+
+	// statements are the rules that begin a statement. A grammar that spells one
+	// statement in more than one rule, as T-SQL does, names all of them.
+	statements []string
+
+	// suffix is what a rule name must end in for a prefix rule to match it, which
+	// is how a prefix stops matching the options and clauses inside the statement
+	// it names. An empty suffix is a grammar whose rule names carry no such
+	// convention.
+	suffix      string
+	analyzeRule string
+
+	explainToken string
+	explainSafe  bool
+	rules        map[string]semantics
+	prefixes     []prefixRule
+	refinements  map[string]refinement
+	parse        func(input antlr.CharStream, listener antlr.ErrorListener) (antlr.Tree, []string)
+}
+
+// opens reports whether a rule is one of the rules that begin a statement.
+func (g grammar) opens(name string) bool {
+	for _, candidate := range g.statements {
+		if candidate == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (g grammar) lookup(name string) (semantics, bool) {
@@ -41,7 +61,7 @@ func (g grammar) lookup(name string) (semantics, bool) {
 		return rule, true
 	}
 	for _, candidate := range g.prefixes {
-		if strings.HasPrefix(name, candidate.prefix) && strings.HasSuffix(name, "stmt") {
+		if strings.HasPrefix(name, candidate.prefix) && strings.HasSuffix(name, g.suffix) {
 			return candidate.rule, true
 		}
 	}
@@ -64,7 +84,25 @@ type errorCollector struct {
 }
 
 func (c *errorCollector) SyntaxError(_ antlr.Recognizer, _ any, line, column int, message string, _ antlr.RecognitionException) {
-	c.errors = append(c.errors, SyntaxError{Line: line, Column: column, Message: message})
+	c.errors = append(c.errors, SyntaxError{Line: line, Column: column, Message: readable(message)})
+}
+
+// longestMessage is how much of a parser's complaint a person can use. A parser
+// that lists every token it would have accepted lists more than a thousand of
+// them, and the part worth reading is at the front.
+const longestMessage = 90
+
+// readable shortens a parser's complaint to the part that says what is wrong,
+// dropping the list of everything that would have been right.
+func readable(message string) string {
+	if cut := strings.Index(message, " expecting {"); cut > 0 {
+		message = message[:cut]
+	}
+	runes := []rune(message)
+	if len(runes) <= longestMessage {
+		return message
+	}
+	return string(runes[:longestMessage]) + "..."
 }
 
 type statementWalker struct {
@@ -72,9 +110,14 @@ type statementWalker struct {
 	grammar    grammar
 	ruleNames  []string
 	statements []Statement
-	open       bool
-	analyzing  bool
-	explained  bool
+
+	// depth is how many statement rules are open at once. A grammar that nests a
+	// statement inside another, as T-SQL nests one inside IF and BEGIN, is one
+	// statement to the caller, and only the outermost is recorded.
+	depth     int
+	recording bool
+	analyzing bool
+	explained bool
 }
 
 func (w *statementWalker) startsWithExplain(ctx antlr.ParserRuleContext) bool {
@@ -90,11 +133,14 @@ func (w *statementWalker) startsWithExplain(ctx antlr.ParserRuleContext) bool {
 
 func (w *statementWalker) EnterEveryRule(ctx antlr.ParserRuleContext) {
 	name := w.ruleName(ctx)
-	if name == w.grammar.statementRule {
-		w.begin(ctx)
-		return
+	if w.grammar.opens(name) {
+		w.depth++
+		if w.depth > 1 {
+			return
+		}
+		w.recording = w.begin(ctx)
 	}
-	if !w.open {
+	if !w.recording {
 		return
 	}
 	if name == w.grammar.analyzeRule && w.grammar.analyzeRule != "" {
@@ -110,12 +156,16 @@ func (w *statementWalker) EnterEveryRule(ctx antlr.ParserRuleContext) {
 }
 
 func (w *statementWalker) ExitEveryRule(ctx antlr.ParserRuleContext) {
-	if w.ruleName(ctx) != w.grammar.statementRule || !w.open {
+	if !w.grammar.opens(w.ruleName(ctx)) || w.depth == 0 {
+		return
+	}
+	w.depth--
+	if w.depth > 0 || !w.recording {
 		return
 	}
 	w.close(ctx)
 	w.finish()
-	w.open = false
+	w.recording = false
 }
 
 // close records where the statement ended, which is where the last token it
@@ -148,10 +198,13 @@ func (w *statementWalker) ruleName(ctx antlr.ParserRuleContext) string {
 	return w.ruleNames[index]
 }
 
-func (w *statementWalker) begin(ctx antlr.ParserRuleContext) {
+// begin starts a statement, and reports whether there was one to start. A rule
+// holding nothing but separators is a statement the grammar allows and a person
+// did not write.
+func (w *statementWalker) begin(ctx antlr.ParserRuleContext) bool {
 	text := strings.TrimSpace(ctx.GetText())
-	if text == "" {
-		return
+	if strings.Trim(text, ";") == "" {
+		return false
 	}
 	statement := Statement{
 		Kind:    KindUnknown,
@@ -166,8 +219,8 @@ func (w *statementWalker) begin(ctx antlr.ParserRuleContext) {
 		statement.Refusal = ""
 	}
 	w.statements = append(w.statements, statement)
-	w.open = true
 	w.analyzing = false
+	return true
 }
 
 func (w *statementWalker) finish() {

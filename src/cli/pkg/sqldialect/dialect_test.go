@@ -7,13 +7,13 @@ import (
 	"github.com/antlr4-go/antlr/v4"
 )
 
-func TestDefaultFactoryKnowsBothDialects(t *testing.T) {
+func TestDefaultFactoryKnowsEveryDialect(t *testing.T) {
 	factory := Default()
 	names := factory.Names()
-	if len(names) != 2 || names[0] != "postgres" || names[1] != "sqlite" {
+	if len(names) != 3 || names[0] != "mssql" || names[1] != "postgres" || names[2] != "sqlite" {
 		t.Fatalf("Names() = %v", names)
 	}
-	for _, name := range []string{"postgres", "POSTGRES", "SQLite"} {
+	for _, name := range []string{"postgres", "POSTGRES", "SQLite", "mssql", "MSSQL"} {
 		if _, err := factory.Get(name); err != nil {
 			t.Errorf("Get(%q) = %v", name, err)
 		}
@@ -101,9 +101,9 @@ func TestStatementsCarryTheirText(t *testing.T) {
 
 func TestUnrecognisedStatementsAreRefused(t *testing.T) {
 	dialect := grammar{
-		name:          "empty",
-		statementRule: "stmt",
-		parse:         PostgreSQL().(grammar).parse,
+		name:       "empty",
+		statements: []string{"stmt"},
+		parse:      PostgreSQL().(grammar).parse,
 	}
 	analysis := dialect.Analyze("SELECT 1")
 	if len(analysis.Statements) != 1 {
@@ -188,9 +188,9 @@ func TestEmptyStatementsAreIgnored(t *testing.T) {
 func TestAGrammarWithoutRuleNamesIsInert(t *testing.T) {
 	base := PostgreSQL().(grammar)
 	broken := grammar{
-		name:          "broken",
-		statementRule: "stmt",
-		rules:         base.rules,
+		name:       "broken",
+		statements: []string{"stmt"},
+		rules:      base.rules,
 		parse: func(input antlr.CharStream, listener antlr.ErrorListener) (antlr.Tree, []string) {
 			tree, _ := base.parse(input, listener)
 			return tree, nil

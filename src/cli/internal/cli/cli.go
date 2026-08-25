@@ -12,6 +12,7 @@ import (
 	"github.com/sonquer/opendba/src/cli/internal/chats"
 	"github.com/sonquer/opendba/src/cli/internal/config"
 	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver/mssql"
 	"github.com/sonquer/opendba/src/cli/internal/driver/postgres"
 	"github.com/sonquer/opendba/src/cli/internal/driver/sqlite"
 	"github.com/sonquer/opendba/src/cli/internal/history"
@@ -102,6 +103,7 @@ func Registry() *driver.Registry {
 	registry := driver.NewRegistry()
 	registry.Register(postgres.New())
 	registry.Register(sqlite.New())
+	registry.Register(mssql.New())
 	return registry
 }
 

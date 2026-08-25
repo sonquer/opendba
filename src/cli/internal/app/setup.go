@@ -60,6 +60,10 @@ type answers struct {
 	// difference between a password field that has to be filled and one that means
 	// keep what is stored.
 	existing bool
+
+	// caps is what the chosen driver can do, which is what decides the shape of
+	// the form rather than the driver's name.
+	caps driver.Capabilities
 }
 
 const (
@@ -109,14 +113,24 @@ func EditSetupModel(setup cli.Setup, connection config.Connection) SetupModel {
 		stage:   stageDetails,
 		editing: connection,
 	}
-	values := answersFrom(connection)
+	values := answersFrom(connection, capabilities(setup, connection.Driver))
 	model.form, _ = newForm(detailsFields(&values, model.theme)...)
 	return model
 }
 
+// capabilities is what a driver says it can do, or nothing at all when the
+// profile names a driver this build does not have.
+func capabilities(setup cli.Setup, name string) driver.Capabilities {
+	target, err := setup.Registry.Get(name)
+	if err != nil {
+		return driver.Capabilities{}
+	}
+	return target.Capabilities()
+}
+
 // answersFrom reads a saved profile back into the form.
-func answersFrom(connection config.Connection) answers {
-	values := defaults()
+func answersFrom(connection config.Connection, caps driver.Capabilities) answers {
+	values := defaults(caps)
 	values.existing = true
 	values.driver = connection.Driver
 	values.name = connection.Name
@@ -135,18 +149,22 @@ func answersFrom(connection config.Connection) answers {
 	return values
 }
 
-func defaults() answers {
-	return answers{
+func defaults(caps driver.Capabilities) answers {
+	values := answers{
 		host:     "localhost",
-		port:     "5432",
 		sslmode:  "prefer",
 		readOnly: true,
 		color:    string(ui.EnvGreen),
+		caps:     caps,
 	}
+	if caps.DefaultPort > 0 {
+		values.port = strconv.Itoa(caps.DefaultPort)
+	}
+	return values
 }
 
 func (m SetupModel) snapshot() answers {
-	values := defaults()
+	values := defaults(capabilities(m.setup, m.driver))
 	values.driver = m.driver
 	values.name = m.form.valueOr("name", values.name)
 	values.readOnly = m.form.enabledOr("access", values.readOnly)
@@ -165,15 +183,41 @@ func (m SetupModel) snapshot() answers {
 	return values
 }
 
+// tested is what came back from trying the connection. Only a save finishes the
+// wizard; a test says what it found and leaves the form where it was, because a
+// test that closed the screen would throw away everything just typed into it.
 func (m SetupModel) tested(msg testedMsg) (tea.Model, tea.Cmd) {
+	m.stage = stageDetails
 	if msg.err != nil {
 		m.failure = msg.err.Error()
-		m.stage = stageDetails
 		return m, nil
 	}
 	m.failure = ""
-	done := SetupDone{Connection: m.connection, Saved: msg.saved, Info: msg.info}
+	if !msg.saved {
+		return m, m.notify(reached(msg.info, m.connection))
+	}
+	done := SetupDone{Connection: m.connection, Saved: true, Info: msg.info}
 	return m, func() tea.Msg { return done }
+}
+
+// reached is what a test that worked has to say: which server answered, as
+// whom, and whether the profile's access mode is the only thing holding it to
+// reading.
+func reached(info driver.ServerInfo, connection config.Connection) string {
+	said := "connected"
+	if info.Database != "" {
+		said += " to " + info.Database
+	}
+	if info.User != "" {
+		said += " as " + info.User
+	}
+	if info.Version != "" {
+		said += ", " + info.Version
+	}
+	if info.CanWrite && connection.Mode == config.ReadOnly {
+		said += " · the role can write, so read only is enforced by opendba alone"
+	}
+	return said
 }
 
 func driverFields(setup cli.Setup, theme *ui.Theme) []field {
@@ -204,20 +248,28 @@ func detailsFields(values *answers, theme *ui.Theme) []field {
 }
 
 func connectionFields(values *answers, theme *ui.Theme) []field {
-	if values.driver == "sqlite" {
+	if values.caps.FileBased {
 		return []field{
 			textField(theme, "file", "file", values.file, "a path, created only when the access mode allows writing").require(),
 		}
 	}
 	return []field{
 		textField(theme, "host", "host", values.host, "the server to connect to").require(),
-		textField(theme, "port", "port", values.port, "5432 unless the server was moved").require().checked(port),
+		textField(theme, "port", "port", values.port, portHint(values.caps)).require().checked(port),
 		textField(theme, "user", "user", values.user, "the role opendba connects as"),
 		secretField(theme, "password", "password", values.password, passwordHint(values.existing)),
 		textField(theme, "database", "database", values.database, "left empty the server picks its default, usually the user name"),
 		choiceField("ssl", "ssl", []string{"prefer", "require", "verify-ca", "verify-full", "disable"}, values.sslmode, "← → picks how the connection is encrypted"),
-		textField(theme, "import", "paste a url", "", "postgres://user:password@host:5432/app fills in everything above"),
+		textField(theme, "import", "paste a url", "", "a connection string fills in everything above"),
 	}
+}
+
+// portHint says which port this kind of server listens on when nobody moved it.
+func portHint(caps driver.Capabilities) string {
+	if caps.DefaultPort == 0 {
+		return "the port the server listens on"
+	}
+	return strconv.Itoa(caps.DefaultPort) + " unless the server was moved"
 }
 
 func colorNames() []string {
@@ -413,7 +465,7 @@ func connectionFrom(base config.Connection, values answers, id string) (config.C
 	if !values.readOnly {
 		connection.Mode = config.ReadWrite
 	}
-	if connection.Driver == "sqlite" {
+	if values.caps.FileBased {
 		connection.File = strings.TrimSpace(values.file)
 		return connection, nil
 	}

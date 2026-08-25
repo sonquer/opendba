@@ -15,6 +15,8 @@ import (
 	"github.com/sonquer/opendba/src/cli/internal/cli"
 	"github.com/sonquer/opendba/src/cli/internal/config"
 	"github.com/sonquer/opendba/src/cli/internal/driver"
+	"github.com/sonquer/opendba/src/cli/internal/driver/postgres"
+	"github.com/sonquer/opendba/src/cli/internal/driver/sqlite"
 	"github.com/sonquer/opendba/src/cli/internal/ui"
 )
 
@@ -89,7 +91,7 @@ func TestTheFormOffersOnlyImplementedDrivers(t *testing.T) {
 			t.Errorf("the first step must show %q:\n%s", want, view)
 		}
 	}
-	for _, unwanted := range []string{"MySQL", "coming soon", "MariaDB", "SQL Server"} {
+	for _, unwanted := range []string{"MySQL", "coming soon", "MariaDB", "Oracle"} {
 		if strings.Contains(view, unwanted) {
 			t.Errorf("the list must not promise %q", unwanted)
 		}
@@ -154,7 +156,7 @@ func TestImportingAConnectionStringFillsTheForm(t *testing.T) {
 }
 
 func TestConnectionFromTheValues(t *testing.T) {
-	values := defaults()
+	values := defaults(postgres.New().Capabilities())
 	values.driver = "postgres"
 	values.name = " production-eu "
 	values.user = "readonly"
@@ -178,6 +180,7 @@ func TestConnectionFromTheValues(t *testing.T) {
 
 	values.readOnly = false
 	values.driver = "sqlite"
+	values.caps = sqlite.New().Capabilities()
 	values.file = " /tmp/app.db "
 	connection, password = connectionFrom(config.Connection{}, values, "01K")
 	if connection.Mode != config.ReadWrite || connection.File != "/tmp/app.db" {
@@ -233,9 +236,52 @@ func TestTheWizardWarnsWhenTheRoleCanWrite(t *testing.T) {
 		t.Errorf("a read write connection has nothing to warn about: %q", warning)
 	}
 
-	_, cmd = details.tested(testedMsg{info: writable})
-	if warning := outcomeOf(t, cmd).Warning(); warning != "" {
-		t.Errorf("an unsaved connection has nothing to warn about: %q", warning)
+}
+
+// TestATestKeepsTheFormOpen is the difference between the two buttons: a test
+// reports and stays, a save reports and finishes. A test that closed the wizard
+// would throw away every field just typed into it, and save nothing.
+func TestATestKeepsTheFormOpen(t *testing.T) {
+	setup, _ := newSetup(t)
+	details := detailed(t, setup)
+	details.connection = config.Connection{Name: "production-eu", Mode: config.ReadOnly}
+	info := driver.ServerInfo{Driver: "mssql", Version: "16.0.1190.2", Database: "app", User: "reader"}
+
+	reported, _ := details.tested(testedMsg{info: info})
+	stayed, ok := reported.(SetupModel)
+	if !ok {
+		t.Fatalf("the wizard became %T", reported)
+	}
+	if stayed.stage != stageDetails {
+		t.Errorf("stage = %v, want the form the test was started from", stayed.stage)
+	}
+	if stayed.failure != "" {
+		t.Errorf("failure = %q", stayed.failure)
+	}
+	said := plain(stayed.content())
+	for _, want := range []string{"connected", "app", "reader", "16.0.1190.2"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("a test that worked must say so, and say %q:\n%s", want, said)
+		}
+	}
+}
+
+func TestATestSaysWhenReadOnlyIsOpendbasOwnDoing(t *testing.T) {
+	setup, _ := newSetup(t)
+	details := detailed(t, setup)
+	details.connection = config.Connection{Name: "production-eu", Mode: config.ReadOnly}
+
+	reported, _ := details.tested(testedMsg{info: driver.ServerInfo{CanWrite: true}})
+	said := plain(reported.(SetupModel).content())
+	if !strings.Contains(said, "the role can write") {
+		t.Errorf("a writable role must be called out on a test too:\n%s", said)
+	}
+
+	writable := details
+	writable.connection.Mode = config.ReadWrite
+	quiet, _ := writable.tested(testedMsg{info: driver.ServerInfo{CanWrite: true}})
+	if strings.Contains(plain(quiet.(SetupModel).content()), "the role can write") {
+		t.Error("a read write connection has nothing to warn about")
 	}
 }
 
@@ -644,9 +690,16 @@ func TestTestingWithoutSavingKeepsTheStoreEmpty(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("test must connect")
 	}
-	_, reported := running.Update(cmd())
-	if done := outcomeOf(t, reported); done.Saved {
-		t.Fatalf("nothing was asked to be saved: %+v", done)
+	reported, _ := running.Update(cmd())
+	stayed, ok := reported.(SetupModel)
+	if !ok {
+		t.Fatalf("a test turned the wizard into %T", reported)
+	}
+	if stayed.failure != "" {
+		t.Fatalf("failure = %q", stayed.failure)
+	}
+	if !strings.Contains(plain(stayed.content()), "connected") {
+		t.Errorf("a test that worked must say so:\n%s", plain(stayed.content()))
 	}
 	profiles, err := store.LoadProfiles()
 	if err != nil {
@@ -939,7 +992,7 @@ func TestEditingKeepsWhatIsNotOnTheForm(t *testing.T) {
 		Color: "blue", Secret: "keyring:kept", DefaultSchema: "catalog",
 		Schemas: []string{"catalog", "iam"}, Options: "application_name=x",
 	}
-	values := answersFrom(saved)
+	values := answersFrom(saved, postgres.New().Capabilities())
 	if values.host != "db.internal" || values.port != "6432" || values.sslmode != "require" {
 		t.Fatalf("the form must be seeded from the profile: %+v", values)
 	}
@@ -975,7 +1028,7 @@ func TestEditingKeepsWhatIsNotOnTheForm(t *testing.T) {
 }
 
 func TestANewConnectionGetsANewID(t *testing.T) {
-	values := defaults()
+	values := defaults(postgres.New().Capabilities())
 	values.driver, values.name = "postgres", "fresh"
 	made, _ := connectionFrom(config.Connection{}, values, "minted")
 	if made.ID != "minted" {

@@ -39,6 +39,13 @@ func Specs(moduleDir string) []Spec {
 			Lexer:   "SQLiteLexer.g4",
 			Parser:  "SQLiteParser.g4",
 		},
+		{
+			Dialect: "tsql",
+			Package: "tsql",
+			Dir:     filepath.Join(root, "tsql"),
+			Lexer:   "TSqlLexer.g4",
+			Parser:  "TSqlParser.g4",
+		},
 	}
 }
 
