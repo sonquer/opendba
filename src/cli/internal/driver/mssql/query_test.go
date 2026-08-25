@@ -44,8 +44,8 @@ func TestQueryRunsInATransactionAndKeepsNothingOnAReadOnlyProfile(t *testing.T) 
 	if result.Truncated() {
 		t.Error("three rows under the cap is not truncated")
 	}
-	if result.Duration() <= 0 {
-		t.Error("a statement takes some time")
+	if result.Duration() < 0 {
+		t.Error("a query cannot take less than no time")
 	}
 	if err := driver.Finish(result); err != nil {
 		t.Errorf("Finish() = %v", err)

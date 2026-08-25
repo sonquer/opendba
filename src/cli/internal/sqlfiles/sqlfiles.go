@@ -109,6 +109,14 @@ func List(root string) ([]File, error) {
 	if root == "" {
 		return nil, nil
 	}
+	switch info, err := os.Stat(root); {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("read %s: %w", root, err)
+	case !info.IsDir():
+		return nil, fmt.Errorf("read %s: it is a file, not a workspace", root)
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

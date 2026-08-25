@@ -3,6 +3,7 @@ package sqlfiles
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 )
 
 func TestTheRootIsTheSettingOrTheDataDirectory(t *testing.T) {
-	data := config.Paths{Data: filepath.Join("/data", "opendba")}
+	data := config.Paths{Data: rooted("data", "opendba")}
 	for _, want := range []struct {
 		name       string
 		paths      config.Paths
@@ -19,13 +20,13 @@ func TestTheRootIsTheSettingOrTheDataDirectory(t *testing.T) {
 		root       string
 	}{
 		{"the data directory", data, "", config.Connection{Name: "production-eu"},
-			filepath.Join("/data", "opendba", "sql", "production-eu")},
-		{"the setting", data, filepath.Join("/elsewhere"), config.Connection{Name: "staging"},
-			filepath.Join("/elsewhere", "staging")},
+			rooted("data", "opendba", "sql", "production-eu")},
+		{"the setting", data, rooted("elsewhere"), config.Connection{Name: "staging"},
+			rooted("elsewhere", "staging")},
 		{"a name a directory cannot hold", data, "", config.Connection{Name: "eu/west"},
-			filepath.Join("/data", "opendba", "sql", "eu-west")},
+			rooted("data", "opendba", "sql", "eu-west")},
 		{"a name that is nothing but punctuation", data, "", config.Connection{Name: "///", ID: "01J"},
-			filepath.Join("/data", "opendba", "sql", "01J")},
+			rooted("data", "opendba", "sql", "01J")},
 		{"nowhere to keep them", config.Paths{}, "", config.Connection{Name: "x"}, ""},
 		{"a setting that is not a full path", data, "sql", config.Connection{Name: "x"}, ""},
 	} {
@@ -134,16 +135,30 @@ func TestWritingMakesTheWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("file mode = %v, want 0600", info.Mode().Perm())
-	}
 	directory, err := os.Stat(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("file mode = %v, want 0600", info.Mode().Perm())
+	}
 	if directory.Mode().Perm() != 0o700 {
 		t.Errorf("directory mode = %v, want 0700", directory.Mode().Perm())
 	}
+}
+
+// rooted builds a path that is a full path on the system running the tests. A
+// path beginning with a separator is a full path on Unix and is not one on
+// Windows, where a full path names the volume it is on.
+func rooted(parts ...string) string {
+	root := string(filepath.Separator)
+	if runtime.GOOS == "windows" {
+		root = `C:\`
+	}
+	return filepath.Join(append([]string{root}, parts...)...)
 }
 
 func TestWritingLeavesNoTemporaryFileBehind(t *testing.T) {

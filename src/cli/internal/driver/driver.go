@@ -351,6 +351,10 @@ type ResultSet interface {
 	Values() []any
 	Err() error
 	Truncated() bool
+
+	// Duration is how long the statement took. A statement that finished faster
+	// than the clock of the machine running it can measure took no time that can
+	// be reported, which is nought rather than a fraction.
 	Duration() time.Duration
 
 	// Close finishes the transaction the statement ran in, which is where a

@@ -619,7 +619,7 @@ func TestARelativeWorkspaceRootIsRefused(t *testing.T) {
 		refuse bool
 	}{
 		{"empty means the data directory", "", false},
-		{"a full path", filepath.Join(string(filepath.Separator), "srv", "sql"), false},
+		{"a full path", fullPath("srv", "sql"), false},
 		{"a relative path", filepath.Join("sql", "here"), true},
 		{"a bare name", "sql", true},
 	} {
@@ -653,4 +653,15 @@ func TestTheWorkspaceRootSurvivesTheFile(t *testing.T) {
 	if held.Workspace.Root != settings.Workspace.Root {
 		t.Errorf("root = %q, want %q", held.Workspace.Root, settings.Workspace.Root)
 	}
+}
+
+// fullPath builds a path the system running the tests calls a full one. A path
+// beginning with a separator is a full path on Unix and is not one on Windows,
+// where a full path names the volume it is on.
+func fullPath(parts ...string) string {
+	root := string(filepath.Separator)
+	if runtime.GOOS == "windows" {
+		root = `C:\`
+	}
+	return filepath.Join(append([]string{root}, parts...)...)
 }

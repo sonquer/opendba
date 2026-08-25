@@ -13,9 +13,9 @@ import (
 // file takes one writer at a time, and several handles wait on each other and
 // then fail.
 func TestOneHandleIsSharedByEverySession(t *testing.T) {
+	dir := t.TempDir()
 	kept := NewKeep()
 	t.Cleanup(func() { _ = kept.Close() })
-	dir := t.TempDir()
 	settings := config.DefaultSettings()
 
 	first, trouble := kept.History(filepath.Join(dir, "history.db"), settings.History)

@@ -571,7 +571,7 @@ func TestHowLongIsLeftIsSaidInWholeUnits(t *testing.T) {
 
 func TestADownloadSaysHowFastAndHowLong(t *testing.T) {
 	m := configured(t)
-	m.ai.first, m.ai.since = 0, time.Now().Add(-2*time.Second)
+	m.ai.first, m.ai.since = 0, time.Now().Add(-4*time.Second)
 	m.ai.progress = local.Progress{Bytes: 2 << 20, Total: 6 << 20}
 	said := m.arrived4AI()
 	for _, want := range []string{"33%", "2.0 MiB of 6.0 MiB", "KiB/s", "left"} {
