@@ -1,12 +1,17 @@
 package local
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
 
-func measured() bool { return runtime.GOOS == "darwin" || runtime.GOOS == "linux" }
+// measured reports whether this system can say how much room is left. It asks
+// the implementation rather than naming the systems that have one: a list of
+// names here goes stale the moment another system learns to answer, and a test
+// that pins which systems cannot answer fails the day one of them can.
+func measured() bool { return free(os.TempDir()) >= 0 }
 
 func TestRoom(t *testing.T) {
 	room := Room(t.TempDir())
