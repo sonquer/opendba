@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -33,6 +34,9 @@ func TestACrashIsWrittenDown(t *testing.T) {
 		if !strings.Contains(string(read), want) {
 			t.Fatalf("the account does not say %q:\n%s", want, read)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		return
 	}
 	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v, err = %v; an account of a failure holds a conversation", info.Mode(), err)

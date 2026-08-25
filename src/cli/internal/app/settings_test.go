@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func configured(t *testing.T) Model {
 	m.session.AI = cli.Assistant{
 		Settings: settings.AI,
 		Models:   local.NewStore(root + "/models"),
-		Library:  local.NewLibrary(root + "/lib"),
+		Library:  local.NewLibrary(libraryRoot(t) + "/lib"),
 		Registry: providers.All(local.NewStore(root + "/models")),
 	}
 	opened, _ := m.show(viewAI)
@@ -688,4 +689,21 @@ func TestADownloadOnTheSettingsScreenIsDrawnWithABar(t *testing.T) {
 	if !strings.Contains(body, "25%") {
 		t.Fatalf("body = %q", body)
 	}
+}
+
+// libraryRoot is where a test unpacks the inference library. On Windows it is
+// not t.TempDir(): the loader keeps a handle on a library it has opened, this
+// program never unloads one because a process that has cannot open it again,
+// and Windows will not unlink a file that is still open. Removing it is best
+// effort, so a run leaves a directory behind rather than failing on the way out.
+func libraryRoot(t *testing.T) string {
+	if runtime.GOOS != "windows" {
+		return t.TempDir()
+	}
+	dir, err := os.MkdirTemp("", "opendba-library-")
+	if err != nil {
+		t.Fatalf("make a directory for the library: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
 }

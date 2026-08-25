@@ -2,6 +2,7 @@ package llama
 
 import (
 	"context"
+	"os"
 	"runtime"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestTheCarriedLibraryOpens(t *testing.T) {
 	if !local.Carried() {
 		t.Skipf("this program carries no inference library for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	dir := t.TempDir()
+	dir := libraryRoot(t)
 	library := local.NewLibrary(dir)
 	if err := library.Install(context.Background(), nil); err != nil {
 		t.Fatalf("Install() error = %v", err)
@@ -42,7 +43,7 @@ func TestTheOpenLibraryKnowsTheMachine(t *testing.T) {
 	if !local.Carried() {
 		t.Skipf("this program carries no inference library for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	dir := t.TempDir()
+	dir := libraryRoot(t)
 	if err := local.NewLibrary(dir).Install(context.Background(), nil); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
@@ -66,4 +67,21 @@ func TestTheOpenLibraryKnowsTheMachine(t *testing.T) {
 	if largest <= 0 {
 		t.Fatalf("no device would say how much memory it has: %+v", devices)
 	}
+}
+
+// libraryRoot is where a test unpacks the inference library. On Windows it is
+// not t.TempDir(): the loader keeps a handle on a library it has opened, this
+// program never unloads one because a process that has cannot open it again,
+// and Windows will not unlink a file that is still open. Removing it is best
+// effort, so a run leaves a directory behind rather than failing on the way out.
+func libraryRoot(t *testing.T) string {
+	if runtime.GOOS != "windows" {
+		return t.TempDir()
+	}
+	dir, err := os.MkdirTemp("", "opendba-library-")
+	if err != nil {
+		t.Fatalf("make a directory for the library: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
 }
