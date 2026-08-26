@@ -1,0 +1,18 @@
+name = "quit"
+seed = "core"
+exit = 0
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "q"
+
+[[step]]
+wait = "close opendba?"
+
+[[step]]
+shot = "quit"
+
+[[step]]
+key = "enter"

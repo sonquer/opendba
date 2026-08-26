@@ -1,0 +1,12 @@
+name = "startup"
+seed = "core"
+setup = true
+
+[[step]]
+wait = "opendba"
+
+[[step]]
+expect_absent = ["panic", "no connections are configured"]
+
+[[step]]
+shot = "startup"

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sonquer/opendba/schema/opendba.report.v1.json",
+  "title": "OPENDBA report",
+  "description": "The machine readable output of opendba inspect, schema and indexes. Breaking this contract is a breaking change to the tool.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "connection", "exactness", "counts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this contract."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the report was produced, in UTC."
+    },
+    "exactness": {
+      "enum": ["sampled", "cumulative", "unavailable"],
+      "description": "How the numbers were obtained. Sampled means a point in time reading."
+    },
+    "connection": {
+      "type": "object",
+      "required": ["name", "driver", "version", "database", "user", "mode", "read_only"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "driver": { "type": "string" },
+        "version": { "type": "string" },
+        "database": { "type": "string" },
+        "user": { "type": "string" },
+        "mode": { "enum": ["readonly", "readwrite"] },
+        "read_only": {
+          "type": "boolean",
+          "description": "Whether the session itself refuses writes, as reported by the server."
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["subsystem", "code", "severity", "value"],
+        "additionalProperties": false,
+        "properties": {
+          "subsystem": { "type": "string" },
+          "code": {
+            "type": "string",
+            "description": "Stable identifier of the check. Values may be added, never renamed."
+          },
+          "severity": { "enum": ["ok", "warn", "fail", "info", "n/a"] },
+          "value": { "type": "string" },
+          "ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Where the measurement sits between nothing and everything. Absent when the check is a count, a size or a word."
+          },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema", "name", "kind", "rows", "size_bytes"],
+        "additionalProperties": false,
+        "properties": {
+          "schema": { "type": "string" },
+          "name": { "type": "string" },
+          "kind": { "type": "string" },
+          "rows": { "type": "integer" },
+          "size_bytes": { "type": "integer" },
+          "columns": { "type": "integer" }
+        }
+      }
+    },
+    "indexes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema", "table", "name", "size_bytes", "scans", "unique"],
+        "additionalProperties": false,
+        "properties": {
+          "schema": { "type": "string" },
+          "table": { "type": "string" },
+          "name": { "type": "string" },
+          "size_bytes": {
+            "type": "integer",
+            "description": "Negative when the driver cannot measure it, never zero as a stand in."
+          },
+          "scans": {
+            "type": "integer",
+            "description": "Negative when the driver does not count index usage."
+          },
+          "unique": { "type": "boolean" }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": ["healthy", "warnings", "failing"],
+      "additionalProperties": false,
+      "properties": {
+        "healthy": { "type": "integer" },
+        "warnings": { "type": "integer" },
+        "failing": { "type": "integer" }
+      }
+    },
+    "statement": {
+      "type": "string",
+      "description": "The statement with every literal replaced by a placeholder, so the report carries no data."
+    }
+  }
+}

@@ -1,0 +1,11 @@
+name = "ask"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "a"
+
+[[step]]
+shot = "ask"

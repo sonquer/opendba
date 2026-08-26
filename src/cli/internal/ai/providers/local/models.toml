@@ -1,0 +1,92 @@
+# The models this program will download, and what is known about each of them.
+#
+# Every entry is Apache-2.0 or MIT and ungated on the Hub, so that a download
+# needs no account and agreeing to run one needs no lawyer. The byte counts are
+# measured rather than derived: a k-quant is not its nominal width, the Gemma 4
+# edge variants do not have a footprint that follows from a parameter count at
+# all, and an MXFP4 mixture of experts is the whole mixture on disk however
+# little of it is computed per token.
+#
+# The revision pins a commit. A model that changed under the same name is a
+# different model, and a checksum that no longer matches should stop a download
+# rather than be worked around.
+
+[[model]]
+  id          = "gemma-4-e4b-qat"
+  title       = "Gemma 4 E4B"
+  licence     = "Apache-2.0"
+  repo        = "unsloth/gemma-4-E4B-it-qat-GGUF"
+  file        = "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf"
+  revision    = "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
+  bytes       = 4215695776
+  context     = 131072
+  template    = "gemma"
+  tools       = true
+  temperature = 1.0
+  top_p       = 0.95
+  top_k       = 64
+  note        = "the default: fits a machine with 8 GB to spare"
+
+[[model]]
+  id          = "gemma-4-e2b-qat"
+  title       = "Gemma 4 E2B"
+  licence     = "Apache-2.0"
+  repo        = "unsloth/gemma-4-E2B-it-qat-GGUF"
+  file        = "gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf"
+  revision    = "66a399f68ddd113b06dff02fca9523e55465d11d"
+  bytes       = 2620370976
+  context     = 131072
+  template    = "gemma"
+  tools       = true
+  temperature = 1.0
+  top_p       = 0.95
+  top_k       = 64
+  note        = "for a smaller machine, or one with little disk left"
+
+[[model]]
+  id          = "gemma-4-12b-qat"
+  title       = "Gemma 4 12B"
+  licence     = "Apache-2.0"
+  repo        = "unsloth/gemma-4-12B-it-qat-GGUF"
+  file        = "gemma-4-12B-it-qat-UD-Q4_K_XL.gguf"
+  revision    = "980b060c40a8539ac159e0501a3e0f66a6365af3"
+  bytes       = 6716356800
+  context     = 262144
+  template    = "gemma"
+  tools       = true
+  temperature = 1.0
+  top_p       = 0.95
+  top_k       = 64
+  note        = "for 16 GB and up"
+
+[[model]]
+  id          = "gpt-oss-20b"
+  title       = "GPT-OSS 20B"
+  licence     = "Apache-2.0"
+  repo        = "ggml-org/gpt-oss-20b-GGUF"
+  file        = "gpt-oss-20b-MXFP4.gguf"
+  revision    = "ef9b12f2ff56c69cf32153a02784e7a3c88bf524"
+  bytes       = 12109566624
+  context     = 131072
+  template    = "gpt-oss"
+  tools       = true
+  temperature = 1.0
+  top_p       = 1.0
+  top_k       = 0
+  note        = "mixture of experts: 21B on disk, about 3.6B computed per token"
+
+[[model]]
+  id          = "gpt-oss-120b"
+  title       = "GPT-OSS 120B"
+  licence     = "Apache-2.0"
+  repo        = "ggml-org/gpt-oss-120b-GGUF"
+  file        = "gpt-oss-120b-MXFP4.gguf"
+  revision    = "238abdd290bb874b90a5da1b4549881b7d05c091"
+  bytes       = 63387346208
+  context     = 131072
+  template    = "gpt-oss"
+  tools       = true
+  temperature = 1.0
+  top_p       = 1.0
+  top_k       = 0
+  note        = "for a workstation: 59 GiB on disk and the memory to match"

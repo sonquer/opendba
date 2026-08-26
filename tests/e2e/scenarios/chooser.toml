@@ -1,0 +1,20 @@
+name = "chooser"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "a"
+
+[[step]]
+key = "enter"
+
+[[step]]
+wait = "ON THIS MACHINE"
+
+[[step]]
+expect = ["Gemma 4 E4B", "Gemma 4 E2B"]
+
+[[step]]
+expect_absent = ["panic"]

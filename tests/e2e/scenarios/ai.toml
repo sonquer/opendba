@@ -1,0 +1,23 @@
+name = "ai"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "ctrl+k"
+
+[[step]]
+type = "assistant"
+
+[[step]]
+key = "enter"
+
+[[step]]
+wait = "INSTANCES"
+
+[[step]]
+expect = ["MODELS", "gemma-4-e4b-qat", "active", "Gemma 4 E4B", "Apache-2.0"]
+
+[[step]]
+expect_absent = ["panic", "error"]

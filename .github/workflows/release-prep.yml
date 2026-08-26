@@ -1,0 +1,64 @@
+name: release-prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "patch, minor, major, or an exact X.Y.Z"
+        required: true
+        default: patch
+
+permissions: {}
+
+concurrency:
+  group: release-prep
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: prepare the release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: src/tools/go.sum
+
+      - name: Work out the next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: go run ./src/tools/cmd/dev version --set "$BUMP" --github "$GITHUB_OUTPUT"
+
+      - name: Open the release pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          MODULE_TAG: ${{ steps.version.outputs.module_tag }}
+          BRANCH: ${{ steps.version.outputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -am "chore(release): $TAG"
+          git push --set-upstream origin "$BRANCH"
+          cat > body.md <<BODY
+          Sets \`VERSION\` to \`$VERSION\`.
+
+          Merging this pushes \`$TAG\` and \`$MODULE_TAG\` at the merge commit and
+          starts the \`release\` workflow, which runs every gate again before it
+          publishes anything.
+
+          Nothing else belongs in this pull request.
+          BODY
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore(release): $TAG" \
+            --body-file body.md

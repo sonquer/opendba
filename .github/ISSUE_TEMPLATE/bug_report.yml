@@ -1,0 +1,38 @@
+name: Bug report
+description: Something behaves differently than it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the bug lets a write reach a READ ONLY connection, or exposes a secret,
+        please report it through a private security advisory instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what happened, what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: statement
+    attributes:
+      label: The statement, if SQL is involved
+      description: Paste the exact SQL and the verdict OPENDBA gave it.
+      render: sql
+  - type: input
+    id: driver
+    attributes:
+      label: Driver and server version
+      placeholder: PostgreSQL 16.3
+  - type: input
+    id: version
+    attributes:
+      label: OPENDBA version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and terminal
+      placeholder: macOS 15, Ghostty

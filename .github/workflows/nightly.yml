@@ -1,0 +1,275 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  decide:
+    name: decide
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - name: Look at what the last nightly was cut from
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          HEAD: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          previous="$(gh api "repos/$REPOSITORY/git/ref/tags/nightly" --jq .object.sha 2>/dev/null || true)"
+          if [ "$previous" = "$HEAD" ]; then
+            echo "main is unchanged since the last nightly" >> "$GITHUB_STEP_SUMMARY"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  gates:
+    name: gates (${{ matrix.os }})
+    needs: decide
+    if: needs.decide.outputs.build == 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
+
+      - name: Cache the pinned tools
+        uses: actions/cache@v6
+        with:
+          path: .local/bin
+          key: tools-${{ matrix.os }}-${{ hashFiles('src/tools/go.sum', 'src/tools/internal/toolbin/toolbin.go') }}
+
+      - name: Run every gate
+        shell: bash
+        run: go run ./src/tools/cmd/dev check --ci --summary "$GITHUB_STEP_SUMMARY"
+
+  extra-gates:
+    name: gates (${{ matrix.os }})
+    needs: decide
+    if: needs.decide.outputs.build == 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-15-intel, windows-11-arm]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
+
+      - name: Cache the pinned tools
+        uses: actions/cache@v6
+        with:
+          path: .local/bin
+          key: tools-${{ matrix.os }}-${{ hashFiles('src/tools/go.sum', 'src/tools/internal/toolbin/toolbin.go') }}
+
+      - name: Run every gate
+        shell: bash
+        run: go run ./src/tools/cmd/dev check --ci --summary "$GITHUB_STEP_SUMMARY"
+
+  race:
+    name: race (${{ matrix.os }})
+    needs: decide
+    if: needs.decide.outputs.build == 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      CGO_ENABLED: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
+
+      - name: Run the tests under the race detector
+        shell: bash
+        run: go run ./src/tools/cmd/dev race --ci
+
+  snapshot:
+    name: snapshot
+    needs: [decide, gates]
+    if: needs.decide.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Install the SBOM generator goreleaser expects
+        uses: anchore/sbom-action/download-syft@v0
+        with:
+          syft-version: v1.51.0
+
+      - name: Work out what this build calls itself
+        id: version
+        run: |
+          version="$(go run ./src/tools/cmd/dev version --snapshot)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "nightly $version" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: v2.18.0
+          args: release --snapshot --clean
+        env:
+          OPENDBA_SNAPSHOT_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Attest everything the nightly publishes
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sbom.json
+            dist/checksums.txt
+
+      - name: Replace the rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          HEAD: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh release delete nightly --cleanup-tag --yes || true
+          notes="$RUNNER_TEMP/notes.md"
+          cat > "$notes" <<NOTES
+          An unsupported build of \`main\`, replaced every night.
+
+          | | |
+          |---|---|
+          | version | \`$VERSION\` |
+          | commit | \`$HEAD\` |
+          | built by | $RUN_URL |
+
+          Every archive carries build provenance. Verify one before you run it:
+
+          \`\`\`bash
+          gh attestation verify <file> --repo $REPOSITORY
+          \`\`\`
+
+          Nightlies are not supported and carry no compatibility promise.
+          Use a \`vX.Y.Z\` release for anything that matters.
+          NOTES
+          gh release create nightly \
+            --target "$HEAD" \
+            --title "nightly $VERSION" \
+            --notes-file "$notes" \
+            --prerelease \
+            --latest=false \
+            dist/*.tar.gz \
+            dist/*.zip \
+            dist/*.sbom.json \
+            dist/checksums.txt

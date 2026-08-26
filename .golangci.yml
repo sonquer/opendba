@@ -1,0 +1,53 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - gosec
+    - bodyclose
+    - misspell
+    - nolintlint
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*os.File).Close
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+    gosec:
+      excludes:
+        - G115
+        - G201
+        - G204
+        - G302
+        - G304
+        - G301
+        - G306
+        - G703
+  exclusions:
+    rules:
+      - path: internal/ai/transport\.go
+        linters: [bodyclose]
+      - path: internal/ai/providers/local/llama/log\.go
+        linters: [gosec]
+      - path: _test\.go
+        linters: [gosec, errcheck, bodyclose]
+      - path: internal/parser/generated/
+        linters: [errcheck, govet, staticcheck, unused, revive, gosec, misspell, ineffassign, nolintlint]
+
+formatters:
+  enable:
+    - gofmt

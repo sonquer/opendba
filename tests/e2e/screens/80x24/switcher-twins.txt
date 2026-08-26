@@ -1,0 +1,23 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────
+   ╭────────────────────────────────────────────────────────────────────────╮
+   │ connections                                                     2 open │e
+   │ ────────────────────────────────────────────────────────────────────── │
+  M│ OPEN                                                                   │
+   │                                                                        │
+   │ ▌ screens          READ ONLY                       sqlite  0 tabs   1  │
+   │   screens #2       READ ONLY                sqlite  1 tab  in use   2  │
+  L│                                                                        │
+   │ CONFIGURED                                                             │
+   │                                                                        │
+   │   screens          READ ONLY            sqlite  db/core.db  2 sessions │
+  S│   production-eu    READ ONLY                      sqlite  db/second.db │
+   │                                                                        │
+   │  enter  switch ·  x  disconnect ·  n  new ·  f  find ·  esc  close     │
+   ╰────────────────────────────────────────────────────────────────────────╯
+  STORAGE
+
+  ────────────────────────────────────────────────────────────────────────────
+  e query  a ask  s tables  i indexes  ctrl+p connections             ↓ 4 more

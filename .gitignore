@@ -11,18 +11,15 @@
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
+# Code coverage profiles and other test artifacts. The patterns are anchored:
+# an unanchored coverage.* matches at every depth and swallowed a source file
+# called coverage.go, which CI then could not build.
+/coverage.out
+/*.coverprofile
+/profile.cov
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
-
-# Go workspace file
-go.work
-go.work.sum
 
 # env file
 .env
@@ -30,3 +27,26 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# opendba
+/bin/
+dist/
+
+# coverage output, never committed
+/coverage/
+cover.out
+/coverage.html
+
+# local development, never committed
+.env
+/.local/
+/.screens/
+/.e2e/
+
+# The inference library this program carries is committed on purpose. It is
+# what makes local models work without fetching anything at run time, and the
+# rules above for built objects would otherwise leave it out of the release and
+# out of every clone.
+!/src/cli/internal/ai/providers/local/embedded/**/*.dylib
+!/src/cli/internal/ai/providers/local/embedded/**/*.so
+!/src/cli/internal/ai/providers/local/embedded/**/*.dll

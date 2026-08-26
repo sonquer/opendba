@@ -1,0 +1,27 @@
+name = "resize"
+seed = "core"
+sizes = ["120x36"]
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "e"
+
+[[step]]
+wait = "query 1"
+
+[[step]]
+resize = "60x14"
+
+[[step]]
+expect = ["query 1"]
+
+[[step]]
+shot = "resize-60x14"
+
+[[step]]
+resize = "120x36"
+
+[[step]]
+expect = ["query 1"]

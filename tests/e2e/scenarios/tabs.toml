@@ -1,0 +1,26 @@
+name = "tabs"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "e"
+
+[[step]]
+key = "ctrl+n"
+
+[[step]]
+key = "ctrl+p"
+
+[[step]]
+key = "down"
+
+[[step]]
+key = "enter"
+
+[[step]]
+key = "e"
+
+[[step]]
+shot = "tabs"

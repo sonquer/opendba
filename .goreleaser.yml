@@ -1,0 +1,79 @@
+version: 2
+
+project_name: opendba
+
+git:
+  ignore_tags:
+    - nightly
+    - "src/cli/*"
+
+before:
+  hooks:
+    - go mod download -C src/cli
+
+builds:
+  - id: opendba
+    dir: src/cli
+    main: ./cmd/opendba
+    binary: opendba
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - LICENSE-MIT
+      - LICENSE-APACHE
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.sbom.json"
+
+snapshot:
+  version_template: "{{ .Env.OPENDBA_SNAPSHOT_VERSION }}"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - "^Merge pull request"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Refactors
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Others
+      order: 999
+
+release:
+  draft: false
+  prerelease: auto

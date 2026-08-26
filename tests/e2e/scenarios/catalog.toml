@@ -1,0 +1,11 @@
+name = "catalog"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "ctrl+d"
+
+[[step]]
+shot = "catalog"

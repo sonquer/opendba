@@ -1,0 +1,24 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+
+   ctrl+1   orders
+  ────────────────────────────────────────────────────────────────────────────
+  TABLES             │ ┃   1 SELECT * FROM orders
+                     │ ┃
+   main              │ ┃
+  ├── orders         │ ┃
+  └── users          │ ┃
+                     │ ──────────────────────────────────────────────────────
+                     │ ✓ allowed SELECT · reads only
+  FILES              │ ──────────────────────────────────────────────────────
+                     │  id      user_…  total   curre…  status  place…
+   nothing yet       │ ────────────────────────────────────────────────
+                     │  1       1       4200    PLN     paid    2026-…
+                     │  2       2       199     EUR     pendi…  2026-…
+                     │
+                     │ 3 rows · <time>                row 1 of 3 · column 1 of 7
+
+
+  ────────────────────────────────────────────────────────────────────────────
+  ctrl+r run  ctrl+n new tab  ctrl+w close tab  ctrl+k commands

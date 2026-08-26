@@ -1,0 +1,20 @@
+name = "results"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "e"
+
+[[step]]
+type = "SELECT * FROM orders"
+
+[[step]]
+key = "ctrl+r"
+
+[[step]]
+wait = "PLN"
+
+[[step]]
+shot = "results"

@@ -1,0 +1,11 @@
+name = "tables"
+seed = "core"
+
+[[step]]
+wait = "READ ONLY"
+
+[[step]]
+key = "s"
+
+[[step]]
+shot = "tables"

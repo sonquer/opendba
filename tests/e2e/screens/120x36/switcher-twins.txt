@@ -1,0 +1,35 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+   OK   nothing needs attention                                                             6 checks, all of them fine
+
+  MEMORY
+
+    free pages     [||||||||||||||||||||]           0   ok
+                      ╭──────────────────────────────────────────────────────────────────────────╮
+  LOAD                │ connections                                                       2 open │
+                      │ ──────────────────────────────────────────────────────────────────────── │
+    access            │ OPEN                                                                     │
+                      │                                                                          │
+  SCANS               │ ▌ screens          READ ONLY                         sqlite  0 tabs   1  │
+                      │   screens #2       READ ONLY                  sqlite  1 tab  in use   2  │
+    foreign keys      │                                                                          │
+                      │ CONFIGURED                                                               │
+  STORAGE             │                                                                          │
+                      │   screens          READ ONLY              sqlite  db/core.db  2 sessions │
+  ▌ integrity         │   production-eu    READ ONLY                        sqlite  db/second.db │
+    journal           │                                                                          │
+    size              │  enter  switch ·  x  disconnect ·  n  new ·  f  find ·  esc  close       │
+                      ╰──────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  e query  a ask  s tables  i indexes  ctrl+p connections  ctrl+d databases  / commands  ? help  q quit

@@ -1,0 +1,8 @@
+data: {"choices":[{"index":0,"delta":{"reasoning_content":"the user wants the largest table"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"orders"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: [DONE]
+

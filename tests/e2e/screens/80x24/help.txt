@@ -1,0 +1,23 @@
+
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  → ~ screens › sqlite <version>   READ ONLY
+  ────────────────────────────────────────────────────────────────────────────
+
+  KEYS
+
+   e       query    s  tables     /       commands       tab  focus         …
+   a       ask      i  indexes    ctrl+d  databases      c    cancel
+   ctrl+r  run      r  reload     ctrl+p  connections    x    close session
+   tab     focus                  n       new
+                                  d       remove
+
+  this terminal cannot tell ctrl+enter apart from ctrl+j, so ctrl+r runs a state
+
+  SAFETY
+  Everything you type is classified against the real grammar of the database
+  before it is sent. In READ ONLY mode a statement that changes data never
+  leaves this program, and multi statement input is refused in every mode.
+
+
+  ────────────────────────────────────────────────────────────────────────────
+  esc dashboard  e query  a ask  s tables  i indexes                ↓ 167 more

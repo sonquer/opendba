@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":"The orders"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":" table is the biggest."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":120,"completion_tokens":18,"total_tokens":138,"prompt_tokens_details":{"cached_tokens":100},"completion_tokens_details":{"reasoning_tokens":6}}}
+
+data: [DONE]
+
