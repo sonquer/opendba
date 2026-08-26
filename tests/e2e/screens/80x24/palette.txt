@@ -10,9 +10,9 @@
     fr│   query editor                                                e  │
       │   tables                                                      s  │
   LOAD│   indexes                                                     i  │
-      │   history                                                    ⌃G  │
-    ac│   database and schemas                                       ⌃D  │
-      │   connections                                                ⌃P  │
+      │   history                                                ctrl+g  │
+    ac│   database and schemas                                   ctrl+d  │
+      │   connections                                            ctrl+p  │
   SCAN│   new connection                                              n  │
       │   reload everything                                           r  │
     fo│   … 6 more                                                       │
@@ -20,4 +20,4 @@
   STORAGE
 
   ────────────────────────────────────────────────────────────────────────────
-  e query  a ask  s tables  i indexes  ⌃P connections                 ↓ 4 more
+  e query  a ask  s tables  i indexes  ctrl+p connections             ↓ 4 more

@@ -32,4 +32,4 @@
 
 
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  ← → chooses a driver · enter next · ⌃C leaves
+  ← → chooses a driver · enter next · ctrl+c leaves

@@ -5,14 +5,14 @@
 
   KEYS
 
-   e    query    s  tables     /   commands       tab  focus            ↑      up
-   a    ask      i  indexes    ⌃D  databases      c    cancel           ↓      down
-   ⌃R   run      r  reload     ⌃P  connections    x    close session    enter  open
-   tab  focus                  n   new                                  esc    dashboard
-                               d   remove                               ?      help
-                                                                        q      quit
+   e       query    s  tables     /       commands       tab  focus            up     up
+   a       ask      i  indexes    ctrl+d  databases      c    cancel           down   down
+   ctrl+r  run      r  reload     ctrl+p  connections    x    close session    enter  open
+   tab     focus                  n       new                                  esc    dashboard
+                                  d       remove                               ?      help
+                                                                               q      quit
 
-  this terminal cannot tell ⌃enter apart from ⌃J, so ⌃R runs a statement
+  this terminal cannot tell ctrl+enter apart from ctrl+j, so ctrl+r runs a statement
 
   SAFETY
   Everything you type is classified against the real grammar of the database
@@ -32,4 +32,4 @@
   waits on its own, marked with a • in the strip, with the header saying how much
 
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  esc dashboard  e query  a ask  s tables  i indexes  ⌃P connections  ⌃D databases  / commands  ? help      ↓ 120 more
+  esc dashboard  e query  a ask  s tables  i indexes  ctrl+p connections  ctrl+d databases  / commands      ↓ 120 more

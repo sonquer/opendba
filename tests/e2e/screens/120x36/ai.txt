@@ -32,4 +32,4 @@
 
 
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  ↑ up  ↓ down  tab focus  enter open  d remove  esc dashboard
+  up up  down down  tab focus  enter open  d remove  esc dashboard

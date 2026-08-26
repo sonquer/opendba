@@ -318,7 +318,7 @@ func (a App) parse(command string, args []string) (options, error) {
 	set.StringVar(&opts.size, "size", "", "run at a single terminal size")
 	set.BoolVar(&opts.update, "update", false, "keep the screens that were drawn as the ones to compare against")
 	set.IntVar(&opts.jobs, "jobs", 0, "how many scenarios run at once")
-	set.StringVar(&opts.binary, "binary", "", "run against a program that is already built")
+	set.StringVar(&opts.binary, "binary", "", "run against a program built with the pinned key style")
 	if err := set.Parse(args); err != nil {
 		return options{}, err
 	}
@@ -372,7 +372,7 @@ e2e flags:
   --size <WxH>         run at a single terminal size
   --update             keep the screens that were drawn as the ones to compare against
   --jobs <n>           how many scenarios run at once
-  --binary <path>      run against a program that is already built
+  --binary <path>      run against a program built with the pinned key style
 
 version flags:
   --tag                print v<version> instead of the bare version

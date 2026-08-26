@@ -20,6 +20,12 @@ const (
 	productPath  = "./src/cli/cmd/opendba"
 )
 
+// plainKeys pins how the program writes a key. Left to itself it writes ⌃R on a
+// Mac and ctrl+r everywhere else, and the two are different widths, so a footer
+// that fits on one machine runs off the frame on the other and no screen kept on
+// one machine could be compared on the other.
+const plainKeys = "-X=github.com/sonquer/opendba/src/cli/internal/ui.KeyStyle=plain"
+
 // e2e walks every screen of the interface through a real terminal and fails
 // when one of them is not the screen that was kept.
 func (a App) e2e(ctx context.Context, opts options) int {
@@ -63,7 +69,7 @@ func (a App) prepare(ctx context.Context, space workspace.Workspace, opts option
 	if runner == nil {
 		runner = exec.OS{}
 	}
-	built, err := runner.Run(ctx, space.Root, "go", "build", "-o", binary, productPath)
+	built, err := runner.Run(ctx, space.Root, "go", "build", "-ldflags", plainKeys, "-o", binary, productPath)
 	if err != nil {
 		cleanup()
 		return tuitest.Suite{}, "", nil, fmt.Errorf("build the program: %w", err)

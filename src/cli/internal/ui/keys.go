@@ -42,9 +42,28 @@ var plainModifiers = map[string]string{
 	"cmd":   "win+",
 }
 
+// KeyStyle is set at link time, and is empty in a build that ships. It exists so
+// that a run which has to draw the same screen on every machine can say how a
+// key is written instead of letting the machine decide. The values are "mac"
+// and "plain"; anything else follows the platform.
+var KeyStyle string
+
 // Keystroke renders a Bubble Tea key name the way the platform writes it:
 // ⌃⏎ on macOS, ctrl+enter elsewhere.
-func Keystroke(key string) string { return keystroke(key, runtime.GOOS == "darwin") }
+func Keystroke(key string) string { return keystroke(key, macKeyboard(KeyStyle)) }
+
+// macKeyboard reports whether keys are written the way a Mac keyboard prints
+// them.
+func macKeyboard(style string) bool {
+	switch style {
+	case "mac":
+		return true
+	case "plain":
+		return false
+	default:
+		return runtime.GOOS == "darwin"
+	}
+}
 
 // keystroke is Keystroke with the platform as an argument, so that both of the
 // ways a key can be written are drawn and measured in a test rather than only

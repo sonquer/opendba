@@ -32,4 +32,4 @@
   ┃
 
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  enter send  esc stop or back  ⌃G conversations  ⌃N new conversation  ⌃T thinking
+  enter send  esc stop or back  ctrl+g conversations  ctrl+n new conversation  ctrl+t thinking

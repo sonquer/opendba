@@ -5,13 +5,13 @@
 
   KEYS
 
-   e    query    s  tables     /   commands       tab  focus         …
-   a    ask      i  indexes    ⌃D  databases      c    cancel
-   ⌃R   run      r  reload     ⌃P  connections    x    close session
-   tab  focus                  n   new
-                               d   remove
+   e       query    s  tables     /       commands       tab  focus         …
+   a       ask      i  indexes    ctrl+d  databases      c    cancel
+   ctrl+r  run      r  reload     ctrl+p  connections    x    close session
+   tab     focus                  n       new
+                                  d       remove
 
-  this terminal cannot tell ⌃enter apart from ⌃J, so ⌃R runs a statement
+  this terminal cannot tell ctrl+enter apart from ctrl+j, so ctrl+r runs a state
 
   SAFETY
   Everything you type is classified against the real grammar of the database

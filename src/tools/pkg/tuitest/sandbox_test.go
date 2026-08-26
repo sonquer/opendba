@@ -3,6 +3,7 @@ package tuitest
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -56,12 +57,14 @@ func TestProfilesAreWrittenWhereOnlyTheirOwnerCanReadThem(t *testing.T) {
 		t.Fatalf("WriteProfiles = %v", err)
 	}
 	path := filepath.Join(box.config(), "profiles.toml")
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat = %v", err)
-	}
-	if info.Mode().Perm() != configMode {
-		t.Errorf("profiles.toml is %v, and the program refuses anything looser", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat = %v", err)
+		}
+		if info.Mode().Perm() != configMode {
+			t.Errorf("profiles.toml is %v, and the program refuses anything looser", info.Mode().Perm())
+		}
 	}
 	written, err := os.ReadFile(path)
 	if err != nil {

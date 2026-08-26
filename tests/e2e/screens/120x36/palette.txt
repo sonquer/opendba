@@ -14,9 +14,9 @@
     access                │   query editor                                                e  │
                           │   tables                                                      s  │
   SCANS                   │   indexes                                                     i  │
-                          │   history                                                    ⌃G  │
-    foreign keys          │   database and schemas                                       ⌃D  │
-                          │   connections                                                ⌃P  │
+                          │   history                                                ctrl+g  │
+    foreign keys          │   database and schemas                                   ctrl+d  │
+                          │   connections                                            ctrl+p  │
   STORAGE                 │   new connection                                              n  │
                           │   reload everything                                           r  │
   ▌ integrity             │   settings                                                       │
@@ -32,4 +32,4 @@
 
 
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  e query  a ask  s tables  i indexes  ⌃P connections  ⌃D databases  / commands  ? help  q quit
+  e query  a ask  s tables  i indexes  ctrl+p connections  ctrl+d databases  / commands  ? help  q quit

@@ -20,4 +20,4 @@
   STORAGE
 
   ────────────────────────────────────────────────────────────────────────────
-  e query  a ask  s tables  i indexes  ⌃P connections                 ↓ 4 more
+  e query  a ask  s tables  i indexes  ctrl+p connections             ↓ 4 more

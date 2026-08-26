@@ -70,3 +70,18 @@ func TestKeystrokes(t *testing.T) {
 		t.Errorf("Keystrokes() = %q", got)
 	}
 }
+
+func TestMacKeyboardFollowsThePlatformUnlessItIsToldNotTo(t *testing.T) {
+	if !macKeyboard("mac") {
+		t.Error("a run pinned to mac did not write keys the way a Mac does")
+	}
+	if macKeyboard("plain") {
+		t.Error("a run pinned to plain wrote keys the way a Mac does")
+	}
+	if macKeyboard("") != (runtime.GOOS == "darwin") {
+		t.Error("a run that says nothing did not follow the platform")
+	}
+	if macKeyboard("nonsense") != (runtime.GOOS == "darwin") {
+		t.Error("a style nobody offers did not follow the platform")
+	}
+}

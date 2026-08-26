@@ -32,4 +32,4 @@
 
 
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  e query  a ask  s tables  i indexes  ⌃P connections  ⌃D databases  / commands  ? help  q quit
+  e query  a ask  s tables  i indexes  ctrl+p connections  ctrl+d databases  / commands  ? help  q quit

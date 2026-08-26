@@ -20,4 +20,4 @@
   ┃
 
   ────────────────────────────────────────────────────────────────────────────
-  enter send  esc stop or back  ⌃G conversations
+  enter send  esc stop or back  ctrl+g conversations
