@@ -9,7 +9,7 @@
        ╭────────────────────────────────────────────────────────────────╮
     fre│ databases and schemas                                  screens │
        │ ────────────────────────────────────────────────────────────── │
-  LOAD │ ▌ ● main  <path>                                               │
+  LOAD │ ▌ ● main <path>                                                │
        │     ▢ main                                            2 tables │
     acc│                                                                │
        │  space  pick ·  enter  save ·  esc  cancel                     │

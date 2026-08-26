@@ -15,7 +15,7 @@
                            ╭────────────────────────────────────────────────────────────────╮
   SCANS                    │ databases and schemas                                  screens │
                            │ ────────────────────────────────────────────────────────────── │
-    foreign keys           │ ▌ ● main  <path>                                               │
+    foreign keys           │ ▌ ● main <path>                                                │
                            │     ▢ main                                            2 tables │
   STORAGE                  │                                                                │
                            │  space  pick ·  enter  save ·  esc  cancel                     │

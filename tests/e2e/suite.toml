@@ -18,14 +18,17 @@ pattern = 'sqlite \d+\.\d+\.\d+'
 with    = "sqlite <version>"
 
 # Where the fixture lives is a temporary directory, and SQLite reports it back
-# as an absolute path of its own accord. The trailing spaces are part of the
-# match so that the replacement reaches the same column the path did.
+# as an absolute path of its own accord. The spaces on both sides are part of
+# the match, because a path short enough to fit is laid out differently from one
+# that has to be cut, and only the room the two share is the same.
 [[mask]]
-pattern = '/[A-Za-z0-9._-]+/[^\s│]* *'
-with    = "<path>"
+pattern = ' +/[A-Za-z0-9._-]+/[^\s│]* *'
+with    = " <path>"
 
+# A size always has a space before its unit. Without that space the pattern also
+# matches the 12B in a model called Gemma 4 12B.
 [[mask]]
-pattern = '\b\d+(\.\d+)? ?(B|KiB|MiB|GiB|TiB)\b'
+pattern = '\b\d+(\.\d+)? (B|KiB|MiB|GiB|TiB)\b'
 with    = "<size>"
 
 # How long a statement took is different every time it runs.

@@ -14,4 +14,10 @@ type = "assistant"
 key = "enter"
 
 [[step]]
-shot = "ai"
+wait = "INSTANCES"
+
+[[step]]
+expect = ["MODELS", "gemma-4-e4b-qat", "active", "Gemma 4 E4B", "Apache-2.0"]
+
+[[step]]
+expect_absent = ["panic", "error"]
