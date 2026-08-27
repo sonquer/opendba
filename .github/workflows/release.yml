@@ -33,6 +33,24 @@ jobs:
           go-version-file: go.work
           cache: false
 
+      - name: Locate the caches
+        id: caches
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse what was compiled before
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ${{ steps.caches.outputs.build }}
+            ${{ steps.caches.outputs.modules }}
+          key: go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
+            go-${{ runner.os }}-
+
       - name: Verify the tag matches VERSION
         run: go run ./src/tools/cmd/dev version --check "$GITHUB_REF_NAME"
 
