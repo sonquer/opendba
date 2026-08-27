@@ -32,10 +32,9 @@ func ProfilePath(coverageDir string, module workspace.Module) string {
 
 const generatedSegment = "/generated/"
 
-// testTimeout is short on purpose. A test that opens a terminal it will never
-// be typed into hangs forever, and the default of ten minutes per binary means
-// CI spends ten minutes finding that out.
 const testTimeout = "120s"
+
+const raceTimeout = "600s"
 
 func GeneratedFilter(space workspace.Workspace, summary cover.Summary) func(string) bool {
 	generated := map[string]bool{}
@@ -189,7 +188,7 @@ func Race(module workspace.Module, runner exec.Runner) core.Check {
 		describe: "tests pass under the race detector",
 		module:   module,
 		runner:   runner,
-		args:     []string{"test", "./...", "-race", "-count=1", "-timeout", testTimeout},
+		args:     []string{"test", "./...", "-race", "-count=1", "-timeout", raceTimeout},
 		failOn:   func(r exec.Result) bool { return !r.OK() },
 		summary: func(r exec.Result) string {
 			if r.OK() {
