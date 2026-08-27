@@ -44,6 +44,21 @@ sboms:
     documents:
       - "{{ .ArtifactName }}.sbom.json"
 
+# Keyless, against the workflow's own OIDC identity: there is no private key to
+# keep and the signature says which workflow at which commit produced the file.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
 snapshot:
   version_template: "{{ .Env.OPENDBA_SNAPSHOT_VERSION }}"
 

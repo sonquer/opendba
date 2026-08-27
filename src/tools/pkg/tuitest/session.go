@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	defaultQuiet = 120 * time.Millisecond
-	defaultPoll  = 15 * time.Millisecond
-	replyPoll    = 2 * time.Millisecond
-	graceRounds  = 3
+	defaultQuiet   = 120 * time.Millisecond
+	defaultPoll    = 15 * time.Millisecond
+	defaultTimeout = 10 * time.Second
+	replyPoll      = 2 * time.Millisecond
+	graceRounds    = 3
 )
 
 // Options is what a session needs to start a program.
@@ -59,6 +60,9 @@ type Session struct {
 func Start(opts Options) (*Session, error) {
 	if opts.Quiet <= 0 {
 		opts.Quiet = defaultQuiet
+	}
+	if opts.Timeout <= 0 {
+		opts.Timeout = defaultTimeout
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -244,7 +248,7 @@ func (s *Session) Close() (int, error) {
 	case err := <-waited:
 		_ = s.pty.Close()
 		return exitCode(s.command, err), nil
-	case <-time.After(s.options.Quiet * 20):
+	case <-time.After(s.options.Timeout):
 	}
 	if s.command.Process != nil {
 		_ = s.command.Process.Kill()

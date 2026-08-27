@@ -137,7 +137,7 @@ func (c commandCheck) Run(ctx context.Context) (core.Report, error) {
 func Format(module workspace.Module, runner exec.Runner) core.Check {
 	return commandCheck{
 		name:     "format",
-		describe: "gofmt -s -l reports nothing",
+		describe: "go fmt rewrites nothing",
 		module:   module,
 		runner:   runner,
 		args:     []string{"fmt", "./..."},
