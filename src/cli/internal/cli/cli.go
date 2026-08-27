@@ -548,6 +548,7 @@ flags:
   --connection <name>    the connection to use, the first one by default
   --schema <name>        limit the report to one schema
   --limit <rows>         maximum number of rows to read
+  --yes                  run a statement that changes data without being asked
 
 Everything is read only unless the connection says otherwise, and a statement
 that changes data is refused before it reaches the server.

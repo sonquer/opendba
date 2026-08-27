@@ -2,7 +2,7 @@ rules:
   unpinned-uses:
     config:
       policies:
-        "*": ref-pin
+        "*": hash-pin
   artipacked:
     ignore:
       - release-prep.yml

@@ -12,7 +12,10 @@ func started(t *testing.T, opts Options) *Session {
 	if err != nil {
 		t.Fatalf("Start = %v", err)
 	}
-	t.Cleanup(func() { _, _ = session.Close() })
+	t.Cleanup(func() {
+		_ = session.Send([]byte{0x03})
+		_, _ = session.Close()
+	})
 	return session
 }
 
@@ -163,5 +166,18 @@ func TestASessionFallsBackToWhatEveryRunWants(t *testing.T) {
 	session := started(t, opts)
 	if session.options.Quiet != defaultQuiet || session.options.Now == nil {
 		t.Errorf("quiet = %v", session.options.Quiet)
+	}
+	if session.options.Timeout != defaultTimeout {
+		t.Errorf("timeout = %v, want %v", session.options.Timeout, defaultTimeout)
+	}
+}
+
+func TestAProgramThatWillNotLeaveIsKilled(t *testing.T) {
+	opts := fakeOptions(t, 40, 10)
+	opts.Timeout = 50 * time.Millisecond
+	session := started(t, opts)
+	session.Await(soon(), func(f Frame) bool { return f.Contains("READY") })
+	if _, err := session.Close(); err == nil {
+		t.Error("a program that never exits was reported as having exited")
 	}
 }

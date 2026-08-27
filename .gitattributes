@@ -1,0 +1,12 @@
+# Every text file is stored and checked out with LF, on every platform. Without
+# this, Git for Windows checks out CRLF, gofmt rewrites every file back to LF,
+# and the format gate reports the whole module as unformatted. It also keeps the
+# frames under tests/e2e/screens comparable, which are diffed byte for byte.
+* text=auto eol=lf
+
+# Never converted: the inference library this program carries, and the images.
+*.so binary
+*.dylib binary
+*.dll binary
+*.gguf binary
+*.png binary

@@ -16,7 +16,7 @@ Until the first stable release, only the latest commit on `main` receives fixes.
 
 ## What this project treats as a vulnerability
 
-OPENDBA stands between a person and their production database, so the bar is:
+OpenDBA stands between a person and their production database, so the bar is:
 
 - **A statement reaching the database that the safety layer should have stopped.**
   The classifier is default-deny over a real parse tree; anything that gets a write
@@ -32,7 +32,7 @@ OPENDBA stands between a person and their production database, so the bar is:
 ## What it does not
 
 - A database role with write privileges doing what its privileges allow.
-  OPENDBA documents the read-only role and warns when the connected role can write,
+  OpenDBA documents the read-only role and warns when the connected role can write,
   but it cannot be the boundary.
 - Findings that require an attacker to already control the user's account.
 

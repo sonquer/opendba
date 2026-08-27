@@ -1,0 +1,7 @@
+name: opendba
+
+paths-ignore:
+  - src/cli/internal/parser/generated
+
+queries:
+  - uses: security-and-quality
