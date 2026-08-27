@@ -2,6 +2,7 @@ package mssql
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -68,21 +69,28 @@ func TestQueryKeepsItsWorkOnAWritableProfile(t *testing.T) {
 	}
 }
 
-func TestQueryThrowsItsWorkAwayWhenTheRunWasGivenUpOn(t *testing.T) {
-	conn, mock := mocked(t, writableConfig())
-	mock.ExpectBegin()
-	mock.ExpectQuery("DELETE FROM users").WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectRollback()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	result, err := conn.Query(ctx, "DELETE FROM users")
-	if err != nil {
-		t.Fatalf("Query() = %v", err)
-	}
-	drain(result)
+func TestAResultKeepsItsWorkOnlyWhenEverythingWentWell(t *testing.T) {
+	givenUpOn, cancel := context.WithCancel(context.Background())
 	cancel()
-	_ = result.Close()
+	cases := map[string]struct {
+		result resultSet
+		want   bool
+	}{
+		"a writable profile that finished": {resultSet{writable: true, ctx: context.Background()}, true},
+		"a read only profile":              {resultSet{writable: false, ctx: context.Background()}, false},
+		"a statement that failed":          {resultSet{writable: true, ctx: context.Background(), err: errFailed}, false},
+		"a run that was given up on":       {resultSet{writable: true, ctx: givenUpOn}, false},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := test.result.commits(); got != test.want {
+				t.Errorf("commits() = %v, want %v", got, test.want)
+			}
+		})
+	}
 }
+
+var errFailed = errors.New("the statement failed")
 
 func TestQueryStopsAtTheRowLimit(t *testing.T) {
 	config := readOnlyConfig()
