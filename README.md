@@ -1,3 +1,7 @@
+<p align="center">
+  <img alt="the OpenDBA gopher" src="img/gopher.png" width="180" height="180">
+</p>
+
 <h1 align="center">OpenDBA</h1>
 
 <p align="center">
@@ -6,11 +10,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sonquer/opendba/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/sonquer/opendba/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/sonquer/opendba/actions/workflows/nightly.yml"><img alt="nightly" src="https://github.com/sonquer/opendba/actions/workflows/nightly.yml/badge.svg"></a>
-  <a href="#licence"><img alt="licence" src="https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue"></a>
-  <img alt="go" src="https://img.shields.io/badge/go-1.26-00ADD8">
-  <img alt="status" src="https://img.shields.io/badge/status-in%20development-orange">
+  <a href="https://github.com/sonquer/opendba/actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/sonquer/opendba/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=ci"></a>
+  <a href="https://github.com/sonquer/opendba/actions/workflows/nightly.yml"><img alt="nightly" src="https://img.shields.io/github/actions/workflow/status/sonquer/opendba/nightly.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=nightly"></a>
+  <a href="https://github.com/sonquer/opendba/blob/main/src/cli/go.mod"><img alt="go" src="https://img.shields.io/github/go-mod/go-version/sonquer/opendba?filename=src%2Fcli%2Fgo.mod&style=flat-square&logo=go&logoColor=white"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20windows-4c566a?style=flat-square">
+  <a href="#licence"><img alt="licence" src="https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue?style=flat-square"></a>
+  <img alt="status" src="https://img.shields.io/badge/status-in%20development-orange?style=flat-square">
 </p>
 
 <p align="center">
@@ -358,6 +363,14 @@ under `src/cli/internal/ai/providers/local/embedded/` are committed on purpose.
 They are what lets a local model run with nothing fetched at run time. It costs
 the project the OpenSSF `Binary-Artifacts` check, which is a trade made
 knowingly rather than an oversight.
+
+## Contributors
+
+<a href="https://github.com/sonquer/opendba/graphs/contributors">
+  <img alt="the people who have contributed to OpenDBA" src="https://contrib.rocks/image?repo=sonquer/opendba">
+</a>
+
+[CONTRIBUTING.md](CONTRIBUTING.md) is how to join them.
 
 ## Built with
 
