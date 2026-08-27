@@ -59,12 +59,22 @@ compatibility promise.
 
 ### Verifying what you downloaded
 
-Every archive, every SBOM and `checksums.txt` carry build provenance, and
-`checksums.txt` is signed with a keyless cosign signature tied to the workflow
-that built it. Check one before you run it:
+Every archive, every SBOM and `checksums.txt` carry build provenance. Check one
+before you run it:
 
 ```bash
 gh attestation verify opendba_0.1.0_linux_amd64.tar.gz --repo sonquer/opendba
+```
+
+`checksums.txt` is signed as well, keylessly, against the identity of the
+workflow that built it. The signature is the `checksums.txt.sigstore.json`
+beside it:
+
+```bash
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/sonquer/opendba/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 ## Quick start

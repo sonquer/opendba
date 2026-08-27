@@ -276,5 +276,4 @@ jobs:
             dist/*.zip \
             dist/*.sbom.json \
             dist/checksums.txt \
-            dist/checksums.txt.sig \
-            dist/checksums.txt.pem
+            dist/checksums.txt.sigstore.json
