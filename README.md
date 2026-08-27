@@ -32,10 +32,40 @@ It is in development.
 
 ## Install
 
-Every release publishes an archive for Linux, macOS and Windows, on both amd64
-and arm64, with build provenance and a signed checksum file. Pick one from the
-[latest release](https://github.com/sonquer/opendba/releases/latest), unpack it,
+On Linux and macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sonquer/opendba/main/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/sonquer/opendba/main/install.ps1 | iex
+```
+
+Both work out which build this machine wants, check the archive against the
+`checksums.txt` published beside it, and check the signature on that file too if
+`cosign` is installed. Running either again is how you update: it stops when
+what you have is already what the release holds.
+
+```bash
+curl -fsSL .../install.sh | sh -s -- --nightly   # the unsupported build of main
+curl -fsSL .../install.sh | sh -s -- --version v0.1.0
+curl -fsSL .../install.sh | sh -s -- --dir /usr/local/bin
+```
+
+The PowerShell script takes `-Nightly`, `-Version`, `-Dir` and `-Force`, and
+`OPENDBA_VERSION`, `OPENDBA_INSTALL_DIR` and `OPENDBA_FORCE` work on both.
+
+If piping a script into a shell is not something you do, the scripts are
+[install.sh](install.sh) and [install.ps1](install.ps1) — read them first, or
+skip them: every release publishes an archive for Linux, macOS and Windows, on
+both amd64 and arm64, on the
+[releases page](https://github.com/sonquer/opendba/releases/latest). Unpack one
 and put `opendba` on your `PATH`.
+
+With Go already installed:
 
 ```bash
 go install github.com/sonquer/opendba/src/cli/cmd/opendba@latest
