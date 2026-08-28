@@ -56,6 +56,7 @@ func (h harness) err() string { return ansi.Strip(h.stderr.String()) }
 
 func newHarness(t *testing.T, runner exec.Runner) *harness {
 	t.Helper()
+	t.Setenv("GOTELEMETRY", "off")
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.work"), "go 1.27.0\n\nuse (\n\t./src/cli\n\t./src/tools\n)\n")
 	writeFile(t, filepath.Join(root, "src", "cli", "go.mod"), "module example.com/m/src/cli\n\ngo 1.27.0\n")
