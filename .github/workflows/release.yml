@@ -51,6 +51,12 @@ jobs:
             go-${{ runner.os }}-${{ hashFiles('src/cli/go.sum', 'src/tools/go.sum') }}-
             go-${{ runner.os }}-
 
+      - name: Cache the pinned tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .local/bin
+          key: tools-ubuntu-latest-${{ hashFiles('src/tools/go.sum', 'src/tools/internal/toolbin/toolbin.go') }}
+
       - name: Verify the tag matches VERSION
         run: go run ./src/tools/cmd/dev version --check "$GITHUB_REF_NAME"
 
