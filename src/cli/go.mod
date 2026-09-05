@@ -3,8 +3,8 @@ module github.com/sonquer/opendba/src/cli
 go 1.26.7
 
 require (
-	charm.land/bubbles/v2 v2.2.0
-	charm.land/bubbletea/v2 v2.0.8
+	charm.land/bubbles/v2 v2.2.1
+	charm.land/bubbletea/v2 v2.0.9
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
 	filippo.io/age v1.3.1
@@ -14,7 +14,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/ebitengine/purego v0.10.2
 	github.com/google/uuid v1.6.0
-	github.com/hybridgroup/yzma v1.24.0
+	github.com/hybridgroup/yzma v1.25.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/microsoft/go-mssqldb v1.11.0
 	github.com/pashagolub/pgxmock/v5 v5.1.0
