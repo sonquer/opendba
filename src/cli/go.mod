@@ -3,26 +3,26 @@ module github.com/sonquer/opendba/src/cli
 go 1.26.7
 
 require (
-	charm.land/bubbles/v2 v2.2.0
-	charm.land/bubbletea/v2 v2.0.8
+	charm.land/bubbles/v2 v2.2.1
+	charm.land/bubbletea/v2 v2.0.10
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
-	filippo.io/age v1.3.1
+	filippo.io/age v1.3.2
 	github.com/BurntSushi/toml v1.6.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/antlr4-go/antlr/v4 v4.13.1
 	github.com/charmbracelet/x/ansi v0.11.8
-	github.com/ebitengine/purego v0.10.2
+	github.com/ebitengine/purego v0.11.1
 	github.com/google/uuid v1.6.0
-	github.com/hybridgroup/yzma v1.24.0
-	github.com/jackc/pgx/v5 v5.10.0
-	github.com/microsoft/go-mssqldb v1.11.0
-	github.com/pashagolub/pgxmock/v5 v5.1.0
+	github.com/hybridgroup/yzma v1.28.0
+	github.com/jackc/pgx/v5 v5.11.0
+	github.com/microsoft/go-mssqldb v1.11.2
+	github.com/pashagolub/pgxmock/v5 v5.2.0
 	github.com/xuri/excelize/v2 v2.11.0
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/sys v0.47.0
-	golang.org/x/term v0.45.0
-	modernc.org/sqlite v1.57.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
+	modernc.org/sqlite v1.59.0
 )
 
 require (
@@ -68,10 +68,10 @@ require (
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	modernc.org/libc v1.74.4 // indirect
+	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
