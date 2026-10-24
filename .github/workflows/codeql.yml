@@ -31,7 +31,7 @@ jobs:
         with:
           go-version-file: go.work
 
-      - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee
         with:
           languages: go
           config-file: .github/codeql/codeql-config.yml
@@ -41,6 +41,6 @@ jobs:
           go build ./src/cli/...
           go build ./src/tools/...
 
-      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee
         with:
           category: /language:go
